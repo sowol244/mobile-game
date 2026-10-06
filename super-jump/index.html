@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+<title>슈퍼 점프 1-1</title>
+<style>
+  /* Layout: full-height column. Retro HUD on top, canvas in the middle, thumb controls at the bottom. Single dark look by choice. */
+  :root {
+    --bg: #14111f;
+    --hud: #fdf6e3;
+    --muted: #9a93b8;
+    --accent: #ffd23f;
+    --btn: rgba(255, 255, 255, 0.14);
+    --btn-on: rgba(255, 210, 63, 0.55);
+    color-scheme: dark;
+    --pixel: "Press Start 2P", ui-monospace, monospace;
+    --kr: "Jua", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--hud); font-family: var(--kr); overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: none; }
+  #app { height: 100%; display: flex; flex-direction: column; padding-inline: 16px; padding-block: 10px; gap: 8px; max-width: 900px; margin-inline: auto; }
+  #hud { display: flex; justify-content: space-between; gap: 8px; font-family: var(--pixel); font-size: 10px; line-height: 1.6; text-transform: uppercase; white-space: nowrap; }
+  #hud small { display: block; color: var(--muted); font-family: var(--kr); font-size: 12px; text-transform: none; }
+  #hud span { font-variant-numeric: tabular-nums; }
+  #stage { position: relative; flex: 1; min-height: 0; border-radius: 12px; overflow: hidden; background: #6ec6ff; }
+  canvas { width: 100%; height: 100%; display: block; }
+  #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 20px; background: rgba(20, 17, 31, 0.84); }
+  #overlay h1 { margin: 0; font-size: 36px; font-weight: 400; color: var(--accent); text-wrap: balance; }
+  #overlay p { margin: 0; color: #d9d4ee; font-size: 16px; line-height: 1.55; text-wrap: balance; }
+  #overlay .big { font-family: var(--pixel); font-size: 18px; color: var(--hud); }
+  button.go { font: inherit; font-size: 22px; color: #231a00; background: var(--accent); border: 0; border-radius: 999px; padding: 10px 34px; cursor: pointer; }
+  button.go:focus-visible, .pbtn:focus-visible { outline: 3px solid var(--hud); outline-offset: 3px; }
+  #pad { height: 104px; display: flex; justify-content: space-between; align-items: center; gap: 12px; touch-action: none; }
+  #dpad { display: flex; width: 190px; height: 84px; gap: 8px; touch-action: none; }
+  .pbtn { flex: 1; border: 0; border-radius: 22px; background: var(--btn); color: var(--hud); font-family: var(--kr); font-size: 30px; touch-action: none; display: flex; align-items: center; justify-content: center; }
+  .pbtn.on { background: var(--btn-on); }
+  #jump { flex: none; width: 96px; height: 96px; border-radius: 50%; font-size: 22px; }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Press+Start+2P&display=swap">
+
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div><small>점수</small><span id="score">000000</span></div>
+    <div><small>코인</small><span id="coins">x00</span></div>
+    <div><small>월드</small><span>1-1</span></div>
+    <div><small>시간</small><span id="time">300</span></div>
+    <div><small>목숨</small><span id="lives">x3</span></div>
+  </div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="overlay">
+      <h1 id="title">슈퍼 점프 1-1</h1>
+      <p id="msg">◀ ▶ 로 달리고, 점프 버튼으로 뛰어요.<br>보라색 슬라임은 위에서 밟고, 물음표 블록은 아래에서 쳐 보세요.<br>끝에 있는 깃발까지 가면 1탄 클리어!</p>
+      <div class="big" id="final" hidden></div>
+      <button class="go" id="start" type="button">시작</button>
+    </div>
+  </div>
+  <div id="pad">
+    <div id="dpad">
+      <button class="pbtn" id="left" type="button" aria-label="왼쪽">◀</button>
+      <button class="pbtn" id="right" type="button" aria-label="오른쪽">▶</button>
+    </div>
+    <button class="pbtn" id="jump" type="button">점프</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const T = 16, ROWS = 15, COLS = 212, STEP = 1 / 120, GRAV = 1500, POLE = 198 * T + 7;
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d'), stage = document.getElementById('stage');
+  const $ = id => document.getElementById(id);
+  const hud = { score: $('score'), coins: $('coins'), time: $('time'), lives: $('lives') };
+  const overlay = $('overlay'), titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), startBtn = $('start');
+
+  let W = 400, H = 400, dpr = 1, sc = 1;
+  let grid, enemies, coinsList, bumps, pops, p, camX, state, deadT, timeLeft, tAnim = 0;
+  let score = 0, coinCount = 0, lives = 3, flagBonus = 0;
+  const input = { left: false, right: false, jump: false };
+
+  /* ---------- level ---------- */
+  function buildLevel() {
+    grid = Array.from({ length: ROWS }, () => new Uint8Array(COLS));
+    const set = (x, y, t) => { if (x >= 0 && x < COLS && y >= 0 && y < ROWS) grid[y][x] = t; };
+    const pits = [[69, 2], [86, 3], [117, 2], [151, 3]];
+    for (let x = 0; x < COLS; x++) {
+      if (pits.some(([s, w]) => x >= s && x < s + w)) continue;
+      set(x, 13, 1); set(x, 14, 1);
+    }
+    const row = (x, y, s) => [...s].forEach((c, i) => { if (c === 'b') set(x + i, y, 2); if (c === 'q') set(x + i, y, 3); });
+    const pipe = (x, h) => { for (let i = 0; i < h; i++) { const y = 13 - h + i; set(x, y, i ? 9 : 5); set(x + 1, y, i ? 11 : 10); } };
+    const stair = (x, h) => { for (let i = 0; i < h; i++) set(x, 12 - i, 6); };
+    set(16, 9, 3);
+    row(20, 9, 'bqbqb'); set(22, 5, 3);
+    [[30, 2], [40, 3], [48, 3], [58, 2], [100, 3], [146, 3]].forEach(a => pipe(...a));
+    row(75, 9, 'bqb');
+    row(80, 9, 'bbbqbbbb');
+    row(90, 5, 'bbbbqbbb');
+    row(107, 9, 'qbqbq'); set(109, 5, 3);
+    row(124, 9, 'bqb');
+    for (let i = 0; i < 4; i++) { stair(134 + i, i + 1); stair(143 - i, i + 1); }
+    row(156, 9, 'bbqbb');
+    for (let i = 0; i < 8; i++) stair(178 + i, i + 1);
+    set(198, 12, 6);
+
+    enemies = [22, 35, 44, 52, 64, 72, 82, 92, 95, 104, 122, 128, 130, 155, 160, 168, 172].map(x => ({ x: x * T, y: 12 * T, w: 16, h: 16, vx: -28, vy: 0, active: false, dead: false, squash: 0 }));
+    coinsList = [];
+    const coinRow = (x, y, n) => { for (let i = 0; i < n; i++) coinsList.push({ x: (x + i) * T + 3, y: y * T + 1, got: false }); };
+    coinRow(10, 10, 3); coinRow(26, 8, 4); coinRow(35, 9, 3); coinRow(66, 7, 6); coinRow(81, 6, 6);
+    coinRow(91, 2, 6); coinRow(112, 8, 5); coinRow(130, 8, 3); coinRow(160, 6, 5); coinRow(170, 9, 4);
+    bumps = []; pops = [];
+  }
+
+  function resetLevel() {
+    buildLevel();
+    p = { x: 3 * T, y: 12 * T, w: 12, h: 16, vx: 0, vy: 0, onGround: true, face: 1, coyote: 0, jumpBuf: 0, walk: 0 };
+    camX = 0; timeLeft = 300; deadT = 0; flagBonus = 0;
+    state = 'play';
+  }
+
+  function newGame() { score = 0; coinCount = 0; lives = 3; resetLevel(); updateHud(true); }
+
+  /* ---------- physics ---------- */
+  const solid = (tx, ty) => tx < 0 || tx >= COLS ? true : (ty < 0 || ty >= ROWS ? false : grid[ty][tx] > 0);
+
+  function moveBox(e, dt) {
+    e.x += e.vx * dt;
+    let hitX = false;
+    let x0 = Math.floor(e.x / T), x1 = Math.floor((e.x + e.w - 0.001) / T), y0 = Math.floor(e.y / T), y1 = Math.floor((e.y + e.h - 0.001) / T);
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (solid(tx, ty)) {
+      if (e.vx > 0) e.x = tx * T - e.w; else if (e.vx < 0) e.x = (tx + 1) * T;
+      hitX = true;
+    }
+    e.y += e.vy * dt;
+    e.onGround = false; e.bump = null;
+    x0 = Math.floor(e.x / T); x1 = Math.floor((e.x + e.w - 0.001) / T); y0 = Math.floor(e.y / T); y1 = Math.floor((e.y + e.h - 0.001) / T);
+    let up = null, best = 1e9;
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (solid(tx, ty)) {
+      if (e.vy > 0) { e.y = ty * T - e.h; e.onGround = true; }
+      else if (e.vy < 0) {
+        e.y = (ty + 1) * T;
+        const d = Math.abs(tx * T + T / 2 - (e.x + e.w / 2));
+        if (d < best) { best = d; up = [tx, ty]; }
+      }
+    }
+    if (e.onGround) e.vy = 0;
+    else if (up) { e.vy = 0; e.bump = up; }
+    return hitX;
+  }
+
+  function stepPlayer(dt) {
+    if (state === 'play') {
+      const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+      if (dir) {
+        const a = p.onGround ? 1100 : 700;
+        p.vx += dir * a * dt * (Math.sign(p.vx) === -dir ? 1.8 : 1);
+        p.vx = Math.max(-105, Math.min(105, p.vx)); p.face = dir;
+      } else {
+        const f = (p.onGround ? 900 : 200) * dt;
+        p.vx = Math.abs(p.vx) <= f ? 0 : p.vx - Math.sign(p.vx) * f;
+      }
+      p.coyote = p.onGround ? 0.08 : p.coyote - dt;
+      p.jumpBuf -= dt;
+      if (p.jumpBuf > 0 && p.coyote > 0) { p.vy = -470; p.jumpBuf = 0; p.coyote = 0; sfx('jump'); }
+      if (!input.jump && p.vy < -170) p.vy = -170;
+    }
+    p.vy = Math.min(p.vy + GRAV * dt, 600);
+    if (moveBox(p, dt) && state === 'play') p.vx = 0;
+    if (state === 'play') {
+      if (p.x < camX) { p.x = camX; if (p.vx < 0) p.vx = 0; }
+      if (Math.abs(p.vx) > 5 && p.onGround) p.walk += Math.abs(p.vx) * dt / 9;
+      if (p.bump) hitBlock(p.bump[0], p.bump[1]);
+    }
+  }
+
+  function hitBlock(tx, ty) {
+    const t = grid[ty][tx];
+    bumps.push({ tx, ty, t: 0 });
+    if (t === 3) {
+      grid[ty][tx] = 4; coinCount++; score += 200;
+      pops.push({ x: tx * T + 4, y: ty * T - 4, t: 0 });
+      sfx('coin'); updateHud();
+    } else sfx('bump');
+    for (const e of enemies) {
+      if (!e.dead && e.squash <= 0 && e.x + e.w > tx * T && e.x < (tx + 1) * T && Math.abs(e.y + e.h - ty * T) < 5) {
+        e.dead = true; e.vy = -220; score += 100; sfx('stomp'); updateHud();
+      }
+    }
+  }
+
+  function die(pit) {
+    if (state !== 'play') return;
+    state = 'dead'; deadT = 0; p.vx = 0; p.vy = pit ? 0 : -420; sfx('die');
+  }
+
+  function step(dt) {
+    tAnim += dt;
+    for (const b of bumps) b.t += dt;
+    bumps = bumps.filter(b => b.t < 0.15);
+    for (const c of pops) c.t += dt;
+    pops = pops.filter(c => c.t < 0.45);
+    const viewW = W / sc;
+
+    if (state === 'dead') {
+      deadT += dt; p.vy += GRAV * dt; p.y += p.vy * dt;
+      if (deadT > 1.8) {
+        lives--; updateHud();
+        if (lives > 0) { resetLevel(); updateHud(); } else gameOver();
+      }
+      return;
+    }
+    if (state === 'slide') {
+      p.y += 90 * dt;
+      if (p.y >= 12 * T - p.h) { p.y = 12 * T - p.h; state = 'walk'; p.x = POLE + 4; p.vx = 70; p.face = 1; p.onGround = true; }
+      return;
+    }
+
+    stepPlayer(dt);
+
+    if (state === 'play') {
+      timeLeft -= dt; if (timeLeft <= 0) { timeLeft = 0; die(false); }
+      if (p.y > ROWS * T + 10) die(true);
+      if (p.x + p.w >= POLE && p.y < 12 * T && state === 'play') {
+        state = 'slide'; p.x = POLE - p.w + 1; p.vx = 0; p.vy = 0;
+        flagBonus = 100 + Math.round(Math.max(0, Math.min(1, (176 - p.y) / 128)) * 4900);
+        score += flagBonus + Math.ceil(timeLeft) * 10; sfx('win'); updateHud();
+      }
+    }
+    if (state === 'walk') {
+      p.vx = 70; p.walk += 70 * dt / 9;
+      if (p.x > 205 * T) { win(); return; }
+    }
+
+    // camera never scrolls back
+    const target = Math.max(0, Math.min(COLS * T - viewW, p.x - viewW * 0.4));
+    if (target > camX) camX = target;
+
+    for (const c of coinsList) if (!c.got && p.x < c.x + 10 && p.x + p.w > c.x && p.y < c.y + 14 && p.y + p.h > c.y) {
+      c.got = true; coinCount++; score += 100; sfx('coin'); updateHud();
+    }
+
+    for (const e of enemies) {
+      if (!e.active && e.x < camX + viewW + 24) e.active = true;
+      if (!e.active) continue;
+      if (e.dead) { e.vy += GRAV * dt; e.y += e.vy * dt; continue; }
+      if (e.squash > 0) { e.squash -= dt; if (e.squash <= 0) e.sq = true; continue; }
+      e.vy = Math.min(e.vy + GRAV * dt, 600);
+      if (moveBox(e, dt)) e.vx = -e.vx;
+      if (e.x < camX - 40) e.dead = true;
+      if (state === 'play' && p.x + 2 < e.x + e.w && p.x + p.w - 2 > e.x && p.y < e.y + e.h && p.y + p.h > e.y) {
+        if (p.vy > 0 && p.y + p.h - e.y < 10) {
+          e.squash = 0.4; p.vy = input.jump ? -400 : -280; score += 100; sfx('stomp'); updateHud();
+        } else die(false);
+      }
+    }
+    enemies = enemies.filter(e => e.y < ROWS * T + 40 && !(e.squash <= 0 && e.sq));
+  }
+
+  /* ---------- sound ---------- */
+  let actx = null;
+  function tone(f0, f1, dur, type, vol, delay = 0) {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const t0 = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
+      o.type = type; o.frequency.setValueAtTime(f0, t0); o.frequency.linearRampToValueAtTime(f1, t0 + dur);
+      g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + dur);
+    } catch (e) {}
+  }
+  function sfx(n) {
+    if (n === 'jump') tone(300, 640, 0.18, 'square', 0.05);
+    else if (n === 'coin') { tone(988, 988, 0.07, 'square', 0.05); tone(1319, 1319, 0.2, 'square', 0.05, 0.07); }
+    else if (n === 'stomp') tone(260, 90, 0.14, 'square', 0.07);
+    else if (n === 'bump') tone(140, 100, 0.08, 'triangle', 0.12);
+    else if (n === 'die') [500, 420, 340, 240].forEach((f, i) => tone(f, f * 0.8, 0.18, 'square', 0.06, i * 0.16));
+    else if (n === 'win') [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, f, 0.16, 'square', 0.05, i * 0.13));
+  }
+
+  /* ---------- HUD / screens ---------- */
+  const pad = (n, l) => String(Math.max(0, Math.floor(n))).padStart(l, '0');
+  let lastTime = -1;
+  function updateHud(force) {
+    hud.score.textContent = pad(score, 6);
+    hud.coins.textContent = 'x' + pad(coinCount, 2);
+    hud.lives.textContent = 'x' + lives;
+    if (force) lastTime = -1;
+  }
+  function updateTime() {
+    const t = Math.ceil(timeLeft);
+    if (t !== lastTime) { lastTime = t; hud.time.textContent = pad(t, 3); }
+  }
+  function show(title, msg, final, btn) {
+    titleEl.textContent = title; msgEl.innerHTML = msg;
+    finalEl.hidden = !final; finalEl.textContent = final || '';
+    startBtn.textContent = btn; overlay.hidden = false;
+  }
+  function gameOver() { state = 'over'; show('게임 오버', '목숨을 모두 잃었어요.<br>다시 도전해 보세요.', pad(score, 6) + '점', '다시 하기'); }
+  function win() { state = 'win'; show('1탄 클리어!', `깃발 보너스 ${flagBonus}점 + 남은 시간 보너스<br>코인 ${coinCount}개를 모았어요.`, pad(score, 6) + '점', '다시 하기'); }
+
+  /* ---------- drawing ---------- */
+  const R = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
+
+  function drawTile(t, x, y, ty) {
+    if (t === 1) {
+      R(x, y, T, T, '#a8602a');
+      if (ty === 13) { R(x, y, T, 4, '#4fb23c'); R(x, y + 4, T, 1, '#2f7a24'); }
+      R(x, y + T - 1, T, 1, '#7a4218'); R(x + T - 1, y, 1, T, '#7a4218');
+      R(x + 4, y + 8, 2, 2, '#8a4a1e'); R(x + 11, y + 11, 2, 2, '#8a4a1e');
+    } else if (t === 2) {
+      R(x, y, T, T, '#c8581c');
+      R(x, y + 7, T, 1, '#6e2a08'); R(x, y + 15, T, 1, '#6e2a08'); R(x, y, T, 1, '#e28a4a');
+      R(x + 7, y, 1, 7, '#6e2a08'); R(x + 3, y + 8, 1, 7, '#6e2a08'); R(x + 11, y + 8, 1, 7, '#6e2a08');
+    } else if (t === 3) {
+      R(x, y, T, T, '#7a4a00'); R(x + 1, y + 1, T - 2, T - 2, '#ffbf1f');
+      R(x + 2, y + 2, T - 4, 1, '#ffe27a');
+      R(x + 6, y + 4, 4, 2, '#7a4a00'); R(x + 9, y + 5, 2, 3, '#7a4a00'); R(x + 7, y + 8, 2, 2, '#7a4a00'); R(x + 7, y + 11, 2, 2, '#7a4a00');
+    } else if (t === 4) {
+      R(x, y, T, T, '#6a5230'); R(x + 1, y + 1, T - 2, T - 2, '#9a7c4c'); R(x + 3, y + 3, 2, 2, '#6a5230'); R(x + 11, y + 3, 2, 2, '#6a5230'); R(x + 3, y + 11, 2, 2, '#6a5230'); R(x + 11, y + 11, 2, 2, '#6a5230');
+    } else if (t === 6) {
+      R(x, y, T, T, '#7a6a52'); R(x + 1, y + 1, T - 2, T - 2, '#c2ad88'); R(x + T - 3, y + 2, 2, T - 3, '#8f7d5f'); R(x + 2, y + T - 3, T - 3, 2, '#8f7d5f');
+    } else if (t === 5 || t === 10 || t === 9 || t === 11) {
+      const cap = t === 5 || t === 10, left = t === 5 || t === 9;
+      R(x, y, T, T, '#1b6b32');
+      const o = cap ? 0 : 1;
+      R(x + (left ? 1 : 0), y, T - 1, T, '#2fb552');
+      R(x + (left ? 3 : 1) + o, y, 3, T, '#7fe39a');
+      if (cap) { R(x, y + T - 2, T, 2, '#1b6b32'); R(x, y, T, 1, '#1b6b32'); }
+    }
+  }
+
+  function drawPlayer() {
+    const cx = Math.round(p.x + p.w / 2), y = Math.round(p.y);
+    ctx.save(); ctx.translate(cx, y); ctx.scale(p.face, 1);
+    const air = !p.onGround && state !== 'dead';
+    const ph = Math.floor(p.walk) % 2;
+    R(-6, 0, 12, 4, '#ffd23f'); R(0, 3, 8, 2, '#e0a800');
+    R(-5, 4, 10, 5, '#ffcf9e'); R(2, 5, 2, 2, '#222');
+    R(-6, 9, 12, 4, '#1fb89a');
+    if (air) { R(-7, 11, 3, 3, '#ffcf9e'); R(4, 9, 3, 3, '#ffcf9e'); R(-6, 13, 5, 3, '#2b3a8f'); R(2, 12, 5, 3, '#2b3a8f'); }
+    else if (Math.abs(p.vx) > 5) { R(ph ? -6 : -4, 13, 5, 3, '#2b3a8f'); R(ph ? 1 : 0, 13, 5, 3, '#2b3a8f'); }
+    else { R(-6, 13, 5, 3, '#2b3a8f'); R(1, 13, 5, 3, '#2b3a8f'); }
+    ctx.restore();
+  }
+
+  function drawEnemy(e) {
+    const x = Math.round(e.x), y = Math.round(e.y);
+    ctx.save();
+    if (e.dead) { ctx.translate(x + 8, y + 8); ctx.scale(1, -1); ctx.translate(-x - 8, -y - 8); }
+    if (e.squash > 0) { R(x, y + 11, 16, 5, '#8a4fd0'); R(x + 3, y + 12, 3, 2, '#fff'); R(x + 10, y + 12, 3, 2, '#fff'); ctx.restore(); return; }
+    const f = Math.floor(tAnim * 6) % 2;
+    R(x + 1, y + 3, 14, 10, '#9b5de0'); R(x + 3, y + 1, 10, 4, '#9b5de0'); R(x + 2, y + 11, 12, 2, '#7a3fc0');
+    R(x + 3, y + 5, 4, 4, '#fff'); R(x + 9, y + 5, 4, 4, '#fff');
+    R(x + 5, y + 6, 2, 3, '#222'); R(x + 9, y + 6, 2, 3, '#222');
+    R(x + 3, y + 4, 4, 1, '#3a1766'); R(x + 9, y + 4, 4, 1, '#3a1766');
+    R(f ? x : x + 2, y + 13, 5, 3, '#4a2380'); R(f ? x + 11 : x + 9, y + 13, 5, 3, '#4a2380');
+    ctx.restore();
+  }
+
+  function cloud(x, y) {
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.arc(x + 12, y - 5, 11, 0, 7); ctx.arc(x + 26, y, 9, 0, 7); ctx.fill();
+    ctx.fillRect(x, y, 26, 9);
+  }
+
+  function render() {
+    const sky = ctx.createLinearGradient(0, 0, 0, H * dpr);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    sky.addColorStop(0, '#4aa8f0'); sky.addColorStop(1, '#cdeeff');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W * dpr, H * dpr);
+    if (!grid) return;
+    const s = sc * dpr, viewW = W / sc, viewH = H / sc, oy = viewH - ROWS * T;
+    ctx.setTransform(s, 0, 0, s, 0, oy * s);
+    const cx = Math.floor(camX);
+
+    for (let i = 0; i < 40; i++) {
+      const x = i * 130 + 30 - cx * 0.5;
+      if (x > -60 && x < viewW + 60) cloud(x, 24 + (i % 3) * 22 - Math.min(oy, 0));
+    }
+    for (let i = 0; i < 12; i++) {
+      const hx = i * 330 + 40 - cx;
+      if (hx > -160 && hx < viewW + 40) {
+        ctx.fillStyle = '#4fae56'; ctx.beginPath(); ctx.ellipse(hx + 60, 13 * T, 60, 52, 0, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = '#6cc972'; ctx.beginPath(); ctx.ellipse(hx + 150, 13 * T, 38, 30, 0, Math.PI, 0); ctx.fill();
+      }
+    }
+
+    // castle
+    const kx = 203 * T - cx;
+    if (kx > -100 && kx < viewW + 20) {
+      R(kx, 13 * T - 64, 80, 64, '#b7a98b'); R(kx - 6, 13 * T - 72, 92, 8, '#8f8168');
+      for (let i = 0; i < 5; i++) R(kx - 6 + i * 20, 13 * T - 80, 12, 8, '#8f8168');
+      R(kx + 28, 13 * T - 34, 24, 34, '#3a2a1a'); ctx.fillStyle = '#3a2a1a'; ctx.beginPath(); ctx.arc(kx + 40, 13 * T - 34, 12, Math.PI, 0); ctx.fill();
+    }
+    // flag
+    const px = POLE - cx;
+    if (px > -30 && px < viewW + 30) {
+      R(px, 3 * T, 2, 9 * T, '#d8dde8'); ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(px + 1, 3 * T - 2, 3.5, 0, 7); ctx.fill();
+      const fy = state === 'slide' || state === 'walk' || state === 'win' ? Math.min(11 * T - 14, 3 * T + 4 + (p.y - 48) * 0.95) : 3 * T + 4;
+      ctx.fillStyle = '#2fe0a8'; ctx.beginPath(); ctx.moveTo(px - 1, fy); ctx.lineTo(px - 18, fy + 7); ctx.lineTo(px - 1, fy + 14); ctx.fill();
+    }
+
+    // tiles
+    const tx0 = Math.floor(cx / T), tx1 = Math.floor((cx + viewW) / T) + 1;
+    for (let ty = 0; ty < ROWS; ty++) for (let tx = tx0; tx <= tx1 && tx < COLS; tx++) {
+      const t = grid[ty][tx]; if (!t) continue;
+      let off = 0;
+      for (const b of bumps) if (b.tx === tx && b.ty === ty) off = -Math.sin(b.t / 0.15 * Math.PI) * 5;
+      drawTile(t, tx * T - cx, ty * T + Math.round(off), ty);
+    }
+
+    // coins
+    for (const c of coinsList) {
+      if (c.got || c.x - cx < -16 || c.x - cx > viewW + 16) continue;
+      const w = Math.abs(Math.cos(tAnim * 5 + c.x)) * 4 + 2;
+      ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.ellipse(c.x - cx + 5, c.y + 7, w, 7, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#e09a00'; ctx.beginPath(); ctx.ellipse(c.x - cx + 5, c.y + 7, Math.max(1, w - 2), 4, 0, 0, 7); ctx.fill();
+    }
+    for (const c of pops) {
+      const y = c.y - Math.sin(c.t / 0.45 * Math.PI) * 28;
+      ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.ellipse(c.x - cx + 4, y, Math.abs(Math.cos(c.t * 20)) * 4 + 1, 7, 0, 0, 7); ctx.fill();
+    }
+
+    ctx.translate(-cx, 0);
+    for (const e of enemies) if (e.active && e.x - cx > -20 && e.x - cx < viewW + 20) drawEnemy(e);
+    if (p) drawPlayer();
+  }
+
+  /* ---------- loop / input / setup ---------- */
+  let acc = 0, last = 0;
+  function frame(t) {
+    const dt = Math.min((t - last) / 1000 || 0, 0.1); last = t;
+    if (state && state !== 'title' && state !== 'over' && state !== 'win') {
+      acc += dt;
+      while (acc >= STEP) { step(STEP); acc -= STEP; }
+      if (state === 'play') updateTime();
+    } else tAnim += dt;
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = stage.clientWidth; H = stage.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    sc = Math.min(W / (16 * T), H / (ROWS * T));
+  }
+
+  function press(btn, key, on) {
+    input[key] = on; btn.classList.toggle('on', on);
+    if (key === 'jump' && on && p) p.jumpBuf = 0.12;
+  }
+  function bindBtn(id, key) {
+    const b = $(id);
+    b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture(e.pointerId); press(b, key, true); });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => b.addEventListener(n, () => press(b, key, false)));
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  bindBtn('left', 'left'); bindBtn('right', 'right'); bindBtn('jump', 'jump');
+
+  const keyMap = { ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', ArrowUp: 'jump', w: 'jump', ' ': 'jump', z: 'jump' };
+  window.addEventListener('keydown', e => {
+    const k = keyMap[e.key]; if (!k) return; e.preventDefault();
+    if (k === 'jump' && !input.jump && p) p.jumpBuf = 0.12;
+    input[k] = true; $(k === 'jump' ? 'jump' : k).classList.add('on');
+  });
+  window.addEventListener('keyup', e => {
+    const k = keyMap[e.key]; if (!k) return;
+    input[k] = false; $(k === 'jump' ? 'jump' : k).classList.remove('on');
+  });
+  window.addEventListener('blur', () => { input.left = input.right = input.jump = false; });
+
+  startBtn.addEventListener('click', () => { overlay.hidden = true; newGame(); tone(520, 520, 0.08, 'square', 0.04); });
+  window.addEventListener('resize', resize);
+  new ResizeObserver(resize).observe(stage);
+
+  state = 'title'; resize(); buildLevel();
+  p = { x: 3 * T, y: 12 * T, w: 12, h: 16, vx: 0, vy: 0, onGround: true, face: 1, walk: 0 };
+  camX = 0; timeLeft = 300; updateHud(true);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

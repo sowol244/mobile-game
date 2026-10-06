@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+<title>별똥별 피하기</title>
+<style>
+  /* Layout: full-height column. HUD on top, canvas fills the rest, overlay centered on canvas. */
+  :root {
+    --bg: #0b1026;
+    --panel: #141b3a;
+    --fg: #eef1ff;
+    --muted: #8e98c9;
+    --accent: #ffc94d;
+    --danger: #ff5d6c;
+    --ship: #6ee7d8;
+    color-scheme: dark;
+    --font: "Jua", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font); overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  #app { height: 100%; display: flex; flex-direction: column; padding-inline: 16px; padding-block: 12px; gap: 10px; max-width: 520px; margin-inline: auto; }
+  #hud { display: flex; justify-content: space-between; align-items: center; font-size: 20px; font-variant-numeric: tabular-nums; }
+  #hud small { color: var(--muted); font-size: 13px; display: block; }
+  #lives { letter-spacing: 4px; color: var(--danger); font-size: 22px; }
+  #stage { position: relative; flex: 1; min-height: 0; border-radius: 16px; overflow: hidden; background: var(--panel); touch-action: none; }
+  canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+  #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 24px; background: rgba(11, 16, 38, 0.82); }
+  #overlay h1 { margin: 0; font-size: 38px; font-weight: 400; text-wrap: balance; }
+  #overlay p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.5; text-wrap: balance; }
+  #overlay .big { font-size: 44px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  button { font: inherit; font-size: 22px; color: #1a1400; background: var(--accent); border: 0; border-radius: 999px; padding: 12px 36px; cursor: pointer; }
+  button:focus-visible { outline: 3px solid var(--fg); outline-offset: 3px; }
+  button:active { transform: scale(0.97); }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
+
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div><small>점수</small><span id="score">0</span></div>
+    <div id="lives" aria-label="남은 목숨"></div>
+    <div style="text-align:right"><small>최고 기록</small><span id="best">0</span></div>
+  </div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="overlay">
+      <h1 id="title">별똥별 피하기</h1>
+      <p id="msg">화면을 좌우로 드래그해서 우주선을 움직이세요.<br>노란 별은 먹고, 붉은 운석은 피하세요.</p>
+      <div class="big" id="final" hidden></div>
+      <button id="start" type="button">시작</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+  const stage = document.getElementById('stage');
+  const $ = id => document.getElementById(id);
+  const scoreEl = $('score'), bestEl = $('best'), livesEl = $('lives');
+  const overlay = $('overlay'), titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), startBtn = $('start');
+
+  let W = 300, H = 500, dpr = 1;
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = stage.clientWidth; H = stage.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (ship) ship.y = H - 70;
+  }
+
+  let best = 0;
+  try { best = +localStorage.getItem('meteor-best') || 0; } catch (e) {}
+  bestEl.textContent = best;
+
+  const stars = Array.from({ length: 50 }, () => ({ x: Math.random(), y: Math.random(), s: Math.random() * 1.6 + 0.4, v: Math.random() * 20 + 10 }));
+
+  let ship = null, objs = [], score = 0, lives = 3, running = false, last = 0, spawnT = 0, elapsed = 0, hitFlash = 0, targetX = null, popups = [];
+
+  function reset() {
+    ship = { x: W / 2, y: H - 70, r: 18 };
+    targetX = W / 2;
+    objs = []; popups = [];
+    score = 0; lives = 3; elapsed = 0; spawnT = 0; hitFlash = 0;
+    scoreEl.textContent = 0; drawLives();
+  }
+  function drawLives() { livesEl.textContent = '♥'.repeat(lives) + '♡'.repeat(3 - lives); }
+
+  function spawn() {
+    const coin = Math.random() < 0.28;
+    const r = coin ? 12 : 14 + Math.random() * 14;
+    const speed = 140 + Math.min(elapsed * 6, 260) + Math.random() * 80;
+    objs.push({ coin, r, x: r + Math.random() * (W - 2 * r), y: -r, vy: coin ? speed * 0.8 : speed, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 4 });
+  }
+
+  function update(dt) {
+    elapsed += dt;
+    ship.x += (targetX - ship.x) * Math.min(1, dt * 14);
+    ship.x = Math.max(ship.r, Math.min(W - ship.r, ship.x));
+    spawnT -= dt;
+    if (spawnT <= 0) { spawn(); spawnT = Math.max(0.28, 0.85 - elapsed * 0.012); }
+    for (const o of objs) { o.y += o.vy * dt; o.rot += o.vr * dt; }
+    for (const o of objs) {
+      if (o.dead) continue;
+      const dx = o.x - ship.x, dy = o.y - ship.y;
+      if (dx * dx + dy * dy < (o.r + ship.r - 4) ** 2) {
+        o.dead = true;
+        if (o.coin) { score += 10; scoreEl.textContent = score; popups.push({ x: o.x, y: o.y, t: 0, txt: '+10' }); beep(880, 0.08); }
+        else { lives--; hitFlash = 0.35; drawLives(); beep(120, 0.2, 'sawtooth'); if (navigator.vibrate) { try { navigator.vibrate(80); } catch (e) {} } if (lives <= 0) return gameOver(); }
+      }
+    }
+    objs = objs.filter(o => !o.dead && o.y < H + 40);
+    // survival points
+    score += dt * 2; scoreEl.textContent = Math.floor(score);
+    hitFlash = Math.max(0, hitFlash - dt);
+    for (const p of popups) p.t += dt;
+    popups = popups.filter(p => p.t < 0.7);
+  }
+
+  function star(x, y, r, rot, color) {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = rot + i * Math.PI / 5 - Math.PI / 2, rr = i % 2 ? r * 0.45 : r;
+      ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+  }
+
+  function render(dt) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#c9d3ff';
+    for (const s of stars) {
+      s.y += s.v * dt / H; if (s.y > 1) s.y = 0;
+      ctx.globalAlpha = 0.35 + s.s * 0.25;
+      ctx.fillRect(s.x * W, s.y * H, s.s, s.s);
+    }
+    ctx.globalAlpha = 1;
+    for (const o of objs) {
+      if (o.coin) { star(o.x, o.y, o.r, o.rot, '#ffc94d'); continue; }
+      ctx.save(); ctx.translate(o.x, o.y); ctx.rotate(o.rot);
+      ctx.beginPath();
+      for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2, rr = o.r * (0.8 + 0.2 * Math.sin(i * 7.3 + o.r)); ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+      ctx.closePath(); ctx.fillStyle = '#ff5d6c'; ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(o.r * 0.25, -o.r * 0.2, o.r * 0.25, 0, 7); ctx.fill();
+      ctx.restore();
+    }
+    if (ship) {
+      const blink = hitFlash > 0 && Math.floor(hitFlash * 20) % 2 === 0;
+      if (!blink) {
+        ctx.fillStyle = '#6ee7d8';
+        ctx.beginPath(); ctx.moveTo(ship.x, ship.y - 22); ctx.lineTo(ship.x + 18, ship.y + 16); ctx.lineTo(ship.x, ship.y + 8); ctx.lineTo(ship.x - 18, ship.y + 16); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ffc94d'; ctx.beginPath(); ctx.moveTo(ship.x - 6, ship.y + 12); ctx.lineTo(ship.x, ship.y + 22 + Math.random() * 8); ctx.lineTo(ship.x + 6, ship.y + 12); ctx.fill();
+      }
+    }
+    ctx.font = '20px Jua, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffc94d';
+    for (const p of popups) { ctx.globalAlpha = 1 - p.t / 0.7; ctx.fillText(p.txt, p.x, p.y - p.t * 40); }
+    ctx.globalAlpha = 1;
+    if (hitFlash > 0) { ctx.fillStyle = `rgba(255,93,108,${hitFlash})`; ctx.fillRect(0, 0, W, H); }
+  }
+
+  function loop(t) {
+    const dt = Math.min((t - last) / 1000 || 0, 0.05); last = t;
+    if (running) update(dt);
+    render(dt);
+    requestAnimationFrame(loop);
+  }
+
+  let actx = null;
+  function beep(freq, dur, type = 'sine') {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type; o.frequency.value = freq; g.gain.value = 0.06;
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+      o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
+    } catch (e) {}
+  }
+
+  function gameOver() {
+    running = false;
+    const final = Math.floor(score);
+    const isBest = final > best;
+    if (isBest) { best = final; bestEl.textContent = best; try { localStorage.setItem('meteor-best', best); } catch (e) {} }
+    titleEl.textContent = isBest ? '새 기록!' : '게임 오버';
+    msgEl.textContent = isBest ? '최고 기록을 갱신했어요.' : `최고 기록은 ${best}점이에요.`;
+    finalEl.textContent = final + '점'; finalEl.hidden = false;
+    startBtn.textContent = '다시 하기';
+    overlay.hidden = false;
+  }
+
+  function begin() {
+    reset(); overlay.hidden = true; running = true; beep(520, 0.1);
+  }
+  startBtn.addEventListener('click', begin);
+
+  function pointerX(e) { return e.clientX - stage.getBoundingClientRect().left; }
+  stage.addEventListener('pointerdown', e => { if (running) { targetX = pointerX(e); stage.setPointerCapture(e.pointerId); } });
+  stage.addEventListener('pointermove', e => { if (running && (e.buttons || e.pointerType === 'touch')) targetX = pointerX(e); });
+  window.addEventListener('keydown', e => {
+    if (!running || !ship) return;
+    if (e.key === 'ArrowLeft') targetX = Math.max(0, (targetX ?? ship.x) - 60);
+    if (e.key === 'ArrowRight') targetX = Math.min(W, (targetX ?? ship.x) + 60);
+  });
+  window.addEventListener('resize', resize);
+
+  resize(); reset(); drawLives();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
