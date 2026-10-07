@@ -4,6 +4,7 @@ import {
   SIZE, SHAPES, emptyBoard, canPlace, place, findFullLines, clearLines, lineScore,
   newState, applyMove, isGameOver, anyFits, fitsAnywhere, generateTray, traySolvable, cloneBoard,
 } from './logic.js';
+import { cleanName } from './leaderboard.js';
 
 const shape = rows => SHAPES.find(s => s.h === rows.length && s.w === rows[0].length && s.cells.length === rows.join('').replace(/\./g, '').length
   && s.cells.every(([r, c]) => rows[r][c] === '#'));
@@ -130,6 +131,16 @@ test('on crowded boards the tray is usually fully placeable', () => {
     if (traySolvable(b, generateTray(b, rng).map(t => t.shape))) ok++;
   }
   assert.ok(ok / total > 0.8, `only ${ok}/${total} solvable`);
+});
+
+test('cleanName strips unsafe characters, collapses spaces and caps length', () => {
+  assert.equal(cleanName('  석   님 '), '석 님');
+  assert.equal(cleanName('<b>hi</b>'), 'bhi/b');
+  assert.equal(cleanName('a\u0000b\nc'), 'abc');
+  assert.equal(cleanName('1234567890123456'), '123456789012');
+  assert.equal(cleanName('😀'.repeat(20)), '😀'.repeat(12));
+  assert.equal(cleanName(null), '');
+  assert.equal(cleanName('   '), '');
 });
 
 console.log(`\n${n} tests passed`);
