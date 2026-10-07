@@ -65,24 +65,26 @@ function rr(g, x, y, w, h, r) {
   g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
   g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
 }
-// Glowing cell, rendered once per (color, size) and then stamped with drawImage.
+// Bevelled square tile, rendered once per (color, size) and stamped with drawImage. It fills the whole cell,
+// so neighbouring blocks touch with no gap and a cleared line reads as one solid bar.
 function sprite(color, size) {
   const key = color + '|' + size;
   let s = sprites.get(key);
   if (s) return s;
-  const m = Math.ceil(size * 0.5), dim = size + 2 * m;
   const c = document.createElement('canvas');
-  c.width = c.height = Math.ceil(dim * dpr);
+  c.width = c.height = Math.ceil(size * dpr);
   const g = c.getContext('2d'); g.scale(dpr, dpr);
-  const ins = Math.max(1, size * 0.07), r = size * 0.22;
-  g.shadowColor = COLORS[color]; g.shadowBlur = size * 0.5;
-  g.fillStyle = COLORS[color]; rr(g, m + ins, m + ins, size - 2 * ins, size - 2 * ins, r); g.fill();
-  g.shadowBlur = 0;
-  const gr = g.createLinearGradient(0, m, 0, m + size);
-  gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.05)'); gr.addColorStop(1, 'rgba(0,0,0,0.25)');
-  g.fillStyle = gr; rr(g, m + ins, m + ins, size - 2 * ins, size - 2 * ins, r); g.fill();
-  g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 1.2; rr(g, m + ins + 0.6, m + ins + 0.6, size - 2 * ins - 1.2, size - 2 * ins - 1.2, r); g.stroke();
-  s = { c, dim }; sprites.set(key, s);
+  const b = Math.max(2, Math.round(size * 0.13));            // bevel width
+  g.fillStyle = COLORS[color]; g.fillRect(0, 0, size, size);
+  const face = g.createLinearGradient(0, b, 0, size - b);   // slightly brighter face, softer towards the bottom
+  face.addColorStop(0, 'rgba(255,255,255,0.18)'); face.addColorStop(1, 'rgba(255,255,255,0.02)');
+  g.fillStyle = face; g.fillRect(b, b, size - 2 * b, size - 2 * b);
+  const poly = (pts, col) => { g.fillStyle = col; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fill(); };
+  poly([[0, 0], [size, 0], [size - b, b], [b, b]], 'rgba(255,255,255,0.50)');          // top edge: light
+  poly([[0, 0], [b, b], [b, size - b], [0, size]], 'rgba(255,255,255,0.28)');          // left edge
+  poly([[0, size], [b, size - b], [size - b, size - b], [size, size]], 'rgba(0,0,0,0.38)'); // bottom edge: dark
+  poly([[size, 0], [size, size], [size - b, size - b], [size - b, b]], 'rgba(0,0,0,0.24)'); // right edge
+  s = { c, dim: size }; sprites.set(key, s);
   return s;
 }
 function stamp(color, x, y, size, alpha = 1, scale = 1) {
@@ -90,7 +92,7 @@ function stamp(color, x, y, size, alpha = 1, scale = 1) {
   ctx.globalAlpha = alpha; ctx.drawImage(s.c, cx - d / 2, cy - d / 2, d, d); ctx.globalAlpha = 1;
 }
 function drawPiece(item, cx, cy, size, alpha = 1) {
-  const px = cx - item.shape.w * size / 2, py = cy - item.shape.h * size / 2;
+  const px = Math.round(cx - item.shape.w * size / 2), py = Math.round(cy - item.shape.h * size / 2);
   for (const [dr, dc] of item.shape.cells) stamp(item.color, px + dc * size, py + dr * size, size, alpha);
 }
 
@@ -140,13 +142,13 @@ function render() {
 
   ctx.save();
   ctx.shadowColor = '#00f0ff'; ctx.shadowBlur = 18; ctx.strokeStyle = 'rgba(0,240,255,0.55)'; ctx.lineWidth = 2;
-  ctx.fillStyle = '#090920'; rr(ctx, bx - 6, by - 6, bs + 12, bs + 12, 12); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#07071b'; rr(ctx, bx - 6, by - 6, bs + 12, bs + 12, 12); ctx.fill(); ctx.stroke();
   ctx.restore();
 
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
     const x = bx + c * cell, y = by + r * cell, v = st.board[r][c];
     if (v) { const pt = popMap.get(r * SIZE + c); stamp(v, x, y, cell, 1, pt === undefined ? 1 : 1 + 0.28 * (1 - pt / 0.16)); }
-    else { ctx.fillStyle = '#14143a'; rr(ctx, x + 1.5, y + 1.5, cell - 3, cell - 3, cell * 0.18); ctx.fill(); }
+    else { ctx.fillStyle = '#16163f'; ctx.fillRect(x + 0.5, y + 0.5, cell - 1, cell - 1); }
   }
 
   if (phase === 'tutorial' && tut && !tut.done) drawTutorialHint();
