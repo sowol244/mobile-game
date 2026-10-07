@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {
   SIZE, SHAPES, emptyBoard, canPlace, place, findFullLines, clearLines, lineScore,
-  newState, applyMove, isGameOver, anyFits, fitsAnywhere, generateTray, traySolvable, cloneBoard,
+  newState, applyMove, serializeGame, restoreGame, isGameOver, anyFits, fitsAnywhere, generateTray, traySolvable, cloneBoard,
 } from './logic.js';
 import { cleanName } from './leaderboard.js';
 
@@ -141,6 +141,32 @@ test('cleanName strips unsafe characters, collapses spaces and caps length', () 
   assert.equal(cleanName('😀'.repeat(20)), '😀'.repeat(12));
   assert.equal(cleanName(null), '');
   assert.equal(cleanName('   '), '');
+});
+
+test('save round-trips a mid-game state exactly', () => {
+  const rng = mulberry32(5), s = newState();
+  for (let i = 0; i < 6; i++) { const t = generateTray(s.board, rng); for (const it of t) { for (let r = 0; r < SIZE; r++) { let done = false; for (let c = 0; c < SIZE; c++) if (canPlace(s.board, it.shape, r, c)) { applyMove(s, it.shape, r, c, it.color); done = true; break; } if (done) break; } } }
+  const tray = generateTray(s.board, rng); tray[1] = null;
+  const back = restoreGame(JSON.parse(JSON.stringify(serializeGame(s, tray))));
+  assert.ok(back);
+  assert.deepEqual(back.state, s);
+  assert.deepEqual(back.tray.map(t => t && [t.shape.id, t.color]), tray.map(t => t && [t.shape.id, t.color]));
+  assert.equal(back.tray[0].shape, tray[0].shape);
+});
+
+test('restoreGame rejects missing, old-version and malformed saves', () => {
+  const good = serializeGame(newState(), generateTray(emptyBoard(), mulberry32(1)));
+  assert.ok(restoreGame(good));
+  assert.equal(restoreGame(null), null);
+  assert.equal(restoreGame('x'), null);
+  assert.equal(restoreGame({ ...good, v: 0 }), null);
+  assert.equal(restoreGame({ ...good, board: good.board.slice(1) }), null);
+  assert.equal(restoreGame({ ...good, board: good.board.map((r, i) => (i ? r : r.map(() => 9))) }), null);
+  assert.equal(restoreGame({ ...good, tray: [null, null, null] }), null);
+  assert.equal(restoreGame({ ...good, tray: [{ id: 9999, color: 1 }, null, null] }), null);
+  assert.equal(restoreGame({ ...good, tray: [{ id: 0, color: 0 }, null, null] }), null);
+  assert.equal(restoreGame({ ...good, score: -1 }), null);
+  assert.equal(restoreGame({ ...good, score: 1.5 }), null);
 });
 
 console.log(`\n${n} tests passed`);

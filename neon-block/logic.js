@@ -151,3 +151,38 @@ export function generateTray(board, rng = Math.random) {
   const fits = SHAPES.filter(s => fitsAnywhere(board, s));
   return fits.length ? [mk(fits), mk(fits), mk(fits)] : [mk(), mk(), mk()];
 }
+
+// ---- Save / resume -------------------------------------------------------------------------------
+// Pieces are stored by shape id (the index in DEFS), so changing DEFS requires bumping SAVE_VERSION.
+export const SAVE_VERSION = 1;
+
+export function serializeGame(state, tray) {
+  return {
+    v: SAVE_VERSION,
+    board: state.board.map(r => r.slice()),
+    score: state.score, combo: state.combo, sinceClear: state.sinceClear,
+    tray: tray.map(t => (t ? { id: t.shape.id, color: t.color } : null)),
+  };
+}
+
+// Returns { state, tray } or null when the data is missing, from another version, or malformed.
+export function restoreGame(data) {
+  if (!data || typeof data !== 'object' || data.v !== SAVE_VERSION) return null;
+  const { board, tray } = data;
+  if (!Array.isArray(board) || board.length !== SIZE) return null;
+  for (const row of board) {
+    if (!Array.isArray(row) || row.length !== SIZE) return null;
+    if (row.some(v => !Number.isInteger(v) || v < 0 || v > COLOR_COUNT)) return null;
+  }
+  if (!Array.isArray(tray) || tray.length !== 3) return null;
+  const items = [];
+  for (const t of tray) {
+    if (t === null) { items.push(null); continue; }
+    const shape = t && Number.isInteger(t.id) ? SHAPES[t.id] : null;
+    if (!shape || !Number.isInteger(t.color) || t.color < 1 || t.color > COLOR_COUNT) return null;
+    items.push({ shape, color: t.color });
+  }
+  if (!items.some(Boolean)) return null;
+  for (const v of [data.score, data.combo, data.sinceClear]) if (!Number.isInteger(v) || v < 0) return null;
+  return { state: { board: cloneBoard(board), score: data.score, combo: data.combo, sinceClear: data.sinceClear }, tray: items };
+}
