@@ -373,15 +373,15 @@
       if (clearT >= 3.6) nextStage();
     }
 
-    // ---- movement: joystick (and keys) set a velocity, smoothed so it feels analogue
+    // ---- movement: joystick (and keys) set the velocity directly
     const kx = (keys.r ? 1 : 0) - (keys.l ? 1 : 0), ky = (keys.d ? 1 : 0) - (keys.u ? 1 : 0);
     let ax = joy.x + kx, ay = joy.y + ky;
     const mag = Math.hypot(ax, ay);
     if (mag > 1) { ax /= mag; ay /= mag; }
     const dead = 0.12, mg = Math.hypot(ax, ay);
     if (mg < dead) { ax = 0; ay = 0; } else { const s = (mg - dead) / (1 - dead) / mg; ax *= s; ay *= s; }
-    const SPEED = 330, f = 1 - Math.exp(-dt * 18);
-    ship.vx += (ax * SPEED - ship.vx) * f; ship.vy += (ay * SPEED - ship.vy) * f;
+    const SPEED = 330; // no smoothing: the ship follows the stick exactly and stops the moment it is released
+    ship.vx = ax * SPEED; ship.vy = ay * SPEED;
     ship.x += ship.vx * dt; ship.y += ship.vy * dt;
     const nx = clamp(ship.x, 18, W - 18), ny = clamp(ship.y, H * 0.3, H - 34);
     if (nx !== ship.x) ship.vx = 0; if (ny !== ship.y) ship.vy = 0;
