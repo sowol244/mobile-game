@@ -96,7 +96,8 @@
           <li><b>칼</b> 교행이는 칼을 들고 있어요. <b>칼</b> 버튼으로 앞을 베면 몬스터가 쓰러지고 <b>코인</b>이 나와요. (PC: Z / X)</li>
           <li><b>몬스터</b> 한 번에, 또는 두 번 베어야 쓰러져요. 밟아도 소용없고 닿으면 체력이 줄어요.</li>
           <li><b>장애물</b> 가시, 톱날, 돌벽, 구덩이가 있어요. 구덩이에 빠지면 하트가 하나 줄고 근처에서 다시 시작해요.</li>
-          <li><b>블록</b> 분홍 하트 블록은 체력이 회복되고, 물음표 블록은 코인이 나와요. 아래에서 쳐 보세요.</li>
+          <li><b>하트</b> 스테이지 중간쯤에 떠 있는 하트가 딱 하나 있어요. 먹으면 체력이 회복돼요.</li>
+          <li><b>지형</b> 오르막과 높은 곳이 있고, 왔던 길로 되돌아갈 수도 있어요. 박쥐는 자기 자리 근처까지만 쫓아와요.</li>
           <li><b>목표</b> 하트 세 개를 모두 잃으면 게임 오버예요. 스테이지 끝의 <b>GOAL</b> 표지판을 지나면 다음 스테이지로, 모두 3스테이지예요.</li>
         </ul>
         <button class="go back" type="button">돌아가기</button>
@@ -135,7 +136,7 @@
 
   let W = 400, H = 400, dpr = 1, sc = 1;
   let COLS = 150, GOALX = 140 * T, theme, stageIdx = 0;
-  let grid, enemies, coinsList, drops, saws, bumps, pops, p, camX, state, deadT = 0, goalT = 0, tAnim = 0, lastSafe, banner = null, godMode = false;
+  let grid, enemies, coinsList, drops, saws, hearts, bumps, pops, p, camX, state, deadT = 0, goalT = 0, tAnim = 0, lastSafe, banner = null, godMode = false;
   let score = 0, coinCount = 0, hp = MAX_HP;
   const input = { left: false, right: false, jump: false, attack: false };
 
@@ -145,26 +146,90 @@
     { name: '어두운 동굴', sky: ['#171a33', '#33426f'], hills: ['#27334f', '#34456b'], top: '#3f9aa6', topLine: '#27646e', ground: '#5b5a6e', dark: '#3b3a4d', speck: '#4a495d', brick: '#7a5fa6', brickLine: '#3d2c5e', deco: 'cave' },
     { name: '불타는 화산', sky: ['#32102c', '#ff8a3c'], hills: ['#2a0f1a', '#44182a'], top: '#e0501d', topLine: '#8a2a10', ground: '#4a2a22', dark: '#2a1612', speck: '#3a1f19', brick: '#9a3a2a', brickLine: '#4a1710', deco: 'volcano' },
   ];
-  // Positions are in tiles. walls: [x, height, width]; saws: [x0, x1] patrol on the ground; mons: [kind, x, (feet row | bat height row)].
-  const STAGES = [
-    { cols: 150, goal: 140,
-      pits: [[38, 2], [70, 3], [100, 3]], walls: [[52, 2, 2], [88, 2, 2], [116, 3, 2]], spikes: [[30, 2], [60, 3], [108, 2]], saws: [], floats: [],
-      rows: [[14,9,'bqb'],[22,9,'bbqbb'],[44,9,'bhb'],[77,9,'bqb'],[81,8,'bbb'],[94,8,'bqb'],[122,9,'bqb'],[126,9,'bhbqb']],
-      mons: [['slime', 20], ['slime', 34], ['slime', 46], ['beetle', 56], ['slime', 66], ['bat', 82, 7], ['slime', 92], ['beetle', 106], ['slime', 112], ['slime', 126], ['beetle', 132]],
-      coins: [[10, 10, 3], [28, 7, 4], [41, 9, 3], [66, 7, 5], [80, 5, 4], [96, 6, 4], [122, 7, 4]] },
-    { cols: 170, goal: 160,
-      pits: [[28, 2], [58, 3], [84, 3], [121, 3]], walls: [[38, 3, 2], [76, 2, 2], [105, 3, 2], [130, 2, 2]], spikes: [[18, 3], [67, 3], [113, 2], [149, 3]],
-      saws: [[45, 51], [92, 98], [137, 143]], floats: [],
-      rows: [[10,9,'bqb'],[32,7,'bhbqb'],[48,7,'bbqbb'],[62,7,'bqb'],[70,7,'bbhb'],[88,7,'bqb'],[108,7,'bqbqb'],[124,7,'bqb'],[140,7,'bbqbb'],[152,7,'bqb']],
-      mons: [['slime', 14], ['beetle', 24], ['slime', 34], ['bat', 44, 7], ['beetle', 54], ['boar', 64], ['slime', 72], ['boar', 80], ['bat', 90, 6], ['beetle', 100], ['slime', 110], ['boar', 118], ['bat', 126, 7], ['beetle', 134], ['slime', 146], ['boar', 154]],
-      coins: [[8, 10, 3], [26, 7, 3], [45, 8, 4], [60, 6, 4], [86, 6, 5], [100, 8, 3], [122, 6, 5], [142, 6, 4]] },
-    { cols: 190, goal: 180,
-      pits: [[25, 2], [48, 3], [75, 3], [99, 3], [132, 3], [159, 3]], walls: [[33, 3, 2], [57, 2, 2], [92, 3, 2], [118, 2, 2], [141, 3, 2]], spikes: [[16, 3], [41, 2], [83, 3], [125, 2], [167, 3]],
-      saws: [[63, 69], [106, 112], [147, 153]], floats: [],
-      rows: [[8,9,'bqb'],[28,7,'bhb'],[44,7,'bbqbb'],[66,7,'bqbqb'],[86,7,'bhbb'],[104,7,'bqb'],[126,7,'bqbqb'],[145,7,'bbhb'],[163,7,'bqb'],[170,7,'bqbqb']],
-      mons: [['slime', 12], ['beetle', 22], ['bat', 30, 7], ['boar', 38], ['beetle', 46], ['slime', 54], ['bat', 60, 6], ['boar', 70], ['beetle', 80], ['boar', 88], ['bat', 96, 7], ['beetle', 104], ['boar', 114], ['bat', 122, 6], ['beetle', 128], ['slime', 138], ['boar', 144], ['bat', 150, 7], ['beetle', 156], ['boar', 164], ['beetle', 172]],
-      coins: [[6, 10, 3], [26, 7, 3], [44, 6, 5], [68, 7, 4], [84, 5, 5], [105, 7, 4], [128, 6, 4], [148, 6, 4], [164, 7, 4]] },
+  // Each stage is a list of segments laid out left to right (so nothing can overlap).
+  //   ['flat', n] ['spikes', n] ['pit', n] ['saw', n] ['wall', height, width] ['up', steps, stepHeight] ['down', steps, stepHeight]
+  // up/down are stair-like slopes (2 tiles wide per step). Extras (offsets are tiles from the segment start):
+  //   mons [kind, offset, rowsAboveGround for bats]   coins [offset, tilesAboveGround, count]   bricks [offset, tilesAboveGround, count]   goal offset
+  const LAYOUTS = [
+    [ // stage 1: grassland
+      ['flat', 16, { mons: [['slime', 12]], coins: [[3, 2, 3]] }], ['spikes', 2],
+      ['flat', 10, { mons: [['slime', 5]], coins: [[3, 3, 4]] }], ['up', 2],
+      ['flat', 11, { mons: [['beetle', 6]], coins: [[1, 2, 7]] }], ['down', 2],
+      ['flat', 9, { mons: [['slime', 4]], coins: [[2, 3, 4]] }], ['pit', 2],
+      ['flat', 10, { mons: [['slime', 4], ['bat', 7, 4]], coins: [[1, 3, 4]] }], ['wall', 2, 2],
+      ['flat', 12, { mons: [['beetle', 4]], bricks: [[4, 3, 4]], coins: [[4, 6, 4]] }], ['spikes', 3],
+      ['flat', 10, { mons: [['slime', 5]] }], ['up', 3],
+      ['flat', 10, { mons: [['slime', 4]], coins: [[1, 2, 8]] }], ['down', 3],
+      ['flat', 9, { mons: [['beetle', 4]], coins: [[2, 3, 4]] }], ['pit', 3],
+      ['flat', 10, { mons: [['slime', 4], ['bat', 7, 4]], coins: [[1, 3, 5]] }], ['wall', 3, 2],
+      ['flat', 18, { mons: [['slime', 6]], goal: 6 }],
+    ],
+    [ // stage 2: cave
+      ['flat', 14, { mons: [['slime', 10]], coins: [[3, 2, 3]] }], ['up', 2],
+      ['flat', 9, { mons: [['beetle', 5]], coins: [[1, 2, 6]] }], ['spikes', 3],
+      ['flat', 8, { mons: [['bat', 4, 4], ['slime', 6]], coins: [[2, 3, 4]] }], ['down', 2],
+      ['flat', 9, { mons: [['boar', 6]], coins: [[2, 3, 4]] }], ['pit', 3],
+      ['flat', 9, { mons: [['beetle', 5]], bricks: [[3, 3, 4]], coins: [[3, 6, 4]] }], ['saw', 7],
+      ['flat', 8, { mons: [['slime', 4]] }], ['up', 3],
+      ['flat', 8, { mons: [['bat', 3, 4], ['beetle', 5]], coins: [[1, 2, 6]] }], ['wall', 2, 2],
+      ['flat', 8, { mons: [['boar', 4]], coins: [[1, 3, 4]] }], ['down', 3],
+      ['flat', 9, { mons: [['slime', 4]], coins: [[2, 3, 4]] }], ['pit', 2],
+      ['flat', 9, { mons: [['bat', 4, 4], ['beetle', 6]], bricks: [[3, 3, 3]], coins: [[3, 6, 3]] }], ['spikes', 3],
+      ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['up', 4],
+      ['flat', 9, { mons: [['bat', 4, 4], ['beetle', 6]], coins: [[1, 2, 7]] }], ['down', 4],
+      ['flat', 8, { mons: [['slime', 4]] }], ['saw', 6],
+      ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['pit', 3],
+      ['flat', 18, { mons: [['beetle', 5]], goal: 6 }],
+    ],
+    [ // stage 3: volcano
+      ['flat', 14, { mons: [['slime', 10]], coins: [[3, 2, 3]] }], ['up', 3],
+      ['flat', 8, { mons: [['beetle', 4], ['bat', 6, 4]], coins: [[1, 2, 6]] }], ['spikes', 3],
+      ['flat', 8, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['down', 3],
+      ['flat', 8, { mons: [['slime', 4]] }], ['saw', 7],
+      ['flat', 8, { mons: [['bat', 4, 4]] }], ['pit', 3],
+      ['flat', 9, { mons: [['beetle', 5]], bricks: [[3, 3, 4]], coins: [[3, 6, 4]] }], ['up', 2, 2],
+      ['flat', 8, { mons: [['boar', 4]], coins: [[1, 2, 6]] }], ['wall', 2, 2],
+      ['flat', 8, { mons: [['bat', 3, 4], ['beetle', 5]] }], ['up', 1, 1],
+      ['flat', 8, { mons: [['slime', 4]], coins: [[1, 2, 6]] }], ['down', 5],
+      ['flat', 8, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['pit', 3],
+      ['flat', 9, { mons: [['beetle', 4], ['bat', 7, 4]], coins: [[2, 3, 4]] }], ['spikes', 3],
+      ['flat', 8, { mons: [['slime', 4]] }], ['saw', 7],
+      ['flat', 8, { mons: [['boar', 5]] }], ['up', 3],
+      ['flat', 8, { mons: [['bat', 4, 4], ['beetle', 6]], coins: [[1, 2, 6]] }], ['down', 3],
+      ['flat', 8, { mons: [['slime', 4]] }], ['pit', 3],
+      ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['wall', 3, 2],
+      ['flat', 18, { mons: [['beetle', 5]], goal: 6 }],
+    ],
   ];
+
+  function compile(layout) {
+    const H = [], pits = new Set(), spikes = [], walls = [], saws = [], mons = [], coins = [], bricks = [], segs = [];
+    let x = 0, h = 0, goal = null;
+    const fill = n => { for (let i = 0; i < n; i++) H[x + i] = h; x += n; };
+    for (const seg of layout) {
+      const kind = seg[0], ex = seg.find((v, i) => i > 0 && v && typeof v === 'object') || {}, x0 = x;
+      if (kind === 'flat') fill(seg[1]);
+      else if (kind === 'spikes') { fill(seg[1]); for (let i = 0; i < seg[1]; i++) spikes.push(x0 + i); }
+      else if (kind === 'pit') { for (let i = 0; i < seg[1]; i++) pits.add(x0 + i); fill(seg[1]); }
+      else if (kind === 'saw') { fill(seg[1]); saws.push([x0, x0 + seg[1] - 1, h]); }
+      else if (kind === 'wall') { fill(seg[2]); walls.push([x0, seg[1], seg[2]]); }
+      else if (kind === 'up' || kind === 'down') { const sh = seg[2] || 1; for (let k = 0; k < seg[1]; k++) { h += kind === 'up' ? sh : -sh; fill(2); } }
+      else throw new Error('unknown segment ' + kind);
+      if (h < 0 || h > 5) throw new Error('terrain height out of range near column ' + x);
+      (ex.mons || []).forEach(([k, off, up]) => mons.push([k, x0 + off, up]));
+      (ex.coins || []).forEach(([off, dy, n]) => coins.push([x0 + off, dy, n]));
+      (ex.bricks || []).forEach(([off, dy, n]) => bricks.push([x0 + off, dy, n]));
+      if (ex.goal != null) goal = x0 + ex.goal;
+      segs.push({ kind, x0, w: x - x0, h, hasBricks: !!ex.bricks });
+    }
+    fill(4);
+    // exactly one heart, about halfway through the stage, on open ground (no platform overhead)
+    const mid = x / 2, cand = segs.filter(sg => sg.kind === 'flat' && sg.w >= 8 && !sg.hasBricks);
+    cand.sort((a, b) => Math.abs(a.x0 + a.w / 2 - mid) - Math.abs(b.x0 + b.w / 2 - mid));
+    const hs = cand[0], hearts = [[hs.x0 + Math.floor(hs.w / 2), 2]];
+    return { cols: x, goal, H, pits, spikes, walls, saws, mons, coins, bricks, hearts, segs };
+  }
+  const STAGES = LAYOUTS.map(compile);
   // hp = swings needed. pts = score, coins = how many drop.
   const MON = {
     slime:  { w: 16, h: 14, hp: 1, spd: 28, pts: 100, coins: 1 },
@@ -175,7 +240,7 @@
 
   function makeMon(kind, x, ty) {
     const d = MON[kind], y = d.fly ? (ty ?? 7) * T : (ty ?? 13) * T - d.h;
-    return { kind, x: x * T, y, y0: y, w: d.w, h: d.h, vx: -d.spd, vy: 0, hp: d.hp, maxHp: d.hp, active: false, dead: false, flashT: 0, knockT: 0, t: rnd(0, 6), mode: 'walk', cd: 0, swingHit: -1 };
+    return { kind, x: x * T, y, y0: y, homeX: x * T + d.w / 2, w: d.w, h: d.h, vx: -d.spd, vy: 0, hp: d.hp, maxHp: d.hp, active: false, dead: false, flashT: 0, knockT: 0, t: rnd(0, 6), mode: 'walk', cd: 0, swingHit: -1 };
   }
 
   function buildLevel(i) {
@@ -183,19 +248,19 @@
     theme = THEMES[i]; COLS = S.cols; GOALX = S.goal * T;
     grid = Array.from({ length: ROWS }, () => new Uint8Array(COLS));
     const set = (x, y, t) => { if (x >= 0 && x < COLS && y >= 0 && y < ROWS) grid[y][x] = t; };
-    for (let x = 0; x < COLS; x++) { if (S.pits.some(([s, w]) => x >= s && x < s + w)) continue; set(x, 13, 1); set(x, 14, 1); }
-    for (const [x, y, str] of S.rows) [...str].forEach((c, k) => set(x + k, y, c === 'b' ? 2 : c === 'q' ? 3 : 8));
-    for (const [x, h, w] of S.walls) for (let dx = 0; dx < w; dx++) for (let k = 0; k < h; k++) set(x + dx, 12 - k, 6);
-    for (const [x, y, n] of S.floats) for (let k = 0; k < n; k++) set(x + k, y, 6);
-    for (const [x, n] of S.spikes) for (let k = 0; k < n; k++) set(x + k, 12, 7);
-    enemies = S.mons.map(([k, x, ty]) => makeMon(k, x, ty));
-    saws = S.saws.map(([x0, x1]) => ({ x: x0 * T + 8, y: 13 * T - 8, x0: x0 * T + 8, x1: x1 * T + 8, vx: 55, r: 8, rot: 0 }));
+    for (let x = 0; x < COLS; x++) { if (S.pits.has(x)) continue; for (let r = 13 - S.H[x]; r <= 14; r++) set(x, r, 1); }   // ground column up to its own height
+    for (const x of S.spikes) set(x, 12 - S.H[x], 7);
+    for (const [x, h, w] of S.walls) for (let dx = 0; dx < w; dx++) for (let k = 0; k < h; k++) set(x + dx, 12 - S.H[x + dx] - k, 6);
+    for (const [x, dy, n] of S.bricks) for (let k = 0; k < n; k++) set(x + k, 13 - S.H[x + k] - dy, 2);
+    enemies = S.mons.map(([k, x, up]) => makeMon(k, x, k === 'bat' ? 13 - S.H[x] - up : 13 - S.H[x]));
+    saws = S.saws.map(([x0, x1, h]) => ({ x: x0 * T + 8, y: (13 - h) * T - 8, x0: x0 * T + 8, x1: x1 * T + 8, vx: 55, r: 8, rot: 0 }));
     coinsList = [];
-    for (const [x, y, n] of S.coins) for (let i2 = 0; i2 < n; i2++) coinsList.push({ x: (x + i2) * T + 3, y: y * T + 1, got: false });
+    for (const [x, dy, n] of S.coins) for (let k = 0; k < n; k++) coinsList.push({ x: (x + k) * T + 3, y: (13 - S.H[x + k] - dy) * T + 1, got: false });
+    hearts = S.hearts.map(([x, dy]) => ({ x: x * T + 1, y: (13 - S.H[x] - dy) * T, got: false }));
     drops = []; bumps = []; pops = [];
   }
 
-  const newPlayer = () => ({ x: 3 * T, y: 12 * T, w: 12, h: 16, vx: 0, vy: 0, onGround: true, face: 1, coyote: 0, jumpBuf: 0, walk: 0, inv: 0, hurtT: 0, swing: 0, cd: 0, atkBuf: 0, swingId: 0 });
+  const newPlayer = () => ({ x: 3 * T, y: 12 * T, w: 12, h: 16, vx: 0, vy: 0, onGround: true, face: 1, coyote: 0, jumpBuf: 0, walk: 0, inv: 0, hurtT: 0, swing: 0, cd: 0, atkBuf: 0, swingId: 0, stepUp: true });
 
   function startStage(i) {
     stageIdx = i; buildLevel(i);
@@ -208,13 +273,25 @@
   /* ---------- physics ---------- */
   const solid = (tx, ty) => tx < 0 || tx >= COLS ? true : (ty < 0 || ty >= ROWS ? false : (grid[ty][tx] > 0 && grid[ty][tx] !== 7)); // spikes are hazards, not walls
 
+  const blocked = (x, y, w, h) => {
+    const x0 = Math.floor(x / T), x1 = Math.floor((x + w - 0.001) / T), y0 = Math.floor(y / T), y1 = Math.floor((y + h - 0.001) / T);
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (solid(tx, ty)) return true;
+    return false;
+  };
+
   function moveBox(e, dt) {
+    const wasOnGround = e.onGround, ox = e.x;
     e.x += e.vx * dt;
     let hitX = false;
     let x0 = Math.floor(e.x / T), x1 = Math.floor((e.x + e.w - 0.001) / T), y0 = Math.floor(e.y / T), y1 = Math.floor((e.y + e.h - 0.001) / T);
     for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (solid(tx, ty)) {
       if (e.vx > 0) e.x = tx * T - e.w; else if (e.vx < 0) e.x = (tx + 1) * T;
       hitX = true;
+    }
+    // a one-tile step is walked up like a slope: if the body fits one tile higher, go there instead of stopping
+    if (hitX && e.stepUp && wasOnGround && e.vy >= 0) {
+      const nx = ox + e.vx * dt;
+      if (!blocked(nx, e.y - T, e.w, e.h)) { e.x = nx; e.y -= T; hitX = false; }
     }
     e.y += e.vy * dt;
     e.onGround = false; e.bump = null;
@@ -287,7 +364,6 @@
     p.vy = Math.min(p.vy + GRAV * dt, 600);
     if (moveBox(p, dt) && state === 'play') p.vx = 0;
     if (state === 'play') {
-      if (p.x < camX) { p.x = camX; if (p.vx < 0) p.vx = 0; }
       if (Math.abs(p.vx) > 5 && p.onGround) p.walk += Math.abs(p.vx) * dt / 9;
       if (p.bump) hitBlock(p.bump[0], p.bump[1]);
       // remember the last solid footing so a fall into a pit can put the hero back close by
@@ -338,13 +414,17 @@
     const d = MON[e.kind];
     e.t += dt; e.flashT = Math.max(0, e.flashT - dt); e.knockT = Math.max(0, e.knockT - dt); e.cd = Math.max(0, e.cd - dt);
     if (d.fly) {
-      if (e.knockT > 0) { e.x += e.vx * dt; e.vx *= 0.92; }
-      else {
-        const dx = (p.x + p.w / 2) - (e.x + e.w / 2), chase = Math.abs(dx) < 170;
-        const dir = chase ? Math.sign(dx) : (e.vx < 0 ? -1 : 1);
-        e.vx = dir * d.spd; e.x += e.vx * dt;
-      }
-      e.y = e.y0 + Math.sin(e.t * 3) * 18;
+      if (e.knockT > 0) { e.x += e.vx * dt; e.vx *= 0.92; e.y += (e.y0 - e.y) * Math.min(1, dt * 2); return; }
+      const cxm = e.x + e.w / 2, hx = p.x + p.w / 2, dx = hx - cxm;
+      // a bat only follows while the hero is near its home; walk away and it flies back and hangs about there
+      const chase = Math.abs(hx - e.homeX) < 150 && Math.abs(dx) < 180;
+      const goal = chase ? clamp(hx, e.homeX - 110, e.homeX + 110) : e.homeX, gd = goal - cxm;
+      e.vx = Math.abs(gd) < 4 ? 0 : Math.sign(gd) * d.spd; e.x += e.vx * dt;
+      if (chase && e.mode !== 'dive' && e.cd <= 0 && Math.abs(dx) < 55) { e.mode = 'dive'; e.t0 = e.t; }
+      if (e.mode === 'dive') {
+        e.y += clamp(p.y + 3 - e.y, -95 * dt, 95 * dt);
+        if (e.t - e.t0 > 0.8) { e.mode = 'walk'; e.cd = 2.2; }
+      } else e.y += (e.y0 + Math.sin(e.t * 3) * 10 - e.y) * Math.min(1, dt * 4);
       return;
     }
     e.vy = Math.min(e.vy + GRAV * dt, 600);
@@ -409,9 +489,9 @@
       return;
     }
 
-    // camera never scrolls back (except after a pit respawn)
+    // the camera follows the hero in both directions, so the way back is always open
     const target = Math.max(0, Math.min(COLS * T - viewW, p.x - viewW * 0.4));
-    if (target > camX) camX = target;
+    camX += (target - camX) * (1 - Math.exp(-dt * 9));
 
     // spikes
     {
@@ -435,14 +515,19 @@
       if (c.t > 0.3 && p.x < c.x + 10 && p.x + p.w > c.x - 2 && p.y < c.y + 10 && p.y + p.h > c.y - 2) { c.got = true; coinCount++; score += 100; sfx('coin'); updateHud(); }
     }
     drops = drops.filter(c => !c.got && c.y < ROWS * T + 30);
+    for (const hrt of hearts) if (!hrt.got && p.x < hrt.x + 14 && p.x + p.w > hrt.x && p.y < hrt.y + 14 && p.y + p.h > hrt.y) {
+      hrt.got = true;
+      if (hp < MAX_HP) { hp++; sfx('heal'); } else { coinCount += 3; score += 300; sfx('coin'); }
+      pops.push({ x: p.x + 2, y: p.y - 6, t: 0, heart: true }); updateHud();
+    }
 
     // monsters
     for (const e of enemies) {
       if (!e.active && e.x < camX + viewW + 24) e.active = true;
       if (!e.active) continue;
       if (e.dead) { e.vy += GRAV * dt; e.y += e.vy * dt; e.x += e.vx * dt; continue; }
+      if (Math.abs(e.x - p.x) > 640) continue;   // far away: keep it asleep where it is
       stepMon(e, dt);
-      if (e.x < camX - 60) { if (!MON[e.kind].fly) e.x = Math.max(e.x, camX - 60); }
       // any contact hurts: stomping from above does not defeat a monster
       if (e.knockT <= 0 && p.x + 2 < e.x + e.w - 1 && p.x + p.w - 2 > e.x + 1 && p.y + 2 < e.y + e.h && p.y + p.h > e.y + 1) hurtPlayer(e.x + e.w / 2);
     }
@@ -540,10 +625,10 @@
   const HEART = ['.##.##.', '#######', '#######', '.#####.', '..###..', '...#...'];
   function pixelHeart(x, y, px, c) { ctx.fillStyle = c; HEART.forEach((row, r) => [...row].forEach((ch, k) => { if (ch === '#') ctx.fillRect(x + k * px, y + r * px, px, px); })); }
 
-  function drawTile(t, x, y, ty) {
+  function drawTile(t, x, y, top) {
     if (t === 1) {
       R(x, y, T, T, theme.ground);
-      if (ty === 13) { R(x, y, T, 4, theme.top); R(x, y + 4, T, 1, theme.topLine); }
+      if (top) { R(x, y, T, 4, theme.top); R(x, y + 4, T, 1, theme.topLine); }
       R(x, y + T - 1, T, 1, theme.dark); R(x + T - 1, y, 1, T, theme.dark);
       R(x + 4, y + 8, 2, 2, theme.speck); R(x + 11, y + 11, 2, 2, theme.speck);
     } else if (t === 2) {
@@ -697,7 +782,7 @@
       const t = grid[ty][tx]; if (!t) continue;
       let off = 0;
       for (const b of bumps) if (b.tx === tx && b.ty === ty) off = -Math.sin(b.t / 0.15 * Math.PI) * 5;
-      drawTile(t, tx * T - cx, ty * T + Math.round(off), ty);
+      drawTile(t, tx * T - cx, ty * T + Math.round(off), t === 1 && (ty === 0 || !solid(tx, ty - 1)));
     }
 
     const coinAt = (x, y, w0) => {
@@ -707,6 +792,12 @@
     for (const c of coinsList) {
       if (c.got || c.x - cx < -16 || c.x - cx > viewW + 16) continue;
       coinAt(c.x - cx + 5, c.y + 7, Math.abs(Math.cos(tAnim * 5 + c.x)) * 4 + 2);
+    }
+    for (const hrt of hearts) {
+      if (hrt.got || hrt.x - cx < -20 || hrt.x - cx > viewW + 20) continue;
+      const bob = Math.sin(tAnim * 4) * 2;
+      ctx.fillStyle = 'rgba(255,93,122,0.25)'; ctx.beginPath(); ctx.arc(hrt.x - cx + 7, hrt.y + 7 + bob, 11 + Math.sin(tAnim * 6), 0, 7); ctx.fill();
+      pixelHeart(hrt.x - cx, hrt.y + 1 + bob, 2, '#ff5d7a');
     }
     for (const c of drops) coinAt(c.x - cx + 4, c.y + 4, Math.abs(Math.cos(tAnim * 8 + c.x)) * 3.5 + 1.5);
     for (const c of pops) {
@@ -797,7 +888,7 @@
     },
     input, press, tile: (tx, ty) => (grid[ty] ? grid[ty][tx] : 0) || 0, stepSim(n) { for (let i = 0; i < n; i++) step(STEP); },
     god(on) { godMode = !!on; }, setHp(n) { hp = n; updateHud(); }, addScore(n) { score += n; }, warp(x) { p.x = x * T; p.y = 12 * T; p.vx = 0; p.vy = 0; camX = Math.max(0, Math.min(COLS * T - W / sc, p.x - (W / sc) * 0.4)); },
-    gotoStage(i) { startStage(i); }, clearMons() { enemies = []; }, clearHazards() { saws = []; },
+    gotoStage(i) { startStage(i); }, coinList() { return coinsList.map(c => [c.x, c.y]); }, pos() { return [p.x, p.y]; }, sawList() { return saws.map(w => [w.x, w.y]); }, hearts() { return hearts.map(h => ({ x: h.x, y: h.y, got: h.got })); }, stages() { return STAGES.map(S => ({ cols: S.cols, goal: S.goal, maxH: Math.max(...S.H.filter(v => v !== undefined)), pits: S.pits.size })); }, clearMons() { enemies = []; }, clearHazards() { saws = []; },
     spawn(kind, dx, ty) { const e = makeMon(kind, (p.x + dx) / T, ty); e.x = p.x + dx; e.active = true; enemies.push(e); return enemies.length - 1; },
     setP(x, y, vx = 0, vy = 0) { p.x = x; p.y = y; p.vx = vx; p.vy = vy; }, kill() { die(); }, count() { return STAGES.length; },
   };
