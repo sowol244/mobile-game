@@ -148,7 +148,7 @@ function hud() {
 function start() {
   st = newState(); tray = generateTray(st.board); drag = null; fx = []; pops = []; bestAtStart = best;
   phase = 'play'; overlay.hidden = true; hud(); dirty = true;
-  submitted = false; regEl.hidden = true; rowsEl.hidden = true; netEl.textContent = '';
+  submitted = false; regEl.hidden = true; rowsEl.hidden = true; netEl.textContent = ''; overlay.classList.remove('board');
 }
 
 function doMove(idx, r0, c0) {
@@ -177,7 +177,7 @@ function gameOver() {
   msgEl.innerHTML = isBest ? '최고 기록을 갱신했어요.' : `최고 기록은 <b>${best}</b>점이에요.<br>놓을 자리가 없어졌어요.`;
   finalEl.textContent = st.score; finalEl.hidden = false;
   startBtn.textContent = '다시 하기';
-  rowsEl.hidden = true; netEl.textContent = '';
+  rowsEl.hidden = true; netEl.textContent = ''; overlay.classList.remove('board');
   regEl.hidden = st.score <= 0 || submitted; submitBtn.disabled = false;
   try { nickEl.value = localStorage.getItem('neonblock-name') || ''; } catch (e) {}
   overlay.hidden = false;
@@ -207,6 +207,8 @@ async function showBoard(mineId) {
     const rows = await fetchTop(10);
     netEl.textContent = rows.length ? '' : '아직 등록된 점수가 없어요.';
     renderRows(rows, mineId);
+    const me = rowsEl.querySelector('.me') || rowsEl;
+    me.scrollIntoView({ block: 'center', behavior: 'smooth' });
   } catch (err) { rowsEl.hidden = true; netEl.textContent = netMsg(err); }
 }
 
@@ -221,6 +223,7 @@ async function onSubmit() {
     try { localStorage.setItem('neonblock-name', name); } catch (e) {}
     regEl.hidden = true;
     const rank = await rankOf(st.score).catch(() => null);
+    titleEl.textContent = '순위'; overlay.classList.add('board'); // go straight to the ranking
     await showBoard(id);
     if (rank) netEl.textContent = `등록 완료! 현재 ${rank}위`;
   } catch (err) {
