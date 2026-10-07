@@ -20,13 +20,30 @@
   }
   html, body { height: 100%; }
   body { background: var(--bg); color: var(--hud); font-family: var(--kr); overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: none; }
-  #app { height: 100%; display: flex; flex-direction: column; padding-inline: 16px; padding-block: 10px; gap: 8px; max-width: 900px; margin-inline: auto; }
+  #app { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; padding-inline: 16px; padding-block: 10px; gap: 8px; max-width: 900px; margin-inline: auto; }
   #hud { display: flex; justify-content: space-between; gap: 8px; font-family: var(--pixel); font-size: 10px; line-height: 1.6; text-transform: uppercase; white-space: nowrap; }
   #hud small { display: block; color: var(--muted); font-family: var(--kr); font-size: 12px; text-transform: none; }
   #hud span { font-variant-numeric: tabular-nums; }
   #stage { position: relative; flex: 1; min-height: 0; border-radius: 12px; overflow: hidden; background: #6ec6ff; }
   canvas { width: 100%; height: 100%; display: block; }
-  #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 20px; background: rgba(20, 17, 31, 0.84); }
+  #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 20px; overflow-y: auto; background: rgba(20, 17, 31, 0.86); }
+  .panel { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; margin: auto 0; }
+  .helplist { margin: 0; padding: 0; list-style: none; width: min(340px, 100%); display: grid; gap: 8px; text-align: left; font-size: 15px; line-height: 1.5; color: #e9e4f7; }
+  .helplist li { padding: 8px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.07); }
+  .helplist b { color: var(--accent); font-weight: 400; }
+  #rows { list-style: none; margin: 0; padding: 0; width: min(340px, 100%); display: grid; gap: 4px; text-align: left; }
+  #rows li { display: grid; grid-template-columns: 26px 1fr auto 40px; gap: 8px; align-items: center; padding: 7px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.07); font-size: 15px; font-variant-numeric: tabular-nums; }
+  #rows li.me { background: rgba(255, 210, 63, 0.18); box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.6); }
+  #rows .rk { color: var(--muted); font-size: 13px; }
+  #rows .sc { color: var(--accent); }
+  #rows .wh, #rows .dt { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  #rankNote { font-size: 13px !important; color: var(--muted) !important; }
+  #btns { display: flex; flex-direction: column; gap: 10px; width: min(340px, 100%); }
+  #prim button { width: 100%; height: 52px; padding: 0 16px; }
+  #sec { display: flex; gap: 8px; }
+  #sec .sub { flex: 1 1 0; min-width: 0; height: 44px; padding: 0 6px; font: inherit; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; box-sizing: border-box; color: var(--accent); background: transparent; border: 1px solid rgba(255, 210, 63, 0.6); border-radius: 999px; text-decoration: none; cursor: pointer; }
+  #sec .sub:focus-visible { outline: 3px solid var(--hud); outline-offset: 3px; }
+  .back { width: min(340px, 100%); height: 52px; }
   #overlay h1 { margin: 0; font-size: 36px; font-weight: 400; color: var(--accent); text-wrap: balance; }
   #overlay p { margin: 0; color: #d9d4ee; font-size: 16px; line-height: 1.55; text-wrap: balance; }
   #overlay .big { font-family: var(--pixel); font-size: 18px; color: var(--hud); }
@@ -53,10 +70,38 @@
   <div id="stage">
     <canvas id="c"></canvas>
     <div id="overlay">
-      <h1 id="title">슈퍼 점프 1-1</h1>
-      <p id="msg">◀ ▶ 로 달리고, 점프 버튼으로 뛰어요.<br>보라색 슬라임은 위에서 밟고, 물음표 블록은 아래에서 쳐 보세요.<br>끝에 있는 깃발까지 가면 1탄 클리어!</p>
-      <div class="big" id="final" hidden></div>
-      <button class="go" id="start" type="button">시작</button>
+      <div class="panel" id="pMain">
+        <h1 id="title">슈퍼 점프 1-1</h1>
+        <p id="msg"></p>
+        <div class="big" id="final" hidden></div>
+        <div id="btns">
+          <div id="prim"><button class="go" id="start" type="button">시작</button></div>
+          <div id="sec">
+            <button class="sub" id="home" type="button" hidden>처음으로</button>
+            <button class="sub" id="helpBtn" type="button">게임 설명</button>
+            <button class="sub" id="rankBtn" type="button">순위 보기</button>
+            <a class="sub" id="toMenu" href="../">게임 선택</a>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="pHelp" hidden>
+        <h1>게임 설명</h1>
+        <ul class="helplist">
+          <li><b>이동</b> 왼쪽 아래 <b>◀ ▶</b> 버튼으로 달려요. (PC: 방향키)</li>
+          <li><b>점프</b> <b>점프</b> 버튼을 오래 누르면 더 높이 뛰어요. (PC: 스페이스바)</li>
+          <li><b>슬라임</b> 보라색 슬라임은 위에서 밟아서 쓰러뜨려요. 옆에서 닿으면 죽어요.</li>
+          <li><b>블록</b> 물음표 블록은 아래에서 머리로 쳐 보세요. 코인이 나와요.</li>
+          <li><b>목표</b> 끝에 있는 깃발까지 가면 1탄 클리어! 깃발을 높게 잡을수록, 남은 시간이 많을수록 점수가 커요.</li>
+          <li><b>제한</b> 목숨 3개, 제한 시간 300초예요.</li>
+        </ul>
+        <button class="go back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pRank" hidden>
+        <h1>내 기록 순위</h1>
+        <ol id="rows"></ol>
+        <p id="rankNote"></p>
+        <button class="go back" type="button">돌아가기</button>
+      </div>
     </div>
   </div>
   <div id="pad">
@@ -75,6 +120,7 @@
   const $ = id => document.getElementById(id);
   const hud = { score: $('score'), coins: $('coins'), time: $('time'), lives: $('lives') };
   const overlay = $('overlay'), titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), startBtn = $('start');
+  const pMain = $('pMain'), pHelp = $('pHelp'), pRank = $('pRank'), helpBtn = $('helpBtn'), rankBtn = $('rankBtn'), homeBtn = $('home'), menuLink = $('toMenu'), rowsEl = $('rows'), rankNote = $('rankNote');
 
   let W = 400, H = 400, dpr = 1, sc = 1;
   let grid, enemies, coinsList, bumps, pops, p, camX, state, deadT, timeLeft, tAnim = 0;
@@ -292,13 +338,54 @@
     const t = Math.ceil(timeLeft);
     if (t !== lastTime) { lastTime = t; hud.time.textContent = pad(t, 3); }
   }
+  /* ---------- local ranking (stored on this device only) ---------- */
+  const TOP_KEY = 'jump-top';
+  let topList = [], lastEntry = null;
+  try {
+    const raw = JSON.parse(localStorage.getItem(TOP_KEY) || '[]');
+    if (Array.isArray(raw)) topList = raw.filter(r => r && Number.isFinite(r.s) && r.s > 0).slice(0, 10);
+  } catch (e) {}
+  function addTop(sc, where) {
+    if (!(sc > 0)) return null;
+    const e = { s: sc, d: Date.now(), w: String(where || '') };
+    topList.push(e); topList.sort((a, b) => b.s - a.s); topList = topList.slice(0, 10);
+    try { localStorage.setItem(TOP_KEY, JSON.stringify(topList)); } catch (err) {}
+    return topList.includes(e) ? e : null;
+  }
+  function renderTop(mine) {
+    rowsEl.replaceChildren();
+    topList.forEach((r, i) => {
+      const li = document.createElement('li'); if (r === mine) li.className = 'me';
+      const dt = new Date(r.d), when = isNaN(dt) ? '' : (dt.getMonth() + 1) + '/' + dt.getDate();
+      for (const [cls, text] of [['rk', i + 1], ['sc', r.s.toLocaleString('ko-KR')], ['wh', r.w], ['dt', when]]) {
+        const sp = document.createElement('span'); sp.className = cls; sp.textContent = text; li.append(sp);
+      }
+      rowsEl.append(li);
+    });
+    rankNote.textContent = topList.length ? '이 기록은 이 폰에만 저장돼요.' : '아직 기록이 없어요. 한 판 해 보세요!';
+  }
+  function panel(name) { pMain.hidden = name !== 'main'; pHelp.hidden = name !== 'help'; pRank.hidden = name !== 'rank'; }
+  function buttons(onTitle) { helpBtn.hidden = !onTitle; menuLink.hidden = !onTitle; homeBtn.hidden = onTitle; }
+  function showTitle() {
+    state = 'title'; buildLevel();
+    p = { x: 3 * T, y: 12 * T, w: 12, h: 16, vx: 0, vy: 0, onGround: true, face: 1, walk: 0 };
+    camX = 0; timeLeft = 300; score = 0; coinCount = 0; lives = 3; updateHud(true);
+    titleEl.textContent = '슈퍼 점프 1-1'; msgEl.textContent = '달리고 점프해서 깃발까지 가는 횡스크롤 플랫폼 게임';
+    finalEl.hidden = true; startBtn.textContent = '시작';
+    buttons(true); panel('main'); overlay.hidden = false;
+  }
+  helpBtn.addEventListener('click', () => panel('help'));
+  rankBtn.addEventListener('click', () => { renderTop(lastEntry); panel('rank'); });
+  homeBtn.addEventListener('click', showTitle);
+  document.querySelectorAll('.back').forEach(b => b.addEventListener('click', () => panel('main')));
+
   function show(title, msg, final, btn) {
     titleEl.textContent = title; msgEl.innerHTML = msg;
     finalEl.hidden = !final; finalEl.textContent = final || '';
-    startBtn.textContent = btn; overlay.hidden = false;
+    startBtn.textContent = btn; buttons(false); panel('main'); overlay.hidden = false;
   }
-  function gameOver() { state = 'over'; show('게임 오버', '목숨을 모두 잃었어요.<br>다시 도전해 보세요.', pad(score, 6) + '점', '다시 하기'); }
-  function win() { state = 'win'; show('1탄 클리어!', `깃발 보너스 ${flagBonus}점 + 남은 시간 보너스<br>코인 ${coinCount}개를 모았어요.`, pad(score, 6) + '점', '다시 하기'); }
+  function gameOver() { state = 'over'; lastEntry = addTop(Math.floor(score), '도중 종료'); show('게임 오버', '목숨을 모두 잃었어요.<br>다시 도전해 보세요.', pad(score, 6) + '점', '다시 하기'); }
+  function win() { state = 'win'; lastEntry = addTop(Math.floor(score), '1탄 클리어'); show('1탄 클리어!', `깃발 보너스 ${flagBonus}점 + 남은 시간 보너스<br>코인 ${coinCount}개를 모았어요.`, pad(score, 6) + '점', '다시 하기'); }
 
   /* ---------- drawing ---------- */
   const R = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
@@ -472,14 +559,15 @@
   });
   window.addEventListener('blur', () => { input.left = input.right = input.jump = false; });
 
-  startBtn.addEventListener('click', () => { overlay.hidden = true; newGame(); tone(520, 520, 0.08, 'square', 0.04); });
+  startBtn.addEventListener('click', () => { overlay.hidden = true; lastEntry = null; newGame(); tone(520, 520, 0.08, 'square', 0.04); });
   window.addEventListener('resize', resize);
   new ResizeObserver(resize).observe(stage);
 
-  state = 'title'; resize(); buildLevel();
-  p = { x: 3 * T, y: 12 * T, w: 12, h: 16, vx: 0, vy: 0, onGround: true, face: 1, walk: 0 };
-  camX = 0; timeLeft = 300; updateHud(true);
+  resize(); showTitle();
   requestAnimationFrame(frame);
+
+  // Test hook for automated checks; harmless in normal play.
+  window.__jump = { get phase() { return state; }, addScore(n) { score += n; }, die() { lives = 1; if (state === 'play') die(false); deadT = 99; } };
 })();
 </script>
 </body>

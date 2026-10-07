@@ -29,9 +29,24 @@
   #power { color: var(--blue); font-size: 13px; letter-spacing: 2px; display: block; }
   #stage { position: relative; flex: 1; min-height: 0; border-radius: 16px; overflow: hidden; background: var(--panel); touch-action: none; }
   canvas { width: 100%; height: 100%; display: block; touch-action: none; }
-  #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 22px; overflow-y: auto; background: rgba(11, 16, 38, 0.88); }
-  #overlay > :first-child { margin-top: auto; }
-  #overlay > :last-child { margin-bottom: auto; }
+  #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 22px; overflow-y: auto; background: rgba(11, 16, 38, 0.88); }
+  .panel { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; margin: auto 0; }
+  .helplist { margin: 0; padding: 0; list-style: none; width: min(340px, 100%); display: grid; gap: 8px; text-align: left; font-size: 15px; line-height: 1.5; color: var(--fg); }
+  .helplist li { padding: 8px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.06); }
+  .helplist b { color: var(--accent); font-weight: 400; }
+  #rows { list-style: none; margin: 0; padding: 0; width: min(340px, 100%); display: grid; gap: 4px; text-align: left; }
+  #rows li { display: grid; grid-template-columns: 26px 1fr auto 40px; gap: 8px; align-items: center; padding: 7px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.06); font-size: 15px; font-variant-numeric: tabular-nums; }
+  #rows li.me { background: rgba(255, 201, 77, 0.18); box-shadow: inset 0 0 0 1px rgba(255, 201, 77, 0.6); }
+  #rows .rk { color: var(--muted); font-size: 13px; }
+  #rows .sc { color: var(--accent); }
+  #rows .wh, #rows .dt { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  #rankNote { font-size: 13px !important; }
+  #btns { display: flex; flex-direction: column; gap: 10px; width: min(340px, 100%); }
+  #prim button { width: 100%; height: 52px; padding: 0 16px; }
+  #sec { display: flex; gap: 8px; }
+  #sec .sub { flex: 1 1 0; min-width: 0; height: 44px; padding: 0 6px; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; box-sizing: border-box; color: var(--accent); background: transparent; border: 1px solid rgba(255, 201, 77, 0.6); border-radius: 999px; text-decoration: none; cursor: pointer; }
+  #sec .sub:focus-visible { outline: 3px solid var(--fg); outline-offset: 3px; }
+  .back { width: min(340px, 100%); height: 52px; font-size: 20px; background: var(--accent); border-radius: 999px; }
   #overlay h1 { margin: 0; font-size: 36px; font-weight: 400; text-wrap: balance; }
   #overlay p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.6; text-wrap: balance; }
   #overlay p b { color: var(--fg); font-weight: 400; }
@@ -47,6 +62,7 @@
   #joy { box-sizing: border-box; position: relative; flex: none; width: 104px; height: 104px; border-radius: 50%; background: rgba(255, 255, 255, 0.07); border: 2px solid rgba(255, 255, 255, 0.22); touch-action: none; }
   #joy::before { content: ""; position: absolute; inset: 14px; border-radius: 50%; border: 1px dashed rgba(255, 255, 255, 0.16); }
   #knob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffffff, var(--accent) 60%, #d69a1c); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); pointer-events: none; will-change: transform; }
+  #joy::after { content: ""; position: absolute; inset: -14px; }
   #joy.on { background: rgba(255, 201, 77, 0.14); border-color: rgba(255, 201, 77, 0.7); }
   #acts { display: flex; align-items: center; gap: 12px; }
   .cbtn { border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
@@ -69,11 +85,39 @@
   <div id="stage">
     <canvas id="c"></canvas>
     <div id="overlay">
-      <h1 id="title">스타 슈터</h1>
-      <p id="msg">왼쪽 <b>조이스틱</b>으로 움직이고, <b>연사</b> 버튼을 누르고 있으면 미사일이 계속 나가요.<br>파란 <b>P</b>를 먹을 때마다 미사일이 <b>4단계</b>까지 강해지고, 붉은 <b>B</b>는 폭탄이에요.<br>스테이지마다 4분이 지나면 <b>보스</b>가 나타나요. 쓰러뜨리면 다음 스테이지, 총 <b>3탄</b>이에요.<br>분마다 최고 점수가 기록돼요.</p>
-      <div class="big" id="final" hidden></div>
-      <div id="rec" hidden></div>
-      <button id="start" type="button">시작</button>
+      <div class="panel" id="pMain">
+        <h1 id="title">스타 슈터</h1>
+        <p id="msg"></p>
+        <div class="big" id="final" hidden></div>
+        <div id="rec" hidden></div>
+        <div id="btns">
+          <div id="prim"><button id="start" type="button">시작</button></div>
+          <div id="sec">
+            <button class="sub" id="home" type="button" hidden>처음으로</button>
+            <button class="sub" id="helpBtn" type="button">게임 설명</button>
+            <button class="sub" id="rankBtn" type="button">순위 보기</button>
+            <a class="sub" id="toMenu" href="../">게임 선택</a>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="pHelp" hidden>
+        <h1>게임 설명</h1>
+        <ul class="helplist">
+          <li><b>이동</b> 왼쪽 <b>조이스틱</b>으로 움직여요. (PC: 방향키)</li>
+          <li><b>공격</b> <b>연사</b> 버튼을 누르고 있으면 미사일이 계속 나가요. (PC: Space)</li>
+          <li><b>아이템</b> 파란 <b>P</b>를 먹을 때마다 미사일이 <b>4단계</b>까지 강해지고, 붉은 <b>B</b>는 폭탄이에요. 맞으면 한 단계 약해져요.</li>
+          <li><b>폭탄</b> 위기일 때 폭탄 버튼으로 화면의 적과 총알을 싹 지워요. (PC: B)</li>
+          <li><b>스테이지</b> 시작은 PHASE 1, 1분에 PHASE 2, 3분에 PHASE 3, 4분이 되면 <b>보스</b>가 나타나요. 보스를 쓰러뜨리면 다음 스테이지, 총 <b>3탄</b>이에요.</li>
+          <li><b>기록</b> 분마다 최고 점수가 기록돼요.</li>
+        </ul>
+        <button class="back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pRank" hidden>
+        <h1>내 기록 순위</h1>
+        <ol id="rows"></ol>
+        <p id="rankNote"></p>
+        <button class="back" type="button">돌아가기</button>
+      </div>
     </div>
   </div>
   <div id="pad">
@@ -92,6 +136,7 @@
   const scoreEl = $('score'), bestEl = $('best'), livesEl = $('lives'), powerEl = $('power');
   const overlay = $('overlay'), titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), startBtn = $('start');
   const clockEl = $('clock'), recEl = $('rec');
+  const pMain = $('pMain'), pHelp = $('pHelp'), pRank = $('pRank'), helpBtn = $('helpBtn'), rankBtn = $('rankBtn'), homeBtn = $('home'), menuLink = $('toMenu'), rowsEl = $('rows'), rankNote = $('rankNote');
   const fireBtn = $('fire'), bombBtn = $('bomb'), bombN = $('bombN'), joyEl = $('joy'), knobEl = $('knob');
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -378,8 +423,8 @@
     let ax = joy.x + kx, ay = joy.y + ky;
     const mag = Math.hypot(ax, ay);
     if (mag > 1) { ax /= mag; ay /= mag; }
-    const dead = 0.12, mg = Math.hypot(ax, ay);
-    if (mg < dead) { ax = 0; ay = 0; } else { const s = (mg - dead) / (1 - dead) / mg; ax *= s; ay *= s; }
+    const dead = 0.08, full = 0.7, mg = Math.hypot(ax, ay);
+    if (mg < dead) { ax = 0; ay = 0; } else { const s = Math.min(1, (mg - dead) / (full - dead)) / mg; ax *= s; ay *= s; }
     const SPEED = 330; // no smoothing: the ship follows the stick exactly and stops the moment it is released
     ship.vx = ax * SPEED; ship.vy = ay * SPEED;
     ship.x += ship.vx * dt; ship.y += ship.vy * dt;
@@ -613,6 +658,46 @@
     requestAnimationFrame(loop);
   }
 
+  /* ---------- local ranking (stored on this device only) ---------- */
+  const TOP_KEY = 'meteor-top';
+  let topList = [], lastEntry = null;
+  try {
+    const raw = JSON.parse(localStorage.getItem(TOP_KEY) || '[]');
+    if (Array.isArray(raw)) topList = raw.filter(r => r && Number.isFinite(r.s) && r.s > 0).slice(0, 10);
+  } catch (e) {}
+  function addTop(sc, where) {
+    if (!(sc > 0)) return null;
+    const e = { s: sc, d: Date.now(), w: String(where || '') };
+    topList.push(e); topList.sort((a, b) => b.s - a.s); topList = topList.slice(0, 10);
+    try { localStorage.setItem(TOP_KEY, JSON.stringify(topList)); } catch (err) {}
+    return topList.includes(e) ? e : null;
+  }
+  function renderTop(mine) {
+    rowsEl.replaceChildren();
+    topList.forEach((r, i) => {
+      const li = document.createElement('li'); if (r === mine) li.className = 'me';
+      const dt = new Date(r.d), when = isNaN(dt) ? '' : (dt.getMonth() + 1) + '/' + dt.getDate();
+      for (const [cls, text] of [['rk', i + 1], ['sc', r.s.toLocaleString('ko-KR')], ['wh', r.w], ['dt', when]]) {
+        const sp = document.createElement('span'); sp.className = cls; sp.textContent = text; li.append(sp);
+      }
+      rowsEl.append(li);
+    });
+    rankNote.textContent = topList.length ? '이 기록은 이 폰에만 저장돼요.' : '아직 기록이 없어요. 한 판 해 보세요!';
+  }
+  function panel(name) { pMain.hidden = name !== 'main'; pHelp.hidden = name !== 'help'; pRank.hidden = name !== 'rank'; }
+  // main panel shows different buttons on the title screen and on the result screen
+  function buttons(onTitle) { helpBtn.hidden = !onTitle; menuLink.hidden = !onTitle; homeBtn.hidden = onTitle; }
+  function showTitle() {
+    running = false; reset();
+    titleEl.textContent = '스타 슈터'; msgEl.textContent = '조이스틱으로 날며 적을 쏘는 우주 슈팅 · 3개 스테이지';
+    finalEl.hidden = true; recEl.hidden = true; startBtn.textContent = '시작';
+    buttons(true); panel('main'); overlay.hidden = false;
+  }
+  helpBtn.addEventListener('click', () => panel('help'));
+  rankBtn.addEventListener('click', () => { renderTop(lastEntry); panel('rank'); });
+  homeBtn.addEventListener('click', showTitle);
+  document.querySelectorAll('.back').forEach(b => b.addEventListener('click', () => panel('main')));
+
   /* ---------- screens ---------- */
   function renderRec() {
     const n = Math.min(10, Math.max(recs.length, minuteScores.length));
@@ -633,9 +718,10 @@
     msgEl.textContent = win ? (isBest ? '3개의 스테이지를 모두 클리어하고 최고 기록도 세웠어요!' : '3개의 스테이지를 모두 클리어했어요!')
       : (isBest ? '최고 기록을 갱신했어요. (' + where + ')' : `${where}에서 끝났어요. 최고 기록은 ${best}점이에요.`);
     finalEl.textContent = final + '점'; finalEl.hidden = false;
-    renderRec(); startBtn.textContent = '다시 하기'; overlay.hidden = false;
+    lastEntry = addTop(final, win ? '전체 클리어' : where);
+    renderRec(); startBtn.textContent = '다시 하기'; buttons(false); panel('main'); overlay.hidden = false;
   }
-  function begin() { reset(); overlay.hidden = true; running = true; beep(520, 0.1); }
+  function begin() { reset(); lastEntry = null; overlay.hidden = true; running = true; beep(520, 0.1); }
   startBtn.addEventListener('click', begin);
 
   /* ---------- input ---------- */
@@ -653,8 +739,9 @@
     joy.id = e.pointerId; try { joyEl.setPointerCapture(e.pointerId); } catch (err) {}
     joyEl.classList.add('on'); joyMove(e);
   });
-  joyEl.addEventListener('pointermove', e => { if (e.pointerId === joy.id) joyMove(e); });
-  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => joyEl.addEventListener(n, e => { if (e.pointerId === joy.id) joyEnd(); }));
+  window.addEventListener('pointermove', e => { if (e.pointerId === joy.id) joyMove(e); });
+  ['pointerup', 'pointercancel'].forEach(n => window.addEventListener(n, e => { if (e.pointerId === joy.id) joyEnd(); }));
+  joyEl.addEventListener('lostpointercapture', e => { if (e.pointerId === joy.id && !e.buttons && e.pointerType === 'mouse') joyEnd(); });
 
   fireBtn.addEventListener('pointerdown', e => { e.preventDefault(); try { fireBtn.setPointerCapture(e.pointerId); } catch (err) {} held.btn = true; fireBtn.classList.add('on'); });
   ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => fireBtn.addEventListener(n, () => { held.btn = false; fireBtn.classList.remove('on'); }));
@@ -675,7 +762,7 @@
 
   window.addEventListener('resize', resize);
   new ResizeObserver(resize).observe(stage);
-  resize(); reset(); renderRec();
+  resize(); showTitle();
   requestAnimationFrame(loop);
 
   // Test hook for automated checks (read state, jump the stage clock, godmode). Harmless in normal play.
@@ -684,6 +771,8 @@
     skip(sec) { stageT = sec; }, god(on) { god = !!on; }, setPower(p) { power = p; updateHud(); },
     volley() { const n = bullets.length; fire(); return bullets.slice(n).map(b => ({ dx: Math.round(b.x - ship.x), vx: b.vx })); },
     dropItem(k) { items.push({ k, x: ship.x, y: ship.y, vy: 0 }); },
+    addScore(n) { score += n; },
+    die() { god = false; inv = 0; lives = 1; hurt(); },
     hurtBoss(n) { if (boss) hitEnemy(boss, n); }, boss() { return boss && { x: boss.x, y: boss.y }; },
   };
 })();
