@@ -7,7 +7,7 @@ const $ = id => document.getElementById(id);
 const cv = $('c'), ctx = cv.getContext('2d'), stage = $('stage');
 const scoreEl = $('score'), bestEl = $('best'), comboEl = $('combo');
 const overlay = $('overlay'), titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), startBtn = $('start');
-const resumeBtn = $('resume'), muteBtn = $('mute'), howtoBtn = $('howto');
+const resumeBtn = $('resume'), muteBtn = $('mute'), howtoBtn = $('howto'), homeBtn = $('home'), menuLink = $('toMenu');
 const coachEl = $('coach'), cstepEl = $('cstep'), ctextEl = $('ctext'), cskipBtn = $('cskip');
 const INTRO = msgEl.innerHTML;
 const regEl = $('reg'), nickEl = $('nick'), submitBtn = $('submit'), netEl = $('net'), rowsEl = $('rows'), boardBtn = $('showBoard');
@@ -282,7 +282,7 @@ function gameOver() {
   titleEl.textContent = isBest ? '새 기록!' : '게임 오버';
   msgEl.innerHTML = isBest ? '최고 기록을 갱신했어요.' : `최고 기록은 <b>${best}</b>점이에요.<br>놓을 자리가 없어졌어요.`;
   finalEl.textContent = st.score; finalEl.hidden = false;
-  startBtn.textContent = '다시 하기'; howtoBtn.hidden = true;
+  startBtn.textContent = '다시 하기'; howtoBtn.hidden = true; menuLink.hidden = true; homeBtn.hidden = false;
   rowsEl.hidden = true; netEl.textContent = ''; overlay.classList.remove('board');
   regEl.hidden = st.score <= 0 || submitted; submitBtn.disabled = false;
   try { nickEl.value = localStorage.getItem('neonblock-name') || ''; } catch (e) {}
@@ -336,7 +336,7 @@ function showTitle() {
   overlay.classList.remove('board'); titleEl.textContent = '네온 블록';
   finalEl.hidden = true; regEl.hidden = true; rowsEl.hidden = true; netEl.textContent = '';
   saved = loadSave();
-  resumeBtn.hidden = !saved; howtoBtn.hidden = false;
+  resumeBtn.hidden = !saved; howtoBtn.hidden = false; homeBtn.hidden = true; menuLink.hidden = false;
   if (saved) {
     resumeBtn.textContent = `이어하기 (${saved.state.score}점)`;
     msgEl.innerHTML = '저장된 게임이 있어요. 이어서 하거나 새로 시작할 수 있어요.';
@@ -427,6 +427,7 @@ cv.addEventListener('pointerup', e => {
 });
 cv.addEventListener('pointercancel', () => { if (drag) ret = { idx: drag.idx, x: drag.x, y: drag.y, t: 0 }; drag = null; dirty = true; });
 cv.addEventListener('contextmenu', e => e.preventDefault());
+homeBtn.addEventListener('click', () => showTitle());
 startBtn.addEventListener('click', () => { sound.unlock(); if (tutorialDone()) start(); else startTutorial(true); });
 howtoBtn.addEventListener('click', () => { sound.unlock(); startTutorial(false); });
 cskipBtn.addEventListener('click', () => endTutorial());

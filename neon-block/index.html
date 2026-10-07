@@ -64,6 +64,7 @@
   #ctext.warn { color: #ff8aa0; }
   #btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
   .sub { font-size: 16px; font-weight: 700; color: var(--cyan); background: transparent; border: 1px solid rgba(0, 240, 255, 0.6); border-radius: 999px; padding: 10px 22px; }
+  a.sub { display: inline-flex; align-items: center; text-decoration: none; cursor: pointer; }
   .sub:disabled { opacity: 0.45; }
   .sub:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
   #start, #resume { font-size: 20px; font-weight: 700; color: #04121a; background: var(--cyan); border: 0; border-radius: 999px; padding: 12px 40px; box-shadow: 0 0 22px rgba(0, 240, 255, 0.6); }
@@ -98,7 +99,9 @@
       <div id="btns">
         <button id="resume" type="button" hidden>이어하기</button>
         <button id="start" type="button">시작</button>
+        <button class="sub" id="home" type="button" hidden>처음으로</button>
         <button class="sub" id="howto" type="button">게임 방법</button>
+        <a class="sub" id="toMenu" href="../">게임 선택</a>
         <button class="sub" id="showBoard" type="button">순위 보기</button>
       </div>
     </div>
