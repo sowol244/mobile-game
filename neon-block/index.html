@@ -54,7 +54,14 @@
   #rows .rk { font-family: var(--num); font-weight: 700; color: var(--muted); font-size: 13px; }
   #rows .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #rows .sc { font-family: var(--num); font-weight: 700; color: var(--cyan); font-variant-numeric: tabular-nums; font-size: 14px; }
-  #overlay.board #msg, #overlay.board #final, #overlay.board #reg, #overlay.board #showBoard { display: none; }
+  #overlay.board #msg, #overlay.board #final, #overlay.board #reg, #overlay.board #showBoard, #overlay.board #howto { display: none; }
+  #coach { position: absolute; top: 6px; left: 8px; right: 8px; z-index: 2; background: rgba(13, 13, 43, 0.94); border: 1px solid rgba(0, 240, 255, 0.55); box-shadow: 0 0 16px rgba(0, 240, 255, 0.25); border-radius: 14px; padding: 8px 12px 10px; text-align: left; }
+  #coach .ct { display: flex; justify-content: space-between; align-items: center; font-family: var(--num); font-weight: 700; font-size: 11px; color: var(--cyan); letter-spacing: 0.1em; }
+  #cskip { font: inherit; font-size: 12px; color: var(--muted); background: transparent; border: 1px solid #2c2c70; border-radius: 999px; padding: 2px 10px; cursor: pointer; }
+  #cskip:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  #ctext { margin: 4px 0 0; font-size: 14px; line-height: 1.5; color: var(--fg); text-wrap: balance; }
+  #ctext.ok { color: var(--yellow); }
+  #ctext.warn { color: #ff8aa0; }
   #btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
   .sub { font-size: 16px; font-weight: 700; color: var(--cyan); background: transparent; border: 1px solid rgba(0, 240, 255, 0.6); border-radius: 999px; padding: 10px 22px; }
   .sub:disabled { opacity: 0.45; }
@@ -74,6 +81,10 @@
   </div>
   <div id="stage">
     <canvas id="c"></canvas>
+    <div id="coach" hidden>
+      <div class="ct"><span id="cstep"></span><button id="cskip" type="button">건너뛰기</button></div>
+      <p id="ctext" role="status" aria-live="polite"></p>
+    </div>
     <div id="overlay">
       <h1 id="title">네온 블록</h1>
       <p id="msg">아래 블록을 <b>드래그</b>해서 8×8 판에 놓으세요.<br>가로나 세로 한 줄을 채우면 사라져요.<br>연속으로 지우면 <b>콤보</b>, 판을 싹 비우면 <b>보너스</b>!<br>블록은 회전할 수 없어요.</p>
@@ -87,6 +98,7 @@
       <div id="btns">
         <button id="resume" type="button" hidden>이어하기</button>
         <button id="start" type="button">시작</button>
+        <button class="sub" id="howto" type="button">게임 방법</button>
         <button class="sub" id="showBoard" type="button">순위 보기</button>
       </div>
     </div>

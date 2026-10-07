@@ -5,6 +5,7 @@ import {
   newState, applyMove, serializeGame, restoreGame, isGameOver, anyFits, fitsAnywhere, generateTray, traySolvable, cloneBoard,
 } from './logic.js';
 import { cleanName } from './leaderboard.js';
+import { STEPS } from './tutorial.js';
 
 const shape = rows => SHAPES.find(s => s.h === rows.length && s.w === rows[0].length && s.cells.length === rows.join('').replace(/\./g, '').length
   && s.cells.every(([r, c]) => rows[r][c] === '#'));
@@ -167,6 +168,30 @@ test('restoreGame rejects missing, old-version and malformed saves', () => {
   assert.equal(restoreGame({ ...good, tray: [{ id: 0, color: 0 }, null, null] }), null);
   assert.equal(restoreGame({ ...good, score: -1 }), null);
   assert.equal(restoreGame({ ...good, score: 1.5 }), null);
+});
+
+test('tutorial steps: boards are legal, targets work, and the scripted clears really happen', () => {
+  const expectLines = [0, 1, 2];
+  STEPS.forEach((step, i) => {
+    assert.ok(step.piece.shape, 'step ' + i + ' has a piece');
+    const b = emptyBoard(); step.board(b);
+    assert.deepEqual(findFullLines(b), { rows: [], cols: [] }, 'step ' + i + ' starts with no full line');
+    assert.ok(canPlace(b, step.piece.shape, step.r0, step.c0), 'step ' + i + ' target is placeable');
+    const t = cloneBoard(b); place(t, step.piece.shape, step.r0, step.c0, 1);
+    assert.equal(clearLines(t).count, expectLines[i], 'step ' + i + ' clears ' + expectLines[i] + ' line(s)');
+    if (!step.any) { // the target must be the only placement that clears, so the lesson cannot be completed by accident
+      let clearing = 0;
+      for (let r = 0; r <= SIZE - step.piece.shape.h; r++) for (let c = 0; c <= SIZE - step.piece.shape.w; c++) {
+        if (!canPlace(b, step.piece.shape, r, c)) continue;
+        const u = cloneBoard(b); place(u, step.piece.shape, r, c, 1);
+        if (clearLines(u).count > 0) clearing++;
+      }
+      assert.equal(clearing, 1, 'step ' + i + ' has exactly one clearing spot');
+    }
+  });
+  const cross = emptyBoard(); STEPS[2].board(cross);
+  const t2 = cloneBoard(cross); place(t2, STEPS[2].piece.shape, 4, 4, 1);
+  assert.equal(clearLines(t2).cells.length, 15);
 });
 
 console.log(`\n${n} tests passed`);

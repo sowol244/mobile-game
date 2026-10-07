@@ -1,12 +1,15 @@
 import { SIZE, newState, canPlace, applyMove, generateTray, isGameOver, linesIfPlaced, serializeGame, restoreGame } from './logic.js';
 import { createSound } from './sound.js';
+import { STEPS } from './tutorial.js';
 import { cleanName, submitScore, fetchTop, rankOf } from './leaderboard.js';
 
 const $ = id => document.getElementById(id);
 const cv = $('c'), ctx = cv.getContext('2d'), stage = $('stage');
 const scoreEl = $('score'), bestEl = $('best'), comboEl = $('combo');
 const overlay = $('overlay'), titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), startBtn = $('start');
-const resumeBtn = $('resume'), muteBtn = $('mute');
+const resumeBtn = $('resume'), muteBtn = $('mute'), howtoBtn = $('howto');
+const coachEl = $('coach'), cstepEl = $('cstep'), ctextEl = $('ctext'), cskipBtn = $('cskip');
+const INTRO = msgEl.innerHTML;
 const regEl = $('reg'), nickEl = $('nick'), submitBtn = $('submit'), netEl = $('net'), rowsEl = $('rows'), boardBtn = $('showBoard');
 
 const COLORS = ['', '#00f0ff', '#ff2fd1', '#7dff3a', '#ffe600', '#ff8a1f', '#9a5bff', '#ff3d6e'];
@@ -15,6 +18,7 @@ let W = 360, H = 640, dpr = 1, L = {};
 let submitted = false;
 const sound = createSound();
 const SAVE_KEY = 'neonblock-save';
+let tut = null;
 let parts = [], shake = null, flashes = [], popMap = new Map(), ret = null, shown = 0, saved = null;
 const rnd = (a, b) => a + Math.random() * (b - a);
 const lerp = (a, b, k) => a + (b - a) * k;
@@ -95,7 +99,37 @@ function dragGeom() {
   const cx = drag.x, cy = drag.y - (cell * 1.6 + item.shape.h * cell / 2); // lifted above the finger
   const c0 = Math.round((cx - item.shape.w * cell / 2 - L.bx) / cell);
   const r0 = Math.round((cy - item.shape.h * cell / 2 - L.by) / cell);
-  return { item, cx, cy, r0, c0, ok: canPlace(st.board, item.shape, r0, c0) };
+  const ok = canPlace(st.board, item.shape, r0, c0) && (phase !== 'tutorial' || tutAllows(r0, c0));
+  return { item, cx, cy, r0, c0, ok, legal: canPlace(st.board, item.shape, r0, c0) };
+}
+
+function drawTutorialHint() {
+  const step = STEPS[tut.i], item = tray[step.slot];
+  if (!item) return;
+  const { cell, bx, by } = L, now = performance.now() / 1000, pulse = 0.5 + 0.5 * Math.sin(now * 4.5);
+  for (const [dr, dc] of item.shape.cells) {
+    const x = bx + (step.c0 + dc) * cell, y = by + (step.r0 + dr) * cell;
+    stamp(item.color, x, y, cell, 0.16 + 0.2 * pulse);
+    ctx.strokeStyle = `rgba(0,240,255,${0.5 + 0.45 * pulse})`; ctx.lineWidth = 2; rr(ctx, x + 2, y + 2, cell - 4, cell - 4, cell * 0.2); ctx.stroke();
+  }
+  if (drag) return;
+  // finger sliding from the tray piece to the target, looping
+  const sx = L.slotW * (step.slot + 0.5), sy = L.trayY + L.trayH / 2;
+  const tx = bx + (step.c0 + item.shape.w / 2) * cell, ty = by + (step.r0 + item.shape.h / 2) * cell;
+  const ph = (now % 2.2) / 2.2;
+  let k = 0, a = 1, press = 0;
+  if (ph < 0.15) { a = ph / 0.15; press = 1; }
+  else if (ph < 0.7) { k = ease((ph - 0.15) / 0.55); press = 1; }
+  else if (ph < 0.88) { k = 1; press = 0.4 * Math.sin((ph - 0.7) / 0.18 * Math.PI); } // release
+  else { k = 1; a = 1 - (ph - 0.88) / 0.12; }
+  const hx = lerp(sx, tx, k), hy = lerp(sy, ty, k);
+  if (ph < 0.88) { ctx.globalAlpha = 0.85 * a; drawPiece(item, hx, hy, Math.round(lerp(L.tcell, cell, k))); ctx.globalAlpha = 1; }
+  const fy = hy + (ph < 0.88 ? item.shape.h * lerp(L.tcell, cell, k) / 2 + 12 : 12);
+  ctx.save();
+  ctx.globalAlpha = a; ctx.shadowColor = '#00f0ff'; ctx.shadowBlur = 14;
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.beginPath(); ctx.arc(hx, fy, 13 - press * 2, 0, 7); ctx.fill();
+  ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(0,240,255,0.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hx, fy, 18 + (1 - press) * 4, 0, 7); ctx.stroke();
+  ctx.restore();
 }
 
 function render() {
@@ -114,6 +148,8 @@ function render() {
     if (v) { const pt = popMap.get(r * SIZE + c); stamp(v, x, y, cell, 1, pt === undefined ? 1 : 1 + 0.28 * (1 - pt / 0.16)); }
     else { ctx.fillStyle = '#14143a'; rr(ctx, x + 1.5, y + 1.5, cell - 3, cell - 3, cell * 0.18); ctx.fill(); }
   }
+
+  if (phase === 'tutorial' && tut && !tut.done) drawTutorialHint();
 
   let g = null;
   if (drag) {
@@ -179,11 +215,11 @@ function frame(t) {
   if (shake) { shake.t += dt; if (shake.t >= shake.dur) shake = null; }
   if (ret) { ret.t += dt; if (ret.t >= 0.16) ret = null; }
   if (drag) drag.t += dt;
-  if (shown !== st.score) { // count the score up instead of jumping
+  if (phase !== 'tutorial' && shown !== st.score) { // count the score up instead of jumping
     shown = Math.min(st.score, shown + Math.max(1, Math.ceil((st.score - shown) * Math.min(1, dt * 9))));
     scoreEl.textContent = shown;
   }
-  if (dirty || drag || fx.length || pops.length || parts.length || flashes.length || shake || ret || popMap.size) { render(); dirty = false; }
+  if (dirty || drag || fx.length || pops.length || parts.length || flashes.length || shake || ret || popMap.size || phase === 'tutorial') { render(); dirty = false; }
   requestAnimationFrame(frame);
 }
 
@@ -200,7 +236,7 @@ function begin(freshState, freshTray) {
   shown = st.score; scoreEl.textContent = shown;
   phase = 'play'; overlay.hidden = true; hud(); dirty = true;
   submitted = false; regEl.hidden = true; rowsEl.hidden = true; netEl.textContent = ''; overlay.classList.remove('board');
-  saved = null; resumeBtn.hidden = true;
+  saved = null; resumeBtn.hidden = true; coachEl.hidden = true; tut = null;
 }
 function start() { clearSave(); const s0 = newState(); begin(s0, generateTray(s0.board)); sound.pick(); }
 function resume() { if (saved) { const r = saved; begin(r.state, r.tray); sound.pick(); } }
@@ -232,6 +268,7 @@ function doMove(idx, r0, c0) {
     pops.push({ text: txt, x: W / 2, y: by + L.bs / 2, color: '#ff2fd1', size: 24, t: 0 });
   }
   if (res.cleared.count > 0 && navigator.vibrate) { try { navigator.vibrate(15); } catch (e) {} }
+  if (phase === 'tutorial') { dirty = true; tutAfterMove(); return; }
   if (tray.every(t => !t)) tray = generateTray(st.board);
   hud(); dirty = true;
   if (isGameOver(st.board, tray)) { phase = 'locked'; clearSave(); setTimeout(gameOver, 600); }
@@ -245,11 +282,67 @@ function gameOver() {
   titleEl.textContent = isBest ? '새 기록!' : '게임 오버';
   msgEl.innerHTML = isBest ? '최고 기록을 갱신했어요.' : `최고 기록은 <b>${best}</b>점이에요.<br>놓을 자리가 없어졌어요.`;
   finalEl.textContent = st.score; finalEl.hidden = false;
-  startBtn.textContent = '다시 하기';
+  startBtn.textContent = '다시 하기'; howtoBtn.hidden = true;
   rowsEl.hidden = true; netEl.textContent = ''; overlay.classList.remove('board');
   regEl.hidden = st.score <= 0 || submitted; submitBtn.disabled = false;
   try { nickEl.value = localStorage.getItem('neonblock-name') || ''; } catch (e) {}
   overlay.hidden = false;
+}
+
+/* ---------- tutorial ---------- */
+const TUT_KEY = 'neonblock-tutorial';
+// Players who already have a best score played before the tutorial existed, so they are not forced through it.
+const tutorialDone = () => { try { if (localStorage.getItem(TUT_KEY) === '1') return true; } catch (e) {} return best > 0; };
+const markTutorialDone = () => { try { localStorage.setItem(TUT_KEY, '1'); } catch (e) {} };
+const tutAllows = (r0, c0) => !!tut && !tut.done && (STEPS[tut.i].any || (r0 === STEPS[tut.i].r0 && c0 === STEPS[tut.i].c0));
+let noteTimer = 0;
+function coachNote(text, cls) {
+  clearTimeout(noteTimer); ctextEl.textContent = text; ctextEl.className = cls || '';
+  noteTimer = setTimeout(() => { if (tut && !tut.done) { ctextEl.textContent = STEPS[tut.i].text; ctextEl.className = ''; } }, 1800);
+}
+function setupStep(i) {
+  const step = STEPS[i];
+  tut.i = i; tut.done = false;
+  st = newState(); step.board(st.board);
+  tray = [null, null, null]; tray[step.slot] = { shape: step.piece.shape, color: step.piece.color };
+  resetFx();
+  clearTimeout(noteTimer); ctextEl.textContent = step.text; ctextEl.className = '';
+  cstepEl.textContent = `${i + 1} / ${STEPS.length}`; dirty = true;
+}
+function startTutorial(auto) {
+  tut = { i: 0, done: false, auto, token: (tut ? tut.token : 0) + 1 };
+  phase = 'tutorial'; overlay.hidden = true; coachEl.hidden = false;
+  shown = 0; scoreEl.textContent = '0'; comboEl.textContent = '';
+  setupStep(0);
+}
+function tutAfterMove() {
+  tut.done = true;
+  const token = tut.token, last = tut.i === STEPS.length - 1;
+  coachNote(last ? '완벽해요! 이제 진짜 게임을 시작해요.' : '좋아요!', 'ok');
+  setTimeout(() => {
+    if (!tut || tut.token !== token || phase !== 'tutorial') return;
+    if (last) endTutorial(); else setupStep(tut.i + 1);
+  }, last ? 1500 : 1100);
+}
+function endTutorial() {
+  const auto = tut ? tut.auto : false;
+  markTutorialDone(); tut = null; clearTimeout(noteTimer); coachEl.hidden = true;
+  if (auto) start(); else showTitle();
+}
+
+function showTitle() {
+  phase = 'title'; st = newState(); tray = generateTray(st.board); resetFx(); tut = null;
+  shown = 0; scoreEl.textContent = '0'; comboEl.textContent = ''; coachEl.hidden = true;
+  overlay.classList.remove('board'); titleEl.textContent = '네온 블록';
+  finalEl.hidden = true; regEl.hidden = true; rowsEl.hidden = true; netEl.textContent = '';
+  saved = loadSave();
+  resumeBtn.hidden = !saved; howtoBtn.hidden = false;
+  if (saved) {
+    resumeBtn.textContent = `이어하기 (${saved.state.score}점)`;
+    msgEl.innerHTML = '저장된 게임이 있어요. 이어서 하거나 새로 시작할 수 있어요.';
+  } else msgEl.innerHTML = INTRO;
+  startBtn.textContent = saved ? '새로 시작' : '시작';
+  overlay.hidden = false; dirty = true;
 }
 
 /* ---------- high score board ---------- */
@@ -308,7 +401,7 @@ boardBtn.addEventListener('click', () => showBoard(null));
 const pos = e => { const b = cv.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; };
 cv.addEventListener('pointerdown', e => {
   sound.unlock();
-  if (phase !== 'play' || drag) return;
+  if ((phase !== 'play' && phase !== 'tutorial') || drag) return;
   const p = pos(e);
   if (p.y < L.trayY - 14) return;
   const idx = Math.min(2, Math.floor(p.x / L.slotW));
@@ -327,11 +420,16 @@ cv.addEventListener('pointerup', e => {
   const g = dragGeom(), idx = drag.idx;
   drag = null; dirty = true;
   if (g.ok) doMove(idx, g.r0, g.c0);
-  else { ret = { idx, x: g.cx, y: g.cy, t: 0 }; sound.invalid(); }
+  else {
+    ret = { idx, x: g.cx, y: g.cy, t: 0 }; sound.invalid();
+    if (phase === 'tutorial' && g.legal) coachNote('표시된 자리에 놓아 주세요.', 'warn');
+  }
 });
 cv.addEventListener('pointercancel', () => { if (drag) ret = { idx: drag.idx, x: drag.x, y: drag.y, t: 0 }; drag = null; dirty = true; });
 cv.addEventListener('contextmenu', e => e.preventDefault());
-startBtn.addEventListener('click', () => { sound.unlock(); start(); });
+startBtn.addEventListener('click', () => { sound.unlock(); if (tutorialDone()) start(); else startTutorial(true); });
+howtoBtn.addEventListener('click', () => { sound.unlock(); startTutorial(false); });
+cskipBtn.addEventListener('click', () => endTutorial());
 resumeBtn.addEventListener('click', () => { sound.unlock(); resume(); });
 
 let muted = false;
@@ -343,14 +441,8 @@ paintMute();
 new ResizeObserver(resize).observe(stage);
 window.addEventListener('resize', resize);
 resize();
-tray = generateTray(st.board);
-saved = loadSave();
-if (saved) {
-  resumeBtn.hidden = false; resumeBtn.textContent = `이어하기 (${saved.state.score}점)`;
-  startBtn.textContent = '새로 시작';
-  msgEl.innerHTML = '저장된 게임이 있어요. 이어서 하거나 새로 시작할 수 있어요.';
-}
+showTitle();
 requestAnimationFrame(frame);
 
 // Test hook so automated checks can read state; harmless in normal play.
-window.__neon = { get state() { return st; }, get tray() { return tray; }, get layout() { return L; }, get phase() { return phase; }, get effects() { return { parts: parts.length, shake: !!shake, flashes: flashes.length }; } };
+window.__neon = { get state() { return st; }, get tray() { return tray; }, get layout() { return L; }, get phase() { return phase; }, get tutorial() { return tut && { i: tut.i, done: tut.done }; }, get effects() { return { parts: parts.length, shake: !!shake, flashes: flashes.length }; } };
