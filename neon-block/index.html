@@ -62,9 +62,13 @@
   #ctext { margin: 4px 0 0; font-size: 14px; line-height: 1.5; color: var(--fg); text-wrap: balance; }
   #ctext.ok { color: var(--yellow); }
   #ctext.warn { color: #ff8aa0; }
-  #btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  #btns { display: flex; flex-direction: column; gap: 10px; width: min(340px, 100%); }
+  #prim { display: flex; flex-direction: column; gap: 10px; }
+  #prim button { width: 100%; height: 52px; padding: 0 16px; }
+  #sec { display: flex; gap: 8px; }
+  #sec .sub { flex: 1 1 0; min-width: 0; height: 44px; padding: 0 6px; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; box-sizing: border-box; }
   .sub { font-size: 16px; font-weight: 700; color: var(--cyan); background: transparent; border: 1px solid rgba(0, 240, 255, 0.6); border-radius: 999px; padding: 10px 22px; }
-  a.sub { display: inline-flex; align-items: center; text-decoration: none; cursor: pointer; }
+  a.sub { text-decoration: none; cursor: pointer; }
   .sub:disabled { opacity: 0.45; }
   .sub:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
   #start, #resume { font-size: 20px; font-weight: 700; color: #04121a; background: var(--cyan); border: 0; border-radius: 999px; padding: 12px 40px; box-shadow: 0 0 22px rgba(0, 240, 255, 0.6); }
@@ -91,18 +95,22 @@
       <p id="msg">아래 블록을 <b>드래그</b>해서 8×8 판에 놓으세요.<br>가로나 세로 한 줄을 채우면 사라져요.<br>연속으로 지우면 <b>콤보</b>, 판을 싹 비우면 <b>보너스</b>!<br>블록은 회전할 수 없어요.</p>
       <div id="final" hidden></div>
       <div id="reg" hidden>
-        <input id="nick" type="text" maxlength="12" placeholder="닉네임 (최대 12자)" autocomplete="off" aria-label="닉네임">
+        <input id="nick" type="text" maxlength="12" placeholder="닉네임 (12자)" autocomplete="off" aria-label="닉네임">
         <button class="sub" id="submit" type="button">점수 등록</button>
       </div>
       <div id="net" role="status" aria-live="polite"></div>
       <ol id="rows" hidden></ol>
       <div id="btns">
-        <button id="resume" type="button" hidden>이어하기</button>
-        <button id="start" type="button">시작</button>
-        <button class="sub" id="home" type="button" hidden>처음으로</button>
-        <button class="sub" id="howto" type="button">게임 방법</button>
-        <a class="sub" id="toMenu" href="../">게임 선택</a>
-        <button class="sub" id="showBoard" type="button">순위 보기</button>
+        <div id="prim">
+          <button id="resume" type="button" hidden>이어하기</button>
+          <button id="start" type="button">시작</button>
+        </div>
+        <div id="sec">
+          <button class="sub" id="home" type="button" hidden>처음으로</button>
+          <button class="sub" id="howto" type="button">게임 방법</button>
+          <a class="sub" id="toMenu" href="../">게임 선택</a>
+          <button class="sub" id="showBoard" type="button">순위 보기</button>
+        </div>
       </div>
     </div>
   </div>
