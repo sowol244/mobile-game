@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
 <title>스타 슈터</title>
 <style>
@@ -105,7 +105,8 @@
         <ul class="helplist">
           <li><b>이동</b> 왼쪽 <b>조이스틱</b>으로 움직여요. (PC: 방향키)</li>
           <li><b>공격</b> <b>연사</b> 버튼을 누르고 있으면 미사일이 계속 나가요. (PC: Space)</li>
-          <li><b>아이템</b> 파란 <b>P</b>를 먹을 때마다 미사일이 <b>4단계</b>까지 강해지고, 붉은 <b>B</b>는 폭탄이에요. 맞으면 한 단계 약해져요.</li>
+          <li><b>아이템</b> 파란 <b>P</b>를 먹을 때마다 미사일이 <b>4단계</b>까지 강해져요. 맞으면 한 단계 약해지고, 4단계일 때는 P가 드물게 나와요.</li>
+          <li><b>폭탄 아이템</b> 붉은 <b>B</b>는 폭탄이에요. 스테이지마다 딱 <b>2개</b>만 나와요.</li>
           <li><b>폭탄</b> 위기일 때 폭탄 버튼으로 화면의 적과 총알을 싹 지워요. (PC: B)</li>
           <li><b>스테이지</b> 시작은 PHASE 1, 1분에 PHASE 2, 3분에 PHASE 3, 4분이 되면 <b>보스</b>가 나타나요. 보스를 쓰러뜨리면 다음 스테이지, 총 <b>3탄</b>이에요.</li>
           <li><b>기록</b> 분마다 최고 점수가 기록돼요.</li>
@@ -169,7 +170,7 @@
 
   let ship = null, bullets = [], ebullets = [], enemies = [], items = [], parts = [], rings = [];
   let score = 0, lives = 3, power = 1, bombs = 2, running = false, inv = 0, hitFlash = 0, flash = 0, fireCd = 0, god = false;
-  let tRock = 0, tScout = 0, tGun = 0, tTank = 0, tSup = 0;
+  let tRock = 0, tScout = 0, tGun = 0, tTank = 0, tP = 12, bPlan = [];
   // stage progression
   let stageNo = 1, stageT = 0, curPhase = 0, boss = null, bossWarned = false, bossSpawnT = 0, bossDead = false, stageState = 'play', clearT = 0;
   let bgNow = ['#0c1432', '#1d2f78'], bgFrom = bgNow, bgTo = bgNow, bgK = 1;
@@ -188,7 +189,8 @@
 
   function startStage(n) {
     stageNo = n; stageT = 0; curPhase = 0; boss = null; bossWarned = false; bossSpawnT = 0; bossDead = false; stageState = 'play'; clearT = 0;
-    tRock = 1.6; tScout = 8; tGun = 18; tTank = 45; tSup = 20;
+    tRock = 1.6; tScout = 8; tGun = 18; tTank = 45;
+    bPlan = [rnd(80, 110), rnd(170, 215)]; // the stage's only two B items: after PHASE 2 starts, and before the boss
     bgFrom = bgNow.slice(); bgTo = STAGES[n - 1].bg; bgK = n === 1 ? 1 : 0;
     if (n === 1) bgNow = STAGES[0].bg.slice();
     showBanner('STAGE ' + n, n === 1 ? 'START!' : STAGES[n - 1].name);
@@ -198,7 +200,7 @@
     ship = { x: W / 2, y: H - 90, vx: 0, vy: 0, r: 13 };
     bullets = []; ebullets = []; enemies = []; items = []; parts = []; rings = [];
     score = 0; lives = 3; power = 1; bombs = 2; inv = 1.2; hitFlash = 0; flash = 0; fireCd = 0;
-    totalT = 0; minuteScores = []; newMin = []; curMin = 0; banner = null; bannerQ = []; toast = null;
+    tP = 12; totalT = 0; minuteScores = []; newMin = []; curMin = 0; banner = null; bannerQ = []; toast = null;
     startStage(1);
     updateHud();
   }
@@ -296,15 +298,17 @@
     }
   }
 
+  const spawned = { P: 0, B: 0 };
+  function spawnItem(k, x, y) { spawned[k]++; items.push({ k, x, y, vy: 90 }); }
+
+  // Enemies only rarely drop P (a bit more often while the gun is not maxed). B never drops from enemies:
+  // each stage hands out exactly two B at fixed moments (see bPlan).
   function dropFrom(e) {
-    const r = Math.random();
-    let kind = null;
-    if (e.k === 'boss') kind = 'B';
-    else if (e.k === 'tank') kind = power < MAX_POWER ? 'P' : 'B';
-    else if (e.k === 'gunner') kind = r < 0.4 ? 'P' : r < 0.55 ? 'B' : null;
-    else if (e.k === 'scout') kind = r < 0.06 ? 'P' : null;
-    else if (e.k === 'rock') kind = r < 0.03 ? 'P' : r < 0.04 ? 'B' : null;
-    if (kind) items.push({ k: kind, x: e.x, y: e.y, vy: 90 });
+    const r = Math.random(), notMax = power < MAX_POWER;
+    let chance = 0;
+    if (e.k === 'tank') chance = notMax ? 1 : 0.2;
+    else if (e.k === 'gunner') chance = notMax ? 0.08 : 0.015;
+    if (r < chance) spawnItem('P', e.x, e.y);
   }
 
   function explode(x, y, color, n) {
@@ -338,7 +342,7 @@
 
   function nextStage() {
     if (stageNo >= 3) { gameOver(true); return; }
-    lives = Math.min(MAX_LIVES, lives + 1); bombs = Math.min(MAX_BOMBS, bombs + 1);
+    lives = Math.min(MAX_LIVES, lives + 1);
     startStage(stageNo + 1);
     updateHud();
   }
@@ -445,11 +449,9 @@
         tGun -= dt; if (stageT > 16 && tGun <= 0) { addGunner(); tGun = Math.max(2.5, 9 / (1 + 0.5 * d)); }
         tTank -= dt; if (stageT > 40 && tTank <= 0) { addTank(); tTank = Math.max(10, 28 - 6 * d); }
       }
-      tSup -= dt; if (tSup <= 0) {
-        tSup = 22;
-        const k = power < MAX_POWER ? 'P' : bombs < 2 ? 'B' : null;
-        if (k) items.push({ k, x: rnd(30, W - 30), y: -14, vy: 90 });
-      }
+      tP -= dt * (power < MAX_POWER ? 1 : 0.33);
+      if (tP <= 0) { spawnItem('P', rnd(30, W - 30), -14); tP = rnd(22, 30); }
+      if (bPlan.length && stageT >= bPlan[0]) { bPlan.shift(); spawnItem('B', rnd(30, W - 30), -14); }
     }
 
     // ---- bullets
@@ -760,6 +762,16 @@
   });
   window.addEventListener('blur', () => { held.btn = held.key = false; keys.l = keys.r = keys.u = keys.d = false; joyEnd(); });
 
+  // Two thumbs on the screen (stick + fire, or d-pad + jump) must never start the browser's pinch zoom.
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(n => document.addEventListener(n, e => e.preventDefault()));
+  document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  // Best effort if the page is already zoomed in: re-apply the viewport so the browser snaps back.
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => {
+    if (window.visualViewport.scale <= 1.01) return;
+    const m = document.querySelector('meta[name=viewport]'); if (!m) return;
+    const c = m.content; m.content = c + ', maximum-scale=1'; setTimeout(() => { m.content = c; }, 80);
+  });
+
   window.addEventListener('resize', resize);
   new ResizeObserver(resize).observe(stage);
   resize(); showTitle();
@@ -772,6 +784,8 @@
     volley() { const n = bullets.length; fire(); return bullets.slice(n).map(b => ({ dx: Math.round(b.x - ship.x), vx: b.vx })); },
     dropItem(k) { items.push({ k, x: ship.x, y: ship.y, vy: 0 }); },
     addScore(n) { score += n; },
+    spawned() { return { ...spawned }; },
+    simulate(sec) { const n = Math.round(sec * 60); for (let i = 0; i < n && running; i++) update(1 / 60); },
     die() { god = false; inv = 0; lives = 1; hurt(); },
     hurtBoss(n) { if (boss) hitEnemy(boss, n); }, boss() { return boss && { x: boss.x, y: boss.y }; },
   };

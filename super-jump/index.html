@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
 <title>슈퍼 점프 1-1</title>
 <style>
@@ -558,6 +558,16 @@
     input[k] = false; $(k === 'jump' ? 'jump' : k).classList.remove('on');
   });
   window.addEventListener('blur', () => { input.left = input.right = input.jump = false; });
+
+  // Two thumbs on the screen (stick + fire, or d-pad + jump) must never start the browser's pinch zoom.
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(n => document.addEventListener(n, e => e.preventDefault()));
+  document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  // Best effort if the page is already zoomed in: re-apply the viewport so the browser snaps back.
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => {
+    if (window.visualViewport.scale <= 1.01) return;
+    const m = document.querySelector('meta[name=viewport]'); if (!m) return;
+    const c = m.content; m.content = c + ', maximum-scale=1'; setTimeout(() => { m.content = c; }, 80);
+  });
 
   startBtn.addEventListener('click', () => { overlay.hidden = true; lastEntry = null; newGame(); tone(520, 520, 0.08, 'square', 0.04); });
   window.addEventListener('resize', resize);

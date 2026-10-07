@@ -439,6 +439,16 @@ function paintMute() { sound.setMuted(muted); muteBtn.textContent = muted ? '소
 muteBtn.addEventListener('click', () => { muted = !muted; try { localStorage.setItem('neonblock-mute', muted ? '1' : '0'); } catch (e) {} paintMute(); sound.unlock(); sound.pick(); });
 paintMute();
 
+  // Two thumbs on the screen (stick + fire, or d-pad + jump) must never start the browser's pinch zoom.
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(n => document.addEventListener(n, e => e.preventDefault()));
+  document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  // Best effort if the page is already zoomed in: re-apply the viewport so the browser snaps back.
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => {
+    if (window.visualViewport.scale <= 1.01) return;
+    const m = document.querySelector('meta[name=viewport]'); if (!m) return;
+    const c = m.content; m.content = c + ', maximum-scale=1'; setTimeout(() => { m.content = c; }, 80);
+  });
+
 new ResizeObserver(resize).observe(stage);
 window.addEventListener('resize', resize);
 resize();
