@@ -65,26 +65,34 @@ function rr(g, x, y, w, h, r) {
   g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
   g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
 }
-// Bevelled square tile, rendered once per (color, size) and stamped with drawImage. It fills the whole cell,
-// so neighbouring blocks touch with no gap and a cleared line reads as one solid bar.
+// Tile halfway between "round with glow" and "flush bevelled": a thin gap, lightly rounded corners, a soft bevel
+// and a little glow. Rendered once per (color, size), then stamped with drawImage.
+const TILE = { gap: 0.035, radius: 0.13, bevel: 0.1, glow: 0.22 };
 function sprite(color, size) {
   const key = color + '|' + size;
   let s = sprites.get(key);
   if (s) return s;
+  const m = Math.ceil(size * 0.3), dim = size + 2 * m;       // margin so the glow is not cut off
   const c = document.createElement('canvas');
-  c.width = c.height = Math.ceil(size * dpr);
+  c.width = c.height = Math.ceil(dim * dpr);
   const g = c.getContext('2d'); g.scale(dpr, dpr);
-  const b = Math.max(2, Math.round(size * 0.13));            // bevel width
-  g.fillStyle = COLORS[color]; g.fillRect(0, 0, size, size);
-  const face = g.createLinearGradient(0, b, 0, size - b);   // slightly brighter face, softer towards the bottom
-  face.addColorStop(0, 'rgba(255,255,255,0.18)'); face.addColorStop(1, 'rgba(255,255,255,0.02)');
-  g.fillStyle = face; g.fillRect(b, b, size - 2 * b, size - 2 * b);
+  const ins = Math.max(1, size * TILE.gap), w = size - 2 * ins, x0 = m + ins, r = size * TILE.radius, b = Math.max(2, w * TILE.bevel);
+  g.shadowColor = COLORS[color]; g.shadowBlur = size * TILE.glow;
+  g.fillStyle = COLORS[color]; rr(g, x0, x0, w, w, r); g.fill();
+  g.shadowBlur = 0;
+  g.save(); rr(g, x0, x0, w, w, r); g.clip();
   const poly = (pts, col) => { g.fillStyle = col; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fill(); };
-  poly([[0, 0], [size, 0], [size - b, b], [b, b]], 'rgba(255,255,255,0.50)');          // top edge: light
-  poly([[0, 0], [b, b], [b, size - b], [0, size]], 'rgba(255,255,255,0.28)');          // left edge
-  poly([[0, size], [b, size - b], [size - b, size - b], [size, size]], 'rgba(0,0,0,0.38)'); // bottom edge: dark
-  poly([[size, 0], [size, size], [size - b, size - b], [size - b, b]], 'rgba(0,0,0,0.24)'); // right edge
-  s = { c, dim: size }; sprites.set(key, s);
+  const R2 = x0 + w, B2 = x0 + w;
+  poly([[x0, x0], [R2, x0], [R2 - b, x0 + b], [x0 + b, x0 + b]], 'rgba(255,255,255,0.38)');   // top edge: light
+  poly([[x0, x0], [x0 + b, x0 + b], [x0 + b, B2 - b], [x0, B2]], 'rgba(255,255,255,0.20)');   // left edge
+  poly([[x0, B2], [x0 + b, B2 - b], [R2 - b, B2 - b], [R2, B2]], 'rgba(0,0,0,0.30)');         // bottom edge: dark
+  poly([[R2, x0], [R2, B2], [R2 - b, B2 - b], [R2 - b, x0 + b]], 'rgba(0,0,0,0.18)');         // right edge
+  const face = g.createLinearGradient(0, x0 + b, 0, B2 - b);
+  face.addColorStop(0, 'rgba(255,255,255,0.14)'); face.addColorStop(1, 'rgba(255,255,255,0.01)');
+  g.fillStyle = face; g.fillRect(x0 + b, x0 + b, w - 2 * b, w - 2 * b);
+  g.restore();
+  g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 1; rr(g, x0 + 0.5, x0 + 0.5, w - 1, w - 1, r); g.stroke();
+  s = { c, dim }; sprites.set(key, s);
   return s;
 }
 function stamp(color, x, y, size, alpha = 1, scale = 1) {
@@ -148,7 +156,7 @@ function render() {
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
     const x = bx + c * cell, y = by + r * cell, v = st.board[r][c];
     if (v) { const pt = popMap.get(r * SIZE + c); stamp(v, x, y, cell, 1, pt === undefined ? 1 : 1 + 0.28 * (1 - pt / 0.16)); }
-    else { ctx.fillStyle = '#16163f'; ctx.fillRect(x + 0.5, y + 0.5, cell - 1, cell - 1); }
+    else { ctx.fillStyle = '#15153d'; rr(ctx, x + 1.5, y + 1.5, cell - 3, cell - 3, cell * TILE.radius); ctx.fill(); }
   }
 
   if (phase === 'tutorial' && tut && !tut.done) drawTutorialHint();
