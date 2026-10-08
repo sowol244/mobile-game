@@ -534,14 +534,16 @@ export function createRenderer(canvas) {
     if (shake > 0) { shake = Math.max(0, shake - dt); sx = (Math.random() - 0.5) * shake * 0.5; sy = (Math.random() - 0.5) * shake * 0.5; }
     const cx = cam.x + sx, cy = cam.y + sy;
 
-    drawBackground(s, t);
-    const srcs = drawLight(s, t);
+    const P = window.__prof; let t0 = performance.now(); const mark = k => { if (P) { const n = performance.now(); P[k] = (P[k] || 0) + n - t0; t0 = n; } };
+    drawBackground(s, t); mark('bg');
+    const srcs = drawLight(s, t); mark('light');
     // light onto the background
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
     ctx.drawImage(light, 0, 0, canvas.width, canvas.height);
     ctx.globalAlpha = 0.55; ctx.drawImage(bloom, 0, 0, canvas.width, canvas.height); ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
+    mark('lightBlit');
     // rock
     const px = T * dpr;
     blit(ctx, layer, cx * px, cy * px, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
@@ -557,14 +559,15 @@ export function createRenderer(canvas) {
     for (let k = 0; k < 3; k++) ctx.drawImage(rimTmp, 0, 0, canvas.width, canvas.height); // light is dim in alpha; add it up
     ctx.globalCompositeOperation = 'source-over';
 
+    mark('rockRims');
     // world-space things
     ctx.setTransform(px, 0, 0, px, -cx * px, -cy * px);
     ctx.fillStyle = '#04050a'; // outside the map is solid rock
     ctx.fillRect(-60, -60, 60, s.h + 120); ctx.fillRect(s.w, -60, 60, s.h + 120); ctx.fillRect(0, -60, s.w, 60); ctx.fillRect(0, s.h, s.w, 60);
     const vx0 = Math.floor(cx) - 1, vy0 = Math.floor(cy) - 1, vx1 = Math.ceil(cx + W / T) + 1, vy1 = Math.ceil(cy + H / T) + 1;
-    drawBlocks(s, t, vx0, vy0, vx1, vy1);
-    drawProps(s, t, srcs);
-    drawActors(s, t, srcs);
+    drawBlocks(s, t, vx0, vy0, vx1, vy1); mark('blocks');
+    drawProps(s, t, srcs); mark('props');
+    drawActors(s, t, srcs); mark('actors');
     // bright torch core on top of everything
     if (s.fl.on && !p.dead) {
       const o = torchOrigin(s), c = RGB[s.fl.col];
@@ -587,7 +590,7 @@ export function createRenderer(canvas) {
     vg.addColorStop(0, 'rgba(2,3,10,0)'); vg.addColorStop(1, 'rgba(2,3,10,0.6)');
     ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
     if (p.dead) { ctx.fillStyle = `rgba(0,0,0,${clamp(1 - p.dead / 0.7, 0, 1) * 0.6})`; ctx.fillRect(0, 0, W, H); }
-    if (!opts.noSigns) drawSigns(s);
+    if (!opts.noSigns) drawSigns(s); mark('rest');
   }
 
   return {
