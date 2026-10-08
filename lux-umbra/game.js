@@ -67,7 +67,7 @@ export function createGame(def) {
     zones: (def.zones || []).map(z => ({ x: z.x, y: z.y, w: z.w, h: z.h, col: COL[z.color || 'w'], g: z.g || null, on: z.on ?? true })),
     groups: { ...(def.groups || {}) },
     p: null, fl: { on: false, aim: LIGHT.defaultAim, col: COL.w },
-    crates: lv.crates.map(c => ({ x: c.x + (1 - PHYS.cw) / 2, y: c.y + 1 - PHYS.cw, w: PHYS.cw, h: PHYS.cw, vx: 0, vy: 0, hx: c.x, hy: c.y })),
+    crates: lv.crates.map(c => ({ x: c.x + (1 - PHYS.cw) / 2, y: c.y, w: PHYS.cw, h: 1, vx: 0, vy: 0, hx: c.x, hy: c.y })),
     statues: lv.statues.map(m => ({ x: m.x + (1 - PHYS.sw) / 2, y: m.y + 1 - PHYS.sh, w: PHYS.sw, h: PHYS.sh, vy: 0, vx: 0, awake: false, face: -1, walk: 0 })),
     shard: lv.shard ? { ...lv.shard, got: false } : null,
     t: 0, deaths: 0, cleared: false, events: [], snap: null, startPos: lv.start,

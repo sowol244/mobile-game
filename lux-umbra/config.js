@@ -14,7 +14,7 @@ export const PHYS = {
   coyote: 0.09,
   buffer: 0.13,
   pw: 0.6, ph: 0.9,  // player box
-  cw: 0.96,          // crate box (square)
+  cw: 0.96,          // crate width (height is a full tile so its top lines up with the floor grid)
   sw: 0.8, sh: 1.5,  // statue box
   statueSpeed: 1.9,
   statueSight: 11,
