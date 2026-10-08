@@ -174,21 +174,21 @@
       rate: [0, 0.16, 0.15, 0.14, 0.13],
       lv: [, [[0, 0]], [[-8, 0], [8, 0]], [[0, 0], [-10, -130], [10, 130]], [[-15, 0], [-5, 0], [5, 0], [15, 0]]] },
     { name: '호크', tag: '확산형', desc: '부채꼴로 넓게 퍼져요', color: '#ffb347', kind: 's', speed: 600, w: 5, dmg: 1,
-      rate: [0, 0.38, 0.27, 0.3, 0.16],
+      rate: [0, 0.38, 0.23, 0.3, 0.16],
       lv: [, [[0, 0], [-4, -80], [4, 80]], [[0, 0], [-4, -60], [4, 60], [-7, -170], [7, 170]],
         [[-4, -25], [4, 25], [-6, -100], [6, 100], [-9, -200], [9, 200]], [[0, 0], [-4, -50], [4, 50], [-7, -125], [7, 125], [-10, -215], [10, 215], [-12, -310], [12, 310]]] },
     { name: '팔콘', tag: '관통형', desc: '적을 뚫는 굵은 레이저', color: '#c58bff', kind: 'l', speed: 900, w: 3, dmg: 1, pierce: true,
       rate: [0, 0.22, 0.22, 0.22, 0.22],
-      lv: [, [[0, 0, 3, 1.1]], [[0, 0, 6, 2.4]], [[0, 0, 10, 2]], [[0, 0, 10, 4.4], [-13, 0, 3, 1], [13, 0, 3, 1]]] },
+      lv: [, [[0, 0, 3, 1.1]], [[0, 0, 6, 2.4]], [[0, 0, 10, 2.4]], [[0, 0, 10, 4.4], [-13, 0, 3, 1], [13, 0, 3, 1]]] },
   ];
   // Extra damage for the middle power levels so a boss fight below max power does not drag on (tuned with __star.bossTTK).
-  const LV_DMG = [0, 1, 1, 1, 1];
+  const LV_DMG = [0, 1, 1.7, 2.05, 1];
   let shipType = 0;
   try { shipType = clamp(parseInt(localStorage.getItem('meteor-ship'), 10) || 0, 0, SHIPS.length - 1); } catch (e) {}
   const STAGES = [
     { name: '우주 입구', bg: ['#0c1432', '#1d2f78'], star: '#c9d3ff', boss: { hp: 640, color: '#ff5d6c', dark: '#5a1020', fan: 3, ring: 10, ringEvery: 4.0, aimEvery: 1.5, speed: 70 } },
     { name: '별의 폭풍', bg: ['#1b0d33', '#4c1f72'], star: '#e6c9ff', boss: { hp: 760, color: '#b06cff', dark: '#2a1050', fan: 5, ring: 14, ringEvery: 3.4, aimEvery: 1.25, speed: 85 } },
-    { name: '최후의 항로', bg: ['#2a0b16', '#702033'], star: '#ffd0c9', boss: { hp: 840, color: '#4de3c0', dark: '#08362c', fan: 5, ring: 18, ringEvery: 3.0, aimEvery: 1.1, speed: 100 } },
+    { name: '최후의 항로', bg: ['#2a0b16', '#702033'], star: '#ffd0c9', boss: { hp: 800, color: '#4de3c0', dark: '#08362c', fan: 5, ring: 18, ringEvery: 3.0, aimEvery: 1.1, speed: 100 } },
   ];
 
   let W = 300, H = 500, dpr = 1;
