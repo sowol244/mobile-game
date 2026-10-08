@@ -1,4 +1,4 @@
-// 난투 아레나 — entry point. Stage 0: title menu, local ranking list, zoom lock,
+// 대난투 아레나 — entry point. Stage 0: title menu, local ranking list, zoom lock,
 // and a decorative arena behind the menu. The match itself arrives in stage 1 (see PLAN.md).
 
 const $ = id => document.getElementById(id);
@@ -20,7 +20,7 @@ function renderTop() {
   rowsEl.replaceChildren();
   top.slice(0, 10).forEach((e, i) => {
     const li = document.createElement('li');
-    const cells = [[`${i + 1}`, 'rk'], [`${e.place}등 · ${e.brawler}`, 'nm'], [`${e.trophy >= 0 ? '+' : ''}${e.trophy}`, 'sc'], [e.date, 'dt']];
+    const cells = [[`${i + 1}`, 'rk'], [`${e.result} · ${e.brawler}`, 'nm'], [`${e.trophy >= 0 ? '+' : ''}${e.trophy}`, 'sc'], [e.date, 'dt']];
     for (const [text, cls] of cells) { const s = document.createElement('span'); s.className = cls; s.textContent = text; li.append(s); }
     rowsEl.append(li);
   });
@@ -30,7 +30,7 @@ function renderTop() {
 $('helpBtn').addEventListener('click', () => panel('help'));
 $('rankBtn').addEventListener('click', () => { renderTop(); panel('rank'); });
 document.querySelectorAll('.back').forEach(b => b.addEventListener('click', () => panel('main')));
-$('start').addEventListener('click', () => { toast.textContent = '지금은 기획 단계예요. 곧 1단계(생존전)가 열려요!'; });
+$('start').addEventListener('click', () => { toast.textContent = '지금은 기획 단계예요. 곧 1단계(3:3 팀전)가 열려요!'; });
 $('trophy').textContent = load(KEY_TROPHY, 0);
 
 // ---------- decorative arena behind the menu ----------
