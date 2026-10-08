@@ -181,12 +181,14 @@
       rate: [0, 0.22, 0.22, 0.22, 0.22],
       lv: [, [[0, 0, 3, 1.1]], [[0, 0, 6, 2.4]], [[0, 0, 10, 2]], [[0, 0, 10, 4.4], [-13, 0, 3, 1], [13, 0, 3, 1]]] },
   ];
+  // Extra damage for the middle power levels so a boss fight below max power does not drag on (tuned with __star.bossTTK).
+  const LV_DMG = [0, 1, 1, 1, 1];
   let shipType = 0;
   try { shipType = clamp(parseInt(localStorage.getItem('meteor-ship'), 10) || 0, 0, SHIPS.length - 1); } catch (e) {}
   const STAGES = [
-    { name: '우주 입구', bg: ['#0c1432', '#1d2f78'], star: '#c9d3ff', boss: { hp: 220, color: '#ff5d6c', dark: '#5a1020', fan: 3, ring: 10, ringEvery: 4.0, aimEvery: 1.5, speed: 70 } },
-    { name: '별의 폭풍', bg: ['#1b0d33', '#4c1f72'], star: '#e6c9ff', boss: { hp: 340, color: '#b06cff', dark: '#2a1050', fan: 5, ring: 14, ringEvery: 3.4, aimEvery: 1.25, speed: 85 } },
-    { name: '최후의 항로', bg: ['#2a0b16', '#702033'], star: '#ffd0c9', boss: { hp: 500, color: '#4de3c0', dark: '#08362c', fan: 5, ring: 18, ringEvery: 3.0, aimEvery: 1.1, speed: 100 } },
+    { name: '우주 입구', bg: ['#0c1432', '#1d2f78'], star: '#c9d3ff', boss: { hp: 640, color: '#ff5d6c', dark: '#5a1020', fan: 3, ring: 10, ringEvery: 4.0, aimEvery: 1.5, speed: 70 } },
+    { name: '별의 폭풍', bg: ['#1b0d33', '#4c1f72'], star: '#e6c9ff', boss: { hp: 760, color: '#b06cff', dark: '#2a1050', fan: 5, ring: 14, ringEvery: 3.4, aimEvery: 1.25, speed: 85 } },
+    { name: '최후의 항로', bg: ['#2a0b16', '#702033'], star: '#ffd0c9', boss: { hp: 840, color: '#4de3c0', dark: '#08362c', fan: 5, ring: 18, ringEvery: 3.0, aimEvery: 1.1, speed: 100 } },
   ];
 
   let W = 300, H = 500, dpr = 1;
@@ -206,7 +208,10 @@
 
   let ship = null, bullets = [], ebullets = [], enemies = [], items = [], parts = [], rings = [], floats = [];
   let score = 0, lives = 3, power = 1, bombs = 2, running = false, inv = 0, hitFlash = 0, flash = 0, fireCd = 0, missileCd = 0, god = false, dealt = 0;
-  let tRock = 0, tScout = 0, tGun = 0, tTank = 0, tP = 12, bPlan = [];
+  let tRock = 0, tScout = 0, tGun = 0, tTank = 0, tP = 12, bPlan = [], pend = [];
+  // death sequence: the ship blows up, the world keeps moving, and the result screen waits until it is over
+  let dying = 0, shake = 0, debris = [], blasts = [];
+  const DEATH_T = 1.4;
   // stage progression
   let stageNo = 1, stageT = 0, curPhase = 0, boss = null, bossWarned = false, bossSpawnT = 0, bossDead = false, stageState = 'play', clearT = 0;
   let bgNow = ['#0c1432', '#1d2f78'], bgFrom = bgNow, bgTo = bgNow, bgK = 1;
@@ -236,7 +241,7 @@
     ship = { x: W / 2, y: H - 90, vx: 0, vy: 0, r: 13 };
     bullets = []; ebullets = []; enemies = []; items = []; parts = []; rings = []; floats = [];
     score = 0; lives = 3; power = 1; bombs = 2; inv = 1.2; hitFlash = 0; flash = 0; fireCd = 0; missileCd = 0;
-    tP = 12; totalT = 0; minuteScores = []; newMin = []; curMin = 0; banner = null; bannerQ = []; toast = null;
+    tP = 12; pend = []; dying = 0; shake = 0; debris = []; blasts = []; totalT = 0; minuteScores = []; newMin = []; curMin = 0; banner = null; bannerQ = []; toast = null;
     startStage(1);
     updateHud();
   }
@@ -334,7 +339,15 @@
   }
 
   const spawned = { P: 0, B: 0 };
-  function spawnItem(k, x, y) { spawned[k]++; items.push({ k, x, y, vy: 90 }); }
+  function spawnItem(k, x, y, pop) { spawned[k]++; items.push({ k, x, y, vy: pop ? 60 : 90, pop: pop ? 0.45 : 0 }); }
+  // Supply items (P timer, the two B per stage) are queued instead of appearing from nowhere: the next enemy
+  // destroyed pops the item out where it exploded. If nothing dies within 4 s it drops in from the top as before.
+  const ITEM_WAIT = 4;
+  function popItem(e) {
+    if (!pend.length || e.k === 'coin' || e.y < 0) return;
+    const it = pend.shift(); spawnItem(it.k, clamp(e.x, 20, W - 20), e.y, true);
+    explode(e.x, e.y, it.k === 'P' ? '#9fd0ff' : '#ffb0b8', 10); beep(1200, 0.08, 'triangle', 0.03, 1700);
+  }
 
   // Enemies only rarely drop P (a bit more often while the gun is not maxed). B never drops from enemies:
   // each stage hands out exactly two B at fixed moments (see bPlan).
@@ -356,7 +369,7 @@
     if (e.dead) return;
     e.dead = true;
     explode(e.x, e.y, e.k === 'scout' ? '#ff9f43' : e.k === 'rock' ? '#ff8a96' : e.k === 'boss' ? e.color : '#c58bff', e.k === 'boss' ? 90 : e.k === 'tank' ? 36 : 12);
-    if (!silent) { score += e.pts || 0; dropFrom(e); boom(e.k === 'tank' || e.k === 'boss'); }
+    if (!silent) { score += e.pts || 0; popItem(e); dropFrom(e); boom(e.k === 'tank' || e.k === 'boss'); }
     if (e.k === 'boss') bossDefeated();
   }
   function hitEnemy(e, dmg) {
@@ -383,15 +396,28 @@
     updateHud();
   }
 
+  // Fireball + spinning hull fragments. Big = the final death, small = losing a life.
+  function shipBlast(big) {
+    const x = ship.x, y = ship.y, c = SHIPS[shipType].color;
+    blasts.push({ x, y, t: 0, life: big ? 0.9 : 0.45, r: big ? 70 : 34 });
+    if (big) setTimeout(() => blasts.push({ x: x + rnd(-14, 14), y: y + rnd(-14, 14), t: 0, life: 0.6, r: 46 }), 180);
+    explode(x, y, c, big ? 40 : 16); explode(x, y, '#ffc94d', big ? 40 : 10); explode(x, y, '#ffffff', big ? 20 : 6);
+    for (let i = 0; i < (big ? 14 : 5); i++) {
+      const a = rnd(0, 6.28), sp = rnd(60, big ? 260 : 160);
+      debris.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, a: rnd(0, 6), va: rnd(-12, 12), t: 0, life: rnd(0.7, big ? 1.4 : 0.9), w: rnd(3, big ? 8 : 5), h: rnd(2, 4), c: i % 3 ? '#b9c3d0' : c });
+    }
+    shake = Math.max(shake, big ? 0.7 : 0.25);
+    beep(big ? 70 : 120, big ? 0.9 : 0.3, 'sawtooth', big ? 0.14 : 0.08, 30);
+    if (big) { beep(50, 1.1, 'square', 0.06, 25); setTimeout(() => beep(90, 0.5, 'sawtooth', 0.08, 30), 200); }
+    if (navigator.vibrate) { try { navigator.vibrate(big ? [120, 60, 200] : 80); } catch (e) {} }
+  }
   function hurt() {
-    if (inv > 0 || !running || god) return;
+    if (inv > 0 || !running || god || dying) return;
     lives--; power = Math.max(1, power - 1); inv = 1.8; hitFlash = 0.35;
     ebullets = ebullets.filter(b => Math.hypot(b.x - ship.x, b.y - ship.y) > 90);
-    explode(ship.x, ship.y, SHIPS[shipType].color, 18);
-    beep(120, 0.25, 'sawtooth', 0.08, 60);
-    if (navigator.vibrate) { try { navigator.vibrate(80); } catch (e) {} }
+    shipBlast(lives <= 0);
     updateHud();
-    if (lives <= 0) gameOver(false);
+    if (lives <= 0) { dying = DEATH_T; held.btn = held.key = false; fireBtn.classList.remove('on'); hitFlash = 0.5; }
   }
 
   function useBomb() {
@@ -412,8 +438,10 @@
 
   function fire() {
     const S = SHIPS[shipType], y = ship.y - 16;
-    for (const [dx, vx, w = S.w, dmg = S.dmg] of S.lv[power])
+    for (const [dx, vx, w = S.w, d = S.dmg] of S.lv[power]) {
+      const dmg = d * LV_DMG[power];
       bullets.push({ k: S.kind, x: ship.x + dx, y: y - (dx === 0 && S.lv[power].length > 1 ? 4 : 0), vx, vy: -S.speed, w, dmg, len: S.kind === 'l' ? 40 : 0, pierce: !!S.pierce, hits: S.pierce ? [] : null });
+    }
     beep(S.kind === 'l' ? 1400 : S.kind === 's' ? 700 : 900, 0.04, 'square', 0.012);
   }
   // Homing missiles leave from the wing hardpoints, kick outwards, then curve onto the nearest target.
@@ -479,6 +507,11 @@
       toast = { txt: m + '분 돌파  +' + 300 * m, t: 2.2 };
       beep(523, 0.12, 'square', 0.05); setTimeout(() => beep(784, 0.2, 'square', 0.05), 120);
     }
+    if (dying) { dying -= dt; if (dying <= 0) { dying = 0; gameOver(false); return; } }
+    shake = Math.max(0, shake - dt);
+    for (const b of blasts) b.t += dt;
+    for (const d of debris) { d.t += dt; d.x += d.vx * dt; d.y += d.vy * dt; d.vx *= 0.985; d.vy *= 0.985; d.a += d.va * dt; }
+    blasts = blasts.filter(b => b.t < b.life); debris = debris.filter(d => d.t < d.life);
     inv = Math.max(0, inv - dt); hitFlash = Math.max(0, hitFlash - dt); flash = Math.max(0, flash - dt);
     if (toast) { toast.t -= dt; if (toast.t <= 0) toast = null; }
     if (!banner && bannerQ.length) banner = bannerQ.shift();
@@ -490,7 +523,7 @@
       stageT += dt; score += dt;
       while (curPhase < 2 && stageT >= PHASE_AT[curPhase + 1]) {
         curPhase++;
-        showBanner('PHASE ' + (curPhase + 1), curPhase === 1 ? '적이 강해져요' : '30초 뒤 보스!', '#ffc94d', 2.2);
+        showBanner('PHASE ' + (curPhase + 1), curPhase === 1 ? '' : '30초 뒤 보스!', '#ffc94d', 2.2);
         beep(440, 0.12, 'square', 0.05); setTimeout(() => beep(660, 0.18, 'square', 0.05), 120);
       }
       if (!bossWarned && stageT >= BOSS_AT) {
@@ -512,6 +545,7 @@
     const dead = 0.08, full = 0.7, mg = Math.hypot(ax, ay);
     if (mg < dead) { ax = 0; ay = 0; } else { const s = Math.min(1, (mg - dead) / (full - dead)) / mg; ax *= s; ay *= s; }
     const SPEED = 330; // no smoothing: the ship follows the stick exactly and stops the moment it is released
+    if (dying) ax = ay = 0;
     ship.vx = ax * SPEED; ship.vy = ay * SPEED;
     ship.x += ship.vx * dt; ship.y += ship.vy * dt;
     const nx = clamp(ship.x, 18, W - 18), ny = clamp(ship.y, H * 0.3, H - 34);
@@ -519,7 +553,7 @@
     ship.x = nx; ship.y = ny;
 
     // ---- fire (plus homing missiles at max power)
-    gunTick(dt);
+    if (!dying) gunTick(dt);
 
     // ---- spawn (regular waves stop when the boss warning starts)
     if (stageState === 'play') {
@@ -531,9 +565,11 @@
         tTank -= dt; if (stageT > 40 && tTank <= 0) { addTank(); tTank = Math.max(10, 28 - 6 * d); }
       }
       tP -= dt * (power < MAX_POWER ? 1 : 0.33);
-      if (tP <= 0) { spawnItem('P', rnd(30, W - 30), -14); tP = rnd(22, 30); }
-      if (bPlan.length && stageT >= bPlan[0]) { bPlan.shift(); spawnItem('B', rnd(30, W - 30), -14); }
+      if (tP <= 0) { pend.push({ k: 'P', t: 0 }); tP = rnd(22, 30); }
+      if (bPlan.length && stageT >= bPlan[0]) { bPlan.shift(); pend.push({ k: 'B', t: 0 }); }
     }
+    for (const it of pend) it.t += dt;
+    while (pend.length && pend[0].t >= ITEM_WAIT) spawnItem(pend.shift().k, rnd(30, W - 30), -14);
 
     // ---- bullets
     moveShots(dt);
@@ -570,17 +606,17 @@
     // ---- enemies vs ship
     for (const e of enemies) {
       if (e.dead) continue;
-      if (Math.hypot(e.x - ship.x, e.y - ship.y) < e.r * 0.85 + ship.r * 0.8) {
+      if (!dying && Math.hypot(e.x - ship.x, e.y - ship.y) < e.r * 0.85 + ship.r * 0.8) {
         if (e.k === 'coin') { e.dead = true; score += 10; beep(880, 0.08); explode(e.x, e.y, '#ffc94d', 6); }
         else if (inv <= 0) { hurt(); if (e.k === 'rock' || e.k === 'scout') killEnemy(e, true); }
       }
     }
-    for (const b of ebullets) if (Math.hypot(b.x - ship.x, b.y - ship.y) < b.r + ship.r * 0.7) { b.dead = true; hurt(); }
+    for (const b of ebullets) if (!dying && Math.hypot(b.x - ship.x, b.y - ship.y) < b.r + ship.r * 0.7) { b.dead = true; hurt(); }
 
     // ---- items
     for (const it of items) {
       it.y += it.vy * dt;
-      if (Math.hypot(it.x - ship.x, it.y - ship.y) < 14 + ship.r) {
+      if (!dying && Math.hypot(it.x - ship.x, it.y - ship.y) < 14 + ship.r) {
         it.dead = true;
         if (it.k === 'P') {
           if (power < MAX_POWER) { power++; floatTxt(it.x, it.y, power === MAX_POWER ? '화력 MAX' : '화력 UP', '#7cc4ff'); }
@@ -796,9 +832,11 @@
   }
 
   function render(dt) {
+    ctx.save();
+    if (shake > 0) { const m = 9 * Math.min(1, shake / 0.4); ctx.translate(rnd(-m, m), rnd(-m, m)); }
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, bgNow[0]); g.addColorStop(1, bgNow[1]);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = g; ctx.fillRect(-12, -12, W + 24, H + 24);
     ctx.fillStyle = STAGES[stageNo - 1].star;
     for (const s of bgStars) {
       s.y += s.v * dt / H; if (s.y > 1) s.y = 0;
@@ -808,6 +846,12 @@
 
     for (const it of items) {
       const c = it.k === 'P' ? '#4da3ff' : '#ff5d6c', pulse = 1 + Math.sin(performance.now() / 120) * 0.12;
+      if (it.pop > 0) { // sparkle as the item pops out of the wreck
+        const k = 1 - it.pop / 0.45; it.pop -= dt;
+        ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 1 - k; ctx.lineWidth = 2;
+        ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i * 0.785 + k, r0 = 10 + k * 12, r1 = r0 + 8 * (1 - k) + 3; ctx.moveTo(it.x + Math.cos(a) * r0, it.y + Math.sin(a) * r0); ctx.lineTo(it.x + Math.cos(a) * r1, it.y + Math.sin(a) * r1); } ctx.stroke();
+        ctx.beginPath(); ctx.arc(it.x, it.y, 12 + k * 18, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+      }
       ctx.fillStyle = c; ctx.globalAlpha = 0.28; ctx.beginPath(); ctx.arc(it.x, it.y, 17 * pulse, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
       ctx.beginPath(); ctx.arc(it.x, it.y, 11, 0, 7); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.font = '15px Jua, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(it.k, it.x, it.y + 1);
@@ -820,11 +864,21 @@
       ctx.fillStyle = b.boss ? '#ff4fc8' : '#ff7a3d'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r - 1, 0, 7); ctx.fill();
     }
 
-    if (ship && running) {
+    if (ship && running && !dying) {
       const blink = inv > 0 && Math.floor(inv * 12) % 2 === 0;
       if (!blink) drawShip();
     }
 
+    for (const b of blasts) { // expanding fireball: white core fading through orange to smoke
+      const k = b.t / b.life, r = b.r * (0.35 + 0.65 * Math.sqrt(k)), gr = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r);
+      gr.addColorStop(0, `rgba(255,255,240,${1 - k})`); gr.addColorStop(0.35, `rgba(255,190,80,${0.9 * (1 - k)})`);
+      gr.addColorStop(0.7, `rgba(255,90,50,${0.6 * (1 - k)})`); gr.addColorStop(1, 'rgba(60,30,40,0)');
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, 7); ctx.fill();
+    }
+    for (const d of debris) {
+      ctx.globalAlpha = Math.min(1, (d.life - d.t) / 0.3); ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.a);
+      ctx.fillStyle = d.c; ctx.fillRect(-d.w / 2, -d.h / 2, d.w, d.h); ctx.restore();
+    }
     for (const p of parts) { ctx.globalAlpha = 1 - p.t / p.life; ctx.fillStyle = p.c; ctx.fillRect(p.x - 2, p.y - 2, 4, 4); }
     ctx.globalAlpha = 1;
     for (const r of rings) {
@@ -857,7 +911,8 @@
     ctx.globalAlpha = 1;
     if (toast) { ctx.globalAlpha = Math.min(1, toast.t); ctx.fillStyle = '#ffc94d'; ctx.font = '16px Jua, sans-serif'; ctx.fillText(toast.txt, W / 2, boss ? 34 : 22); ctx.globalAlpha = 1; }
     if (flash > 0) { ctx.fillStyle = `rgba(255,255,255,${flash * 1.2})`; ctx.fillRect(0, 0, W, H); }
-    if (hitFlash > 0) { ctx.fillStyle = `rgba(255,93,108,${hitFlash})`; ctx.fillRect(0, 0, W, H); }
+    if (hitFlash > 0) { ctx.fillStyle = `rgba(255,93,108,${hitFlash})`; ctx.fillRect(-12, -12, W + 24, H + 24); }
+    ctx.restore();
   }
 
   function loop(t) {
@@ -1013,7 +1068,7 @@
   window.__star = {
     get s() { return { stage: stageNo, t: stageT, phase: curPhase, state: stageState, bossHp: boss ? boss.hp : null, bossMax: boss ? boss.maxHp : null, bossWarned, power, shipType, missiles: bullets.filter(b => b.k === 'm').length, lives, bombs, running, score: Math.floor(score), banner: banner ? banner.txt : null, queued: bannerQ.map(b => b.txt), bg: bgNow.slice(), enemies: enemies.length, ebullets: ebullets.map(b => ({ r: b.r, boss: b.boss })), ship: { x: ship.x, y: ship.y }, joy: { x: joy.x, y: joy.y } }; },
     skip(sec) { stageT = sec; }, god(on) { god = !!on; }, setPower(p) { power = p; updateHud(); },
-    setShip(i) { pickShip(i); }, SHIPS, shots() { return bullets.map(b => ({ k: b.k, x: Math.round(b.x), y: Math.round(b.y), dmg: b.dmg, w: b.w })); },
+    setShip(i) { pickShip(i); }, SHIPS, LV_DMG, shots() { return bullets.map(b => ({ k: b.k, x: Math.round(b.x), y: Math.round(b.y), dmg: b.dmg, w: b.w })); },
     floats() { return floats.map(f => f.txt); }, hold(on) { held.key = !!on; },
     volley() { const n = bullets.length; fire(); return bullets.slice(n).map(b => ({ dx: Math.round(b.x - ship.x), vx: b.vx, w: b.w, dmg: b.dmg, pierce: !!b.hits })); },
     // Balance bench: holds fire for `sec` simulated seconds against a fixed target set and returns landed damage per second.
@@ -1041,11 +1096,37 @@
       held.key = false; const dps = dealt / sec; shipType = keep; reset();
       return Math.round(dps * 10) / 10;
     },
+    // Boss time-to-kill: the real boss HP and sway speed (faster below half HP). The simulated player spends ~half the
+    // time lined up under the boss and the other half dodging 90-170 px off to one side, holding fire throughout.
+    bossTTK(si, lv, st, seed = 1) {
+      const keep = shipType, B = STAGES[st - 1].boss; shipType = si; power = lv; running = false;
+      let r = seed; const rand = () => (r = (r * 16807) % 2147483647) / 2147483647;
+      bullets = []; ebullets = []; items = []; fireCd = 0; missileCd = 0; held.key = true; dealt = 0;
+      ship.x = W / 2; ship.y = H - 90;
+      const e = { k: 'dummy', x: W / 2, y: 95, r: 40, hp: B.hp, maxHp: B.hp, pts: 0, vx: B.speed };
+      enemies = [e];
+      const dt = 1 / 60; let t = 0, mode = 0, modeT = 0, off = 0;
+      while (!e.dead && t < 300) {
+        t += dt;
+        e.x += e.vx * (e.hp < e.maxHp * 0.5 ? 1.35 : 1) * dt;
+        if (e.x < e.r + 8 || e.x > W - e.r - 8) { e.vx = -e.vx; e.x = clamp(e.x, e.r + 8, W - e.r - 8); }
+        e.y = 95 + Math.sin(t * 1.3) * 10;
+        modeT -= dt;
+        if (modeT <= 0) { mode = 1 - mode; modeT = 1 + rand(); off = mode ? (rand() < 0.5 ? -1 : 1) * (90 + rand() * 80) : 0; }
+        const want = clamp(e.x + off, 18, W - 18);
+        ship.x += clamp(want - ship.x, -330 * dt, 330 * dt);
+        gunTick(dt); moveShots(dt); shotHits(); cleanShots(); parts = [];
+      }
+      held.key = false; shipType = keep; reset();
+      return Math.round(t * 10) / 10;
+    },
     dropItem(k) { items.push({ k, x: ship.x, y: ship.y, vy: 0 }); },
     addScore(n) { score += n; },
     spawned() { return { ...spawned }; },
     simulate(sec) { const n = Math.round(sec * 60); for (let i = 0; i < n && running; i++) update(1 / 60); },
-    die() { god = false; inv = 0; lives = 1; hurt(); },
+    die() { god = false; inv = 0; lives = 1; hurt(); }, get dying() { return dying; },
+    items() { return items.map(i => ({ k: i.k, x: Math.round(i.x), y: Math.round(i.y), pop: i.pop > 0 })); }, pending() { return pend.map(p => p.k); },
+    queueItem(k) { pend.push({ k, t: 0 }); }, kill(i) { const e = enemies.filter(e => !e.dead && e.k !== 'coin' && e.y > 0)[i || 0]; if (!e) return null; const at = { x: e.x, y: e.y }; killEnemy(e); return at; },
     hurtBoss(n) { if (boss) hitEnemy(boss, n); }, boss() { return boss && { x: boss.x, y: boss.y }; },
   };
 })();
