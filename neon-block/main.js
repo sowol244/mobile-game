@@ -349,7 +349,7 @@ function showTitle() {
   resumeBtn.hidden = !saved; howtoBtn.hidden = false; homeBtn.hidden = true; menuLink.hidden = false;
   if (saved) {
     resumeBtn.textContent = `이어하기 (${saved.state.score}점)`;
-    msgEl.innerHTML = '저장된 게임이 있어요. 이어서 하거나 새로 시작할 수 있어요.';
+    msgEl.innerHTML = '저장된 게임이 있어요.';
   } else msgEl.innerHTML = INTRO;
   startBtn.textContent = saved ? '새로 시작' : '시작';
   overlay.hidden = false; dirty = true;
