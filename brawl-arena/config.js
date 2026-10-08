@@ -49,11 +49,21 @@ export const SURVIVAL = {
   poisonStep: 5,        // it grows one tile inward every this many seconds
   poisonSafe: 2.5,      // ... until the safe square is this many tiles from the centre
   poisonDps: 900,
+  // Per-brawler adjustments used only in survival (open map, everyone alone): multipliers on the team-mode numbers.
+  // Measured with 400 bot-only games, two of each brawler per game: 1st place 30/37/30 %, top-3 50/48/51 %.
+  tune: {
+    gyo: { hp: 1.3, damage: 0.97 },
+    jjam: { hp: 1.3, damage: 1.1, range: 1.07 },
+    sowol: { hp: 1.3, damage: 0.89, range: 0.81 }, // long arrows dominate an open map otherwise
+  },
 };
 
 // Brawler level from the trophies won with that brawler. Each level above 1: +5% HP and damage.
 export const LEVELS = { at: [0, 30, 80, 150, 250], bonus: 0.05 };
 export const levelFor = trophies => LEVELS.at.filter(t => trophies >= t).length;
+
+// Each mode has 5 stages (탄). Winning moves you on; the bots get tougher each stage.
+export const STAGES = { count: 5, botHp: [1, 1.12, 1.25, 1.4, 1.55] };
 
 export const HEAL = { delay: 3, rate: 0.13 }; // after 3 s without attacking or being hit, +13% max HP per second
 

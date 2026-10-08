@@ -2,7 +2,7 @@
 // Rules live in game.js, bots in bot.js, drawing in render.js/art.js, thumbsticks in input.js.
 
 import { MAPS } from './maps.js';
-import { BRAWLERS, KINDS, TROPHY, LEVELS, SURVIVAL, botLevelFor, levelFor } from './config.js';
+import { BRAWLERS, KINDS, TROPHY, LEVELS, SURVIVAL, STAGES, botLevelFor, levelFor } from './config.js';
 import { createMatch, step, lineOfSight, visibleTo, timeLeft, mvpOf, poisonInset, BLUE, RED } from './game.js';
 import { sfx, unlock, isMuted, setMuted } from './sound.js';
 import { makeBrain, botControl } from './bot.js';
@@ -21,7 +21,7 @@ const coach = $('coach'), cstep = $('cstep'), ctext = $('ctext');
 const hud = { trophy: $('trophy'), score: $('score'), clock: $('clock'), alive: $('alive'), midLabel: $('midLabel'), clockLabel: $('clockLabel') };
 const muteBtn = $('mute');
 
-const KEY_TOP = 'brawl-top', KEY_TROPHY = 'brawl-trophy', KEY_TUT = 'brawl-tutorial', KEY_PICK = 'brawl-pick', KEY_BY = 'brawl-trophy-by', KEY_MODE = 'brawl-mode';
+const KEY_TOP = 'brawl-top', KEY_TROPHY = 'brawl-trophy', KEY_TUT = 'brawl-tutorial', KEY_PICK = 'brawl-pick', KEY_BY = 'brawl-trophy-by', KEY_MODE = 'brawl-mode', KEY_STAGE = 'brawl-stage';
 const STEP = 1 / 60;
 
 function load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; } }
@@ -33,6 +33,10 @@ const view = createRenderer($('c'));
 let state = 'title';   // title | play | paused | over
 let mode = 'team';     // team | survival | tutorial | tutorial-done
 let chosenMode = load(KEY_MODE, 'team') === 'survival' ? 'survival' : 'team';
+// Stage (탄) per mode: { team: 1..5, survival: 1..5, cleared: { team, survival } }.
+let stages = load(KEY_STAGE, {});
+const stageOf = md => Math.min(STAGES.count, Math.max(1, stages[md] || 1));
+const MODE_NAME = { team: '3:3 팀전', survival: '생존전' };
 let trophyBy = load(KEY_BY, {}); // trophies per brawler → its level
 let match = null, brains = [], me = null, acc = 0, last = performance.now();
 let trophies = load(KEY_TROPHY, 0), lastEntry = null, pick = KINDS.includes(load(KEY_PICK, 'gyo')) ? load(KEY_PICK, 'gyo') : 'gyo';
@@ -61,7 +65,7 @@ function showTitle() {
   state = 'title'; mode = 'team'; input.enabled = false; pauseBtn.hidden = true; coach.hidden = true; toast.textContent = '';
   bannerEl.classList.remove('on'); bannerT = 0;
   titleEl.textContent = '대난투 아레나';
-  msgEl.innerHTML = '교행이 · 짬뽕이 · 소월이<br><b>3:3 팀전</b>과 6명 <b>생존전</b>!';
+  msgEl.textContent = '봇과 총을 쏘며 겨루는 난투 게임';
   finalEl.hidden = true; startBtn.textContent = '시작';
   buttons(true); panel('main'); overlay.hidden = false;
   newAttract();
@@ -98,7 +102,11 @@ function markPick() {
     c.querySelector('.lv').textContent = `Lv.${lv}`;
     c.querySelector('.nx').textContent = next != null ? `트로피 ${tr} · 다음 레벨까지 ${next - tr}` : `트로피 ${tr} · 최고 레벨!`;
   }
-  for (const b of document.querySelectorAll('.mode')) b.classList.toggle('on', b.dataset.mode === chosenMode);
+  for (const b of document.querySelectorAll('.mode')) {
+    b.classList.toggle('on', b.dataset.mode === chosenMode);
+    const md = b.dataset.mode, cleared = stages.cleared && stages.cleared[md];
+    b.querySelector('small').textContent = cleared ? `${stageOf(md)}탄 · 클리어!` : `${stageOf(md)}탄`;
+  }
 }
 for (const b of document.querySelectorAll('.mode')) b.addEventListener('click', () => { chosenMode = b.dataset.mode; save(KEY_MODE, chosenMode); markPick(); });
 
@@ -146,14 +154,16 @@ function begin() {
 function startMatch() {
   mode = chosenMode; coach.hidden = true;
   const survival = mode === 'survival';
+  const st = stageOf(mode);
   match = createMatch({
     mapDef: survival ? MAPS.survival : MAPS.team, mode, seed: (Math.random() * 1e9) | 0,
-    playerKind: pick, level: levelFor(trophyBy[pick] || 0),
+    playerKind: pick, level: levelFor(trophyBy[pick] || 0), botHp: STAGES.botHp[st - 1],
   });
+  match.stage = st;
   const skill = botLevelFor(trophies);
   brains = match.brawlers.map(b => (b.isPlayer ? null : makeBrain(skill)));
   begin();
-  banner(survival ? '살아남아라!' : '시작!', 1.2);
+  banner(`${MODE_NAME[mode]} ${st}탄!`, 1.4);
 }
 
 function startTutorial() {
@@ -284,7 +294,16 @@ function finish() {
   trophyBy[me.kind] = Math.max(0, (trophyBy[me.kind] || 0) + gain); save(KEY_BY, trophyBy);
   const lvUp = levelFor(trophyBy[me.kind]) > lvBefore;
   if (won || (survival && place <= 3)) sfx.win(); else sfx.lose();
-  const result = survival ? `생존전 ${place}등` : `${draw ? '무승부' : won ? '승리' : '패배'} ${match.score[0]}:${match.score[1]}`;
+  // Winning (team win, or 1st in survival) unlocks the next stage.
+  const md = match.mode, st = match.stage || 1;
+  let stageNote = '';
+  if (won) {
+    if (st < STAGES.count) { stages[md] = st + 1; stageNote = `다음은 ${st + 1}탄! 봇들이 더 튼튼해져요.`; }
+    else { stages.cleared = { ...(stages.cleared || {}), [md]: true }; stageNote = `🏆 ${MODE_NAME[md]} ${STAGES.count}탄 클리어!`; }
+    save(KEY_STAGE, stages);
+  }
+  const first = survival ? `생존전 ${st}탄 ${place}등` : `팀전 ${st}탄 ${draw ? '무승부' : won ? '승리' : '패배'}`;
+  const result = survival ? first : `${first} ${match.score[0]}:${match.score[1]}`;
   const d = new Date(), entry = { id: Date.now(), result, brawler: me.def.name, kills: me.kills, trophy: gain, date: `${d.getMonth() + 1}/${d.getDate()}` };
   const top = load(KEY_TOP, []); top.push(entry);
   top.sort((a, b) => b.trophy - a.trophy || b.kills - a.kills || b.id - a.id);
@@ -297,7 +316,8 @@ function finish() {
   line(`${me.def.name} · 처치 ${me.kills} · 쓰러짐 ${me.deaths}${mvp ? ' · MVP!' : ''}`);
   line(`트로피 ${gain >= 0 ? '+' : ''}${gain}  (총 ${trophies})`, 'tr');
   if (lvUp) line(`🎉 ${me.def.name} Lv.${levelFor(trophyBy[me.kind])} 달성!`, 'tr');
-  finalEl.hidden = false; startBtn.textContent = '다시 하기';
+  if (stageNote) line(stageNote);
+  finalEl.hidden = false; startBtn.textContent = won && st < STAGES.count ? `${st + 1}탄 하기` : '다시 하기';
   buttons(false); panel('main'); overlay.hidden = false;
   updateHud();
 }

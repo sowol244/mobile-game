@@ -81,10 +81,11 @@ export function survivalRoster({ playerKind = 'gyo', botsOnly = false, rand = Ma
 // mode: 'team' (3:3, respawns, first to 10) or 'survival' (6 alone, no respawn, poison cloud, power boxes).
 // endless: practice matches (the tutorial) never end and keep no time limit.
 // level: brawler level (1..5) for everyone, so bots match the player's strength.
-export function createMatch({ mapDef, mode = 'team', seed = 1, roster = null, playerKind = 'gyo', botsOnly = false, respawn = TEAM_MODE.respawn, endless = false, level = 1 } = {}) {
+// botHp: health multiplier for bots (later stages make them sturdier).
+export function createMatch({ mapDef, mode = 'team', seed = 1, roster = null, playerKind = 'gyo', botsOnly = false, respawn = TEAM_MODE.respawn, endless = false, level = 1, botHp = 1 } = {}) {
   const map = parseMap(mapDef.rows);
   const m = {
-    map, mapDef, mode, rand: rng(seed), t: 0, tick: 0, respawn, endless, level,
+    map, mapDef, mode, rand: rng(seed), t: 0, tick: 0, respawn, endless, level, botHp,
     items: [], boxHp: new Map(), poison: 0, poisonTick: 0, places: 0,
     phase: 'play', // play → sudden → over
     score: [0, 0], winner: null, // BLUE, RED, or 'draw'
@@ -97,15 +98,23 @@ export function createMatch({ mapDef, mode = 'team', seed = 1, roster = null, pl
   return m;
 }
 
+// A brawler's numbers for this match: survival may scale range/damage per brawler (SURVIVAL.tune).
+function defFor(mode, kind) {
+  const base = BRAWLERS[kind], t = mode === 'survival' && SURVIVAL.tune[kind];
+  if (!t) return base;
+  const scale = spec => ({ ...spec, range: spec.range * (t.range || 1), damage: spec.damage * (t.damage || 1) });
+  return { ...base, hp: Math.round(base.hp * (t.hp || 1)), attack: scale(base.attack), super: scale(base.super) };
+}
+
 function newBrawler(m, id, { team, slot = 0, kind = 'gyo', name = '', isPlayer = false, dummy = false }) {
-  const def = BRAWLERS[kind];
+  const def = defFor(m.mode, kind);
   const b = {
     id, team, slot, kind, def, name, isPlayer, dummy,
     x: 0, y: 0, vx: 0, vy: 0, face: team === BLUE ? -Math.PI / 2 : Math.PI / 2,
     r: def.radius, maxHp: def.hp, hp: def.hp,
     ammo: def.ammo, reloadT: 0, fireCd: 0, burst: null, dash: null,
     charge: 0, revealT: 0, cubes: 0, place: 0,
-    levelBonus: 1 + LEVELS.bonus * (m.level - 1), power: 1,
+    levelBonus: 1 + LEVELS.bonus * (m.level - 1), power: 1, hpScale: isPlayer ? 1 : m.botHp,
     alive: true, respawnT: 0, shieldT: 0, calm: 0, hurtFlash: 0,
     kills: 0, deaths: 0, damage: 0, lastTarget: null,
   };
@@ -115,7 +124,7 @@ function newBrawler(m, id, { team, slot = 0, kind = 'gyo', name = '', isPlayer =
 
 function placeAtSpawn(m, b) {
   const list = m.mode === 'survival' ? m.map.starts : m.map.spawns[b.team], s = list[b.slot % list.length];
-  b.maxHp = Math.round(b.def.hp * b.levelBonus); b.power = b.levelBonus;
+  b.maxHp = Math.round(b.def.hp * b.levelBonus * b.hpScale); b.power = b.levelBonus;
   b.x = s.x; b.y = s.y; b.vx = b.vy = 0;
   b.face = b.team === BLUE ? -Math.PI / 2 : Math.PI / 2;
   b.hp = b.maxHp; b.ammo = b.def.ammo; b.reloadT = 0; b.fireCd = 0; b.burst = null; b.dash = null;
@@ -356,7 +365,7 @@ function pickUp(m) {
       if (Math.hypot(it.x - b.x, it.y - b.y) > b.r + 0.3) continue;
       m.items.splice(k, 1);
       b.cubes++;
-      const bonus = b.def.hp * b.levelBonus * SURVIVAL.cubeBonus;
+      const bonus = b.def.hp * b.levelBonus * b.hpScale * SURVIVAL.cubeBonus;
       b.maxHp += bonus; b.hp += bonus; b.power = b.levelBonus + SURVIVAL.cubeBonus * b.cubes;
       m.events.push({ type: 'cube', id: b.id, x: it.x, y: it.y });
     }
