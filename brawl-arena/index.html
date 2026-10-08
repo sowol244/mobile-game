@@ -12,19 +12,23 @@
 <div id="app">
   <div id="hud">
     <div><small>트로피</small><span id="trophy">0</span></div>
-    <div><small>점수</small><span id="alive">-</span></div>
-    <div><small>시간</small><span id="clock">3:00</span></div>
+    <div class="mid"><small>파랑 : 빨강</small><span id="score"><b class="blue">0</b> : <b class="red">0</b></span></div>
+    <div class="r"><small>시간</small><span id="clock">3:00</span></div>
   </div>
   <div id="stage">
     <canvas id="c"></canvas>
+    <button id="pause" type="button" aria-label="일시정지" hidden>Ⅱ</button>
+    <div id="banner" aria-live="polite"></div>
     <div id="overlay">
       <div class="panel" id="pMain">
         <h1 id="title">대난투 아레나</h1>
-        <p id="msg">교행이 · 짬뽕이 · 소월이<br>생존전과 3:3 팀전으로 붙어 보세요!</p>
+        <p id="msg"></p>
+        <div id="final" hidden></div>
         <p id="toast" role="status" aria-live="polite"></p>
         <div id="btns">
           <div id="prim"><button class="go" id="start" type="button">시작</button></div>
           <div id="sec">
+            <button class="sub" id="home" type="button" hidden>처음으로</button>
             <button class="sub" id="helpBtn" type="button">게임 설명</button>
             <button class="sub" id="rankBtn" type="button">순위 보기</button>
             <a class="sub" id="toMenu" href="../">게임 선택</a>
@@ -34,6 +38,7 @@
       <div class="panel" id="pHelp" hidden>
         <h1>게임 설명</h1>
         <ul class="helplist">
+          <li class="now"><b>지금 버전</b> 3:3 팀전과 교행이로 플레이할 수 있어요. 생존전·짬뽕이·소월이·필살기·수풀은 곧 추가돼요.</li>
           <li><b>생존전</b> 6명이 각자 싸워요. 마지막까지 살아남으면 1등!</li>
           <li><b>3:3 팀전</b> 나와 아군 봇 2명이 상대 봇 3명과 싸워요. 쓰러져도 3초 뒤 부활, 먼저 <b>10번</b> 쓰러뜨린 팀이 승리!</li>
           <li><b>브롤러</b> <b>교행이</b>는 소총을 연발로 쏘는 총잡이, <b>짬뽕이</b>는 벽 너머로 짬뽕 그릇을 던지는 투척형, <b>소월이</b>는 멀리서 화살을 쏘는 저격형이에요.</li>
@@ -45,6 +50,13 @@
           <li><b>트로피</b> 등수나 승패에 따라 트로피를 얻거나 잃어요. 트로피를 모으면 브롤러가 강해져요.</li>
         </ul>
         <button class="go back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pPause" hidden>
+        <h1>일시정지</h1>
+        <div id="pbtns">
+          <button class="go" id="resume" type="button">계속하기</button>
+          <button class="go ghost" id="quit" type="button">처음으로</button>
+        </div>
       </div>
       <div class="panel" id="pRank" hidden>
         <h1>내 기록 순위</h1>

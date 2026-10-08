@@ -1,129 +1,209 @@
-// 대난투 아레나 — entry point. Stage 0: title menu, local ranking list, zoom lock,
-// and a decorative arena behind the menu. The match itself arrives in stage 1 (see PLAN.md).
+// 대난투 아레나 — entry point: menus, the frame loop, HUD, results and the local ranking.
+// Rules live in game.js, bots in bot.js, drawing in render.js, thumbsticks in input.js.
+
+import { MAPS } from './maps.js';
+import { TROPHY, botLevelFor } from './config.js';
+import { createMatch, step, lineOfSight, timeLeft, mvpOf, BLUE } from './game.js';
+import { makeBrain, botControl } from './bot.js';
+import { createInput } from './input.js';
+import { createRenderer } from './render.js';
 
 const $ = id => document.getElementById(id);
-const cv = $('c'), ctx = cv.getContext('2d'), stage = $('stage');
-const pMain = $('pMain'), pHelp = $('pHelp'), pRank = $('pRank');
-const rowsEl = $('rows'), rankNote = $('rankNote'), toast = $('toast');
+const stage = $('stage'), overlay = $('overlay');
+const pMain = $('pMain'), pHelp = $('pHelp'), pRank = $('pRank'), pPause = $('pPause');
+const titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), toast = $('toast');
+const startBtn = $('start'), homeBtn = $('home'), helpBtn = $('helpBtn'), menuLink = $('toMenu'), pauseBtn = $('pause');
+const rowsEl = $('rows'), rankNote = $('rankNote'), bannerEl = $('banner');
+const hud = { trophy: $('trophy'), score: $('score'), clock: $('clock') };
 
 const KEY_TOP = 'brawl-top', KEY_TROPHY = 'brawl-trophy';
+const STEP = 1 / 60;
 
-function load(key, fallback) {
-  try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; }
-}
+function load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; } }
+function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* private mode: play on without saving */ } }
 
-// ---------- menu ----------
-function panel(name) { pMain.hidden = name !== 'main'; pHelp.hidden = name !== 'help'; pRank.hidden = name !== 'rank'; }
+const input = createInput(stage);
+const view = createRenderer($('c'));
 
-function renderTop() {
+let state = 'title'; // title | play | paused | over
+let match = null, brains = [], me = null, acc = 0, last = performance.now();
+let trophies = load(KEY_TROPHY, 0), lastEntry = null;
+let bannerT = 0;
+
+// ---------- menus ----------
+function panel(name) { pMain.hidden = name !== 'main'; pHelp.hidden = name !== 'help'; pRank.hidden = name !== 'rank'; pPause.hidden = name !== 'pause'; }
+function buttons(onTitle) { helpBtn.hidden = !onTitle; menuLink.hidden = !onTitle; homeBtn.hidden = onTitle; }
+
+function renderTop(highlight) {
   const top = load(KEY_TOP, []);
   rowsEl.replaceChildren();
-  top.slice(0, 10).forEach((e, i) => {
+  top.forEach((e, i) => {
     const li = document.createElement('li');
-    const cells = [[`${i + 1}`, 'rk'], [`${e.result} · ${e.brawler}`, 'nm'], [`${e.trophy >= 0 ? '+' : ''}${e.trophy}`, 'sc'], [e.date, 'dt']];
+    if (highlight && e.id === highlight) li.className = 'me';
+    const cells = [[`${i + 1}`, 'rk'], [`${e.result} · 처치 ${e.kills}`, 'nm'], [`${e.trophy >= 0 ? '+' : ''}${e.trophy}`, 'sc'], [e.date, 'dt']];
     for (const [text, cls] of cells) { const s = document.createElement('span'); s.className = cls; s.textContent = text; li.append(s); }
     rowsEl.append(li);
   });
-  rankNote.textContent = top.length ? '이 기록은 이 폰에만 저장돼요.' : '아직 기록이 없어요. 게임이 완성되면 여기에 쌓여요!';
+  rankNote.textContent = top.length ? '트로피를 많이 얻은 판 순서예요. 이 폰에만 저장돼요.' : '아직 기록이 없어요. 한 판 해 보세요!';
 }
 
-$('helpBtn').addEventListener('click', () => panel('help'));
-$('rankBtn').addEventListener('click', () => { renderTop(); panel('rank'); });
+function showTitle() {
+  state = 'title'; input.enabled = false; pauseBtn.hidden = true; toast.textContent = '';
+  bannerEl.classList.remove('on'); bannerT = 0;
+  titleEl.textContent = '대난투 아레나';
+  msgEl.innerHTML = '<b>3:3 팀전</b> · 아군 봇 2명과 함께<br>먼저 <b>10번</b> 쓰러뜨리는 팀이 승리!';
+  finalEl.hidden = true; startBtn.textContent = '시작';
+  buttons(true); panel('main'); overlay.hidden = false;
+  newAttract();
+}
+
+helpBtn.addEventListener('click', () => panel('help'));
+$('rankBtn').addEventListener('click', () => { renderTop(lastEntry); panel('rank'); });
+homeBtn.addEventListener('click', showTitle);
 document.querySelectorAll('.back').forEach(b => b.addEventListener('click', () => panel('main')));
-$('start').addEventListener('click', () => { toast.textContent = '지금은 기획 단계예요. 곧 1단계(3:3 팀전)가 열려요!'; });
-$('trophy').textContent = load(KEY_TROPHY, 0);
+startBtn.addEventListener('click', startMatch);
+pauseBtn.addEventListener('click', () => pause(true));
+$('resume').addEventListener('click', () => pause(false));
+$('quit').addEventListener('click', showTitle);
+document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') pause(true); });
 
-// ---------- decorative arena behind the menu ----------
-const T = 32;
-const MAP = [
-  '..............',
-  '..##....**....',
-  '..#.....**..B.',
-  '......~~......',
-  '.**...~~...##.',
-  '.**.......B.#.',
-  '......##......',
-  '..B...#....**.',
-  '...........**.',
-  '.##..~~~......',
-  '.....~~~..#...',
-  '.**.......#.B.',
-  '.**..##.......',
-  '..............',
-];
-const COLORS = ['#ff5d6c', '#4cc3ff', '#ffc93c', '#9b7bff', '#5ee08a'];
-const OPEN = [[1, 1], [12, 0], [4, 5], [8, 8], [2, 13], [11, 12]];
-const dots = COLORS.map((c, i) => ({ x: OPEN[i][0] * 32 + 16, y: OPEN[i][1] * 32 + 16, vx: 0, vy: 0, c, t: 0, cd: 1 + i * 0.4 }));
-const shots = [];
-let W = 0, H = 0, ox = 0, oy = 0;
-
-function resize() {
-  const r = stage.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
-  W = r.width; H = r.height;
-  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ox = (W - MAP[0].length * T) / 2; oy = (H - MAP.length * T) / 2;
+function pause(on) {
+  if (on && state === 'play') { state = 'paused'; input.enabled = false; pauseBtn.hidden = true; panel('pause'); overlay.hidden = false; }
+  else if (!on && state === 'paused') { state = 'play'; input.enabled = true; pauseBtn.hidden = false; overlay.hidden = true; last = performance.now(); }
 }
-const solid = (x, y) => { const ch = MAP[Math.floor(y / T)]?.[Math.floor(x / T)]; return ch === undefined || ch === '#' || ch === '~' || ch === 'B'; };
 
-function step(dt) {
-  for (const d of dots) {
-    d.t -= dt;
-    if (d.t <= 0) { const a = Math.random() * Math.PI * 2; d.vx = Math.cos(a) * 60; d.vy = Math.sin(a) * 60; d.t = 1 + Math.random() * 2; }
-    const nx = d.x + d.vx * dt, ny = d.y + d.vy * dt;
-    if (!solid(nx, d.y)) d.x = nx; else d.vx = -d.vx;
-    if (!solid(d.x, ny)) d.y = ny; else d.vy = -d.vy;
-    d.cd -= dt;
-    if (d.cd <= 0) {
-      const o = dots[(dots.indexOf(d) + 1 + Math.floor(Math.random() * 4)) % dots.length];
-      const a = Math.atan2(o.y - d.y, o.x - d.x);
-      shots.push({ x: d.x, y: d.y, vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, c: d.c, life: 0.9 });
-      d.cd = 1.2 + Math.random() * 1.5;
+// ---------- matches ----------
+// Behind the title menu: six bots playing on their own.
+function newAttract() {
+  match = createMatch({ mapDef: MAPS.team, seed: (Math.random() * 1e9) | 0, botsOnly: true });
+  brains = match.brawlers.map(() => makeBrain(2)); me = null; view.reset();
+}
+
+function startMatch() {
+  match = createMatch({ mapDef: MAPS.team, seed: (Math.random() * 1e9) | 0 });
+  const level = botLevelFor(trophies);
+  brains = match.brawlers.map(b => (b.isPlayer ? null : makeBrain(level)));
+  me = match.brawlers.find(b => b.isPlayer);
+  view.reset(); acc = 0; last = performance.now(); lastEntry = null;
+  state = 'play'; input.enabled = true; overlay.hidden = true; pauseBtn.hidden = false;
+  banner('시작!', 1.2);
+}
+
+// Tap-to-fire picks the closest enemy in reach that can actually be hit; otherwise shoot straight ahead.
+function autoAim(b) {
+  let best = null, bd = 1e9;
+  for (const o of match.brawlers) {
+    if (!o.alive || o.team === b.team) continue;
+    const d = Math.hypot(o.x - b.x, o.y - b.y);
+    if (d > b.def.attack.range + 0.5 || !lineOfSight(match.map, b.x, b.y, o.x, o.y)) continue;
+    if (d < bd) { bd = d; best = o; }
+  }
+  if (!best) return b.face;
+  const t = bd / b.def.attack.speed * 0.6;
+  return Math.atan2(best.y + best.vy * t - b.y, best.x + best.vx * t - b.x);
+}
+
+function controls() {
+  return match.brawlers.map((b, i) => {
+    if (!b.alive) return null;
+    if (b === me) {
+      const mv = input.moveVec(), q = input.take();
+      return { mx: mv.x, my: mv.y, fire: q == null ? null : q === 'auto' ? autoAim(b) : q };
     }
-  }
-  for (let i = shots.length - 1; i >= 0; i--) {
-    const s = shots[i]; s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
-    if (s.life <= 0 || solid(s.x, s.y)) shots.splice(i, 1);
+    return botControl(match, b, brains[i], STEP);
+  });
+}
+
+function watchEvents() {
+  for (const e of match.events) {
+    if (e.type === 'kill' && me) {
+      if (e.by === me.id) banner('처치!', 0.9);
+      else if (e.id === me.id) banner('쓰러졌어요!', 1.2);
+    } else if (e.type === 'sudden') banner('서든데스! 다음 처치로 승부', 2);
+    else if (e.type === 'spawn' && me && e.id === me.id) banner('부활!', 0.8);
   }
 }
 
-function draw() {
-  // Grass covers the whole canvas (aligned to the map grid) so tall phones show no empty band.
-  ctx.save(); ctx.translate(ox, oy);
-  const x0 = Math.floor(-ox / T), y0 = Math.floor(-oy / T);
-  for (let y = y0; y * T < H - oy; y++) for (let x = x0; x * T < W - ox; x++) {
-    ctx.fillStyle = ((x + y) % 2 + 2) % 2 ? '#3a8a52' : '#35804c'; ctx.fillRect(x * T, y * T, T, T);
-  }
-  for (let y = 0; y < MAP.length; y++) for (let x = 0; x < MAP[y].length; x++) {
-    const ch = MAP[y][x], px = x * T, py = y * T;
-    if (ch === '#') { ctx.fillStyle = '#8a5a3c'; ctx.fillRect(px, py, T, T); ctx.fillStyle = '#a8724e'; ctx.fillRect(px, py, T, T - 8); }
-    else if (ch === '~') { ctx.fillStyle = '#2f8fd8'; ctx.fillRect(px, py, T, T); }
-    else if (ch === 'B') { ctx.fillStyle = '#d9a441'; ctx.fillRect(px + 4, py + 4, T - 8, T - 8); ctx.strokeStyle = '#8a5a14'; ctx.lineWidth = 3; ctx.strokeRect(px + 4, py + 4, T - 8, T - 8); }
-  }
-  for (const s of shots) { ctx.fillStyle = s.c; ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, Math.PI * 2); ctx.fill(); }
-  for (const d of dots) {
-    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(d.x, d.y + 11, 12, 5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = d.c; ctx.beginPath(); ctx.arc(d.x, d.y, 12, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#1a1238'; ctx.lineWidth = 3; ctx.stroke();
-  }
-  // Bushes on top so brawlers can hide in them.
-  for (let y = 0; y < MAP.length; y++) for (let x = 0; x < MAP[y].length; x++) if (MAP[y][x] === '*') {
-    ctx.fillStyle = '#1f6b2e'; ctx.beginPath(); ctx.arc(x * T + T / 2, y * T + T / 2, T * 0.62, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.restore();
+function banner(text, t) { bannerEl.textContent = text; bannerEl.classList.add('on'); bannerT = t; }
+
+function finish() {
+  state = 'over'; input.enabled = false; pauseBtn.hidden = true;
+  bannerEl.classList.remove('on'); bannerT = 0;
+  const won = match.winner === BLUE, draw = match.winner === 'draw';
+  const mvp = mvpOf(match) === me && me.kills > 0;
+  const gain = (draw ? TROPHY.draw : won ? TROPHY.win : TROPHY.lose) + (mvp ? TROPHY.mvp : 0);
+  trophies = Math.max(0, trophies + gain); save(KEY_TROPHY, trophies);
+  const result = `${draw ? '무승부' : won ? '승리' : '패배'} ${match.score[0]}:${match.score[1]}`;
+  const d = new Date(), entry = { id: Date.now(), result, kills: me.kills, trophy: gain, date: `${d.getMonth() + 1}/${d.getDate()}` };
+  const top = load(KEY_TOP, []); top.push(entry);
+  top.sort((a, b) => b.trophy - a.trophy || b.kills - a.kills || b.id - a.id);
+  save(KEY_TOP, top.slice(0, 10)); lastEntry = entry.id;
+
+  titleEl.textContent = draw ? '무승부' : won ? '승리!' : '패배';
+  msgEl.innerHTML = `파랑 <b>${match.score[0]}</b> : <b>${match.score[1]}</b> 빨강`;
+  finalEl.replaceChildren();
+  const line = (text, cls) => { const s = document.createElement('div'); s.textContent = text; if (cls) s.className = cls; finalEl.append(s); };
+  line(`처치 ${me.kills} · 쓰러짐 ${me.deaths}${mvp ? ' · MVP!' : ''}`);
+  line(`트로피 ${gain >= 0 ? '+' : ''}${gain}  (총 ${trophies})`, 'tr');
+  finalEl.hidden = false; startBtn.textContent = '다시 하기';
+  buttons(false); panel('main'); overlay.hidden = false;
+  updateHud();
 }
 
-let last = performance.now();
+function updateHud() {
+  hud.trophy.textContent = trophies;
+  const [bs, rs] = hud.score.children;
+  bs.textContent = match.score[0]; rs.textContent = match.score[1];
+  if (match.phase === 'sudden') { hud.clock.textContent = '서든데스'; hud.clock.classList.add('hot'); }
+  else {
+    const s = Math.ceil(timeLeft(match));
+    hud.clock.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    hud.clock.classList.toggle('hot', s <= 30);
+  }
+}
+
+// ---------- loop ----------
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  step(dt); draw();
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (state === 'play' || state === 'title') {
+    acc += dt;
+    while (acc >= STEP) {
+      acc -= STEP;
+      step(match, STEP, controls());
+      if (state === 'play') { watchEvents(); if (match.phase === 'over') { finish(); break; } }
+      else if (match.phase === 'over') newAttract();
+    }
+    if (acc > STEP * 5) acc = 0;
+  }
+  if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) bannerEl.classList.remove('on'); }
+  if (state === 'play' && me && !me.alive && bannerT <= 0) { bannerEl.textContent = `부활까지 ${Math.ceil(me.respawnT)}`; bannerEl.classList.add('on'); }
+  if (state === 'play' && me && me.alive && bannerT <= 0) bannerEl.classList.remove('on');
+
+  const focus = me || match.brawlers.find(b => b.alive) || null;
+  view.draw(match, {
+    meId: me ? me.id : null,
+    aim: state === 'play' ? input.aiming() : null,
+    input: state === 'play' ? input.state : null,
+    focus,
+    tilesAcross: me ? 10 : 12,
+  }, state === 'play' || state === 'title' ? dt : 0);
+  if (me) updateHud(); else hud.trophy.textContent = trophies;
   requestAnimationFrame(frame);
 }
 
 // ---------- no pinch zoom (two thumbs on screen during play) ----------
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(n => document.addEventListener(n, e => e.preventDefault()));
 document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+if (window.visualViewport) window.visualViewport.addEventListener('resize', () => {
+  if (window.visualViewport.scale <= 1.01) return;
+  const mv = document.querySelector('meta[name=viewport]'); if (!mv) return;
+  const c = mv.content; mv.content = c + ', maximum-scale=1'; setTimeout(() => { mv.content = c; }, 80);
+});
 
+function resize() { const r = stage.getBoundingClientRect(); view.resize(r.width, r.height); }
 new ResizeObserver(resize).observe(stage);
-resize(); panel('main');
+resize(); showTitle();
 requestAnimationFrame(frame);
+
+// Test hook (used by the automated checks; harmless in play).
+window.__brawl = { get match() { return match; }, get state() { return state; }, get me() { return me; }, input };
