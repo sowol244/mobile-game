@@ -5,7 +5,7 @@ import {
   starsFor, rng, planWave, spawnWave, blockedLines, crashStart, entryCell, nextCombo, FEVER_COMBO, colorBomb, commonColor,
   shuffleColors, fillCount, deadClear, parseExit, crashLevel, spawnInterval, boardKey, mk,
 } from './logic.js';
-import { STAGES } from './stages.js';
+import { STAGES, CHAPTERS } from './stages.js';
 import { STEPS } from './tutorial.js';
 
 let n = 0;
@@ -146,31 +146,48 @@ test('solver finds the shortest sequence', () => {
   assert.equal(solve(S(pad(['c c c . . . . . .'])), 'clear', 4), null);
 });
 
-test(`every puzzle stage (${STAGES.length}) is stable at start and solvable in exactly par moves within its limit`, () => {
-  assert.ok(STAGES.length >= 20);
-  const seen = new Set();
+test(`every puzzle stage (${STAGES.length}) is stable at start, has no solution shorter than par, and a par-move solution replays to the goal`, () => {
+  assert.equal(STAGES.length, 100);
+  const seen = new Set(), names = new Set();
+  const D = { U: 'up', R: 'right', D: 'down', L: 'left' };
   STAGES.forEach((def, i) => {
+    const tag = `stage ${i + 1} (${def.name})`;
     const s = stageState(def);
-    const key = boardKey(s.board); assert.ok(!seen.has(key), `stage ${i + 1} duplicates another`); seen.add(key);
+    const key = boardKey(s.board); assert.ok(!seen.has(key), `${tag} duplicates another`); seen.add(key);
+    assert.ok(!names.has(def.name), `${tag}: duplicate name`); names.add(def.name);
     const t = cloneState(s);
-    assert.equal(settle(t.board, 'down', t.exit).moves.length, 0, `stage ${i + 1} has floating blocks`);
-    assert.equal(findGroups(t.board).length, 0, `stage ${i + 1} starts with a match`);
-    assert.equal(activateHoles(cloneState(s).board), null, `stage ${i + 1} starts with an active black hole`);
-    assert.ok(!goalMet(s, def.goal), `stage ${i + 1} is already solved`);
-    if (def.goal !== 'clear') assert.ok(def.exit && s.board.flat().some(b => b && b.t === 'k'), `stage ${i + 1} needs a core and an exit`);
-    const shorter = solve(stageState(def), def.goal, def.par - 1);
-    assert.equal(shorter === null || def.par === 0 ? null : shorter, null, `stage ${i + 1} is solvable in fewer than par=${def.par}`);
-    const sol = solve(stageState(def), def.goal, def.par);
-    assert.ok(sol && sol.length === def.par, `stage ${i + 1} not solvable in par=${def.par}`);
-    assert.ok(def.par <= def.limit, `stage ${i + 1} limit below par`);
-    // replay the solution on a fresh state to be sure it really clears
+    assert.equal(settle(t.board, 'down', t.exit).moves.length, 0, `${tag} has floating blocks`);
+    assert.equal(findGroups(t.board).length, 0, `${tag} starts with a match`);
+    assert.equal(activateHoles(cloneState(s).board), null, `${tag} starts with an active black hole`);
+    assert.ok(!goalMet(s, def.goal), `${tag} is already solved`);
+    if (def.goal !== 'clear') assert.ok(def.exit && s.board.flat().some(b => b && b.t === 'k'), `${tag} needs a core and an exit`);
+    assert.equal(def.limit, def.par + 2, `${tag}: limit must be par + 2`);
+    // lower bound: an exhaustive BFS (huge state cap, so null really means "impossible") finds nothing shorter
+    assert.strictEqual(solve(stageState(def), def.goal, def.par - 1, 5e6), null, `${tag} is solvable in fewer than par=${def.par}`);
+    // upper bound: the stored solution (or a fresh BFS one) has exactly par moves and really reaches the goal
+    const sol = def.sol ? [...def.sol].map(c => D[c]) : solve(stageState(def), def.goal, def.par);
+    assert.ok(sol && sol.length === def.par, `${tag} has no ${def.par}-move solution`);
     const r = stageState(def);
-    for (const d of sol) assert.ok(resolve(r, d), `stage ${i + 1}: move ${d} did nothing`);
-    assert.ok(goalMet(r, def.goal));
+    for (const d of sol) assert.ok(resolve(r, d), `${tag}: move ${d} did nothing`);
+    assert.ok(goalMet(r, def.goal), `${tag}: solution does not reach the goal`);
   });
-  // difficulty never drops sharply: par is non-decreasing over each block of 6 stages (on average)
-  const avg = k => STAGES.slice(k, k + 6).reduce((a, s) => a + s.par, 0) / 6;
-  assert.ok(avg(0) < avg(6) && avg(6) < avg(12) && avg(12) < avg(18));
+});
+
+test('chapters cover 1–100 in order, ≤12 stages each, and difficulty rises chapter by chapter', () => {
+  let next = 1;
+  for (const c of CHAPTERS) { assert.equal(c.from, next); assert.ok(c.to >= c.from && c.to - c.from + 1 <= 12); next = c.to + 1; }
+  assert.equal(next, STAGES.length + 1);
+  const avg = c => STAGES.slice(c.from - 1, c.to).reduce((a, s) => a + s.par, 0) / (c.to - c.from + 1);
+  for (let k = 1; k < CHAPTERS.length; k++) assert.ok(avg(CHAPTERS[k]) > avg(CHAPTERS[k - 1]), `chapter ${k + 1} easier than chapter ${k}`);
+  // a smooth curve: inside a chapter par never drops by more than 1; a new chapter may restart up to 2 lower
+  for (let i = 25; i < STAGES.length; i++) {
+    const opens = CHAPTERS.some(c => c.from === i + 1);
+    assert.ok(STAGES[i].par >= STAGES[i - 1].par - (opens ? 2 : 1), `par drops sharply at stage ${i + 1}`);
+  }
+  assert.ok(STAGES.at(-1).par >= 10);
+  const goals = new Set(STAGES.map(s => s.goal)), types = new Set(STAGES.flatMap(s => s.rows.join(' ').split(/\s+/).map(t => t[0])));
+  for (const g of ['clear', 'rescue', 'both']) assert.ok(goals.has(g));
+  for (const k of ['#', '*', 'o', 'K']) assert.ok(types.has(k), 'block type ' + k + ' is used');
 });
 
 test('every tutorial step is solvable within its limit', () => {

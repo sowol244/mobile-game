@@ -5,7 +5,7 @@ import {
   rng, dailySeed, crashLevel, spawnInterval, planWave, blockedLines, spawnWave, crashStart, entryCell,
   shuffleColors, commonColor, colorBomb, nextCombo, FEVER_COMBO, FEVER_TIME, fillCount, parseBoard, parseExit, mk,
 } from './logic.js';
-import { STAGES } from './stages.js';
+import { STAGES, CHAPTERS } from './stages.js';
 import { STEPS } from './tutorial.js';
 import { createSound } from './sound.js';
 
@@ -913,23 +913,65 @@ function refreshModes() {
   const now = new Date();
   $('mDailyD').textContent = `${now.getMonth() + 1}월 ${now.getDate()}일: 모두 같은 블록이 와요`;
 }
-function buildStages() {
+// Stage select: one chapter (≤12 stages) per page; ‹ › buttons, chapter dots, swipe or ←/→ to turn pages.
+let chapter = -1;
+const unlocked = i => i === 0 || (stars[i - 1] || 0) > 0;
+const chapterOf = i => CHAPTERS.findIndex(c => i >= c.from - 1 && i <= c.to - 1);
+function buildStages(ch) {
+  let cur = STAGES.findIndex((_, i) => !(stars[i] > 0));
+  if (ch == null) ch = chapter >= 0 && phase === 'title' ? chapter : chapterOf(phase === 'result' || mode === 'puzzle' ? stageIdx : Math.max(0, cur));
+  const dir = chapter < 0 || ch === chapter ? '' : ch > chapter ? 'slide-l' : 'slide-r';
+  chapter = ch;
+  const C0 = CHAPTERS[ch];
   const grid = $('grid'); grid.replaceChildren();
-  const unlocked = i => i === 0 || (stars[i - 1] || 0) > 0;
-  let cur = STAGES.findIndex((_, i) => !(stars[i] > 0)); if (cur < 0) cur = -1;
-  STAGES.forEach((s, i) => {
+  grid.classList.remove('slide-l', 'slide-r'); void grid.offsetWidth; if (dir) grid.classList.add(dir);
+  let chStars = 0;
+  for (let i = C0.from - 1; i <= C0.to - 1; i++) {
+    const s = STAGES[i];
+    chStars += stars[i] || 0;
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'st' + (i === cur ? ' cur' : ''); b.disabled = !unlocked(i);
     const no = document.createElement('span'); no.className = 'no'; no.textContent = i + 1;
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name;
     const sr = document.createElement('span'); sr.className = 'sr';
     for (let k = 0; k < 3; k++) { const e = document.createElement(k < (stars[i] || 0) ? 'i' : 'span'); e.textContent = '★'; sr.append(e); }
-    b.append(no, sr);
+    b.append(no, nm, sr);
     b.setAttribute('aria-label', `${i + 1}단계 ${s.name}${stars[i] ? `, 별 ${stars[i]}개` : ''}`);
-    b.title = s.name;
     b.addEventListener('click', () => { sound.unlock(); sound.click(); startPuzzle(i); });
     grid.append(b);
+  }
+  $('chNo').textContent = `CHAPTER ${ch + 1} · ${C0.from}–${C0.to}`;
+  $('chName').textContent = C0.name;
+  $('chStars').textContent = `★ ${chStars} / ${(C0.to - C0.from + 1) * 3}`;
+  $('chPrev').disabled = ch === 0;
+  $('chNext').disabled = ch === CHAPTERS.length - 1 || !unlocked(CHAPTERS[ch + 1].from - 1);
+  const dots = $('dots'); dots.replaceChildren();
+  CHAPTERS.forEach((c, k) => {
+    const d = document.createElement('button');
+    d.type = 'button'; d.textContent = k + 1; d.setAttribute('role', 'tab'); d.setAttribute('aria-selected', String(k === ch));
+    d.setAttribute('aria-label', `챕터 ${k + 1} ${c.name}`);
+    let all = true; for (let i = c.from - 1; i <= c.to - 1; i++) if (!(stars[i] > 0)) all = false;
+    d.className = (k === ch ? 'on' : '') + (all ? ' done' : '');
+    d.disabled = !unlocked(c.from - 1);
+    d.addEventListener('click', () => { sound.click(); buildStages(k); });
+    dots.append(d);
   });
   $('starTotal').textContent = `★ ${starCount()} / ${STAGES.length * 3}`;
+}
+function turnChapter(step) {
+  const k = chapter + step;
+  if (k < 0 || k >= CHAPTERS.length || !unlocked(CHAPTERS[k].from - 1)) return;
+  sound.click(); buildStages(k);
+}
+$('chPrev').addEventListener('click', () => turnChapter(-1));
+$('chNext').addEventListener('click', () => turnChapter(1));
+{
+  let sw = null; const g = $('grid');
+  g.addEventListener('pointerdown', e => { sw = { x: e.clientX, y: e.clientY }; });
+  g.addEventListener('pointerup', e => {
+    if (!sw) return; const dx = e.clientX - sw.x, dy = e.clientY - sw.y; sw = null;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) turnChapter(dx < 0 ? 1 : -1);
+  });
 }
 function renderTop() {
   const top = load('top', []), rows = $('rows');
@@ -987,7 +1029,7 @@ startBtn.addEventListener('click', () => {
 });
 $('askYes').addEventListener('click', () => { sound.unlock(); startTutorial(true); });
 $('askNo').addEventListener('click', () => { save('tut', true); refreshModes(); panel('mode'); });
-$('mPuzzle').addEventListener('click', () => { sound.click(); buildStages(); panel('stages'); });
+$('mPuzzle').addEventListener('click', () => { sound.click(); chapter = -1; buildStages(); panel('stages'); });
 $('mCrash').addEventListener('click', () => { sound.unlock(); sound.click(); startCrash(false); });
 $('mDaily').addEventListener('click', () => { sound.unlock(); sound.click(); startCrash(true); });
 $('stagesBack').addEventListener('click', () => { if (phase === 'result') { showTitle(); } else { refreshModes(); panel('mode'); } });
@@ -1081,6 +1123,7 @@ window.addEventListener('keydown', e => {
     if (mode === 'puzzle' && e.code === 'KeyH') hint();
     if (mode === 'puzzle' && e.code === 'KeyR') startPuzzle(stageIdx);
   }
+  if (!panels.stages.hidden && !overlay.hidden && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { turnChapter(e.code === 'ArrowLeft' ? -1 : 1); return; }
   if (e.code === 'Escape' || e.code === 'KeyP') { if (phase === 'play') pauseGame(); else if (phase === 'paused') resumeGame(); }
 });
 window.addEventListener('keyup', e => { if (e.key === 'Shift') preview = null; });

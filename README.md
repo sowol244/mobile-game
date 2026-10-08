@@ -9,7 +9,7 @@
   - 효과음(`sound.js`, 오디오 파일 없이 합성), 파티클·화면 흔들림 연출, 이어하기(브라우저에 자동 저장)
   - 순위표: Firebase Firestore 사용. 보안 규칙은 `neon-block/firestore.rules`를 Firebase 콘솔 → Firestore → 규칙에 붙여넣어 게시합니다.
 - `lux-umbra/` 룩스 앤 움브라: 빛을 켜고 꺼서 길을 여는 퍼즐 게임 (12스테이지, 테스트 `node lux-umbra/game.test.mjs`)
-- `gravity-crash/` 그라비티 크래시: 중력을 돌려 블록을 터뜨리는 퍼즐 게임 (퍼즐 24스테이지, 크래시 무한 모드, 테스트 `node gravity-crash/logic.test.mjs`)
+- `gravity-crash/` 그라비티 크래시: 중력을 돌려 블록을 터뜨리는 퍼즐 게임 (퍼즐 100스테이지 9챕터, 크래시 무한 모드, 테스트 `node gravity-crash/logic.test.mjs`)
 - `one-move/` ONE MOVE: 타일 하나씩 옮겨 숫자를 합치는 퍼즐 게임 (41스테이지, 오늘의 퍼즐, 테스트 `node one-move/logic.test.mjs`)
 - `meteor-dodge/` 스타 슈터: 적을 쏘며 우주를 나는 슈팅 게임 (기체 3종, 스테이지마다 3페이즈 + 보스)
 

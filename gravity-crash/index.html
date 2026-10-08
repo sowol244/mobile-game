@@ -102,7 +102,7 @@
   .mode:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 
   #grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: min(340px, 100%); }
-  .st { aspect-ratio: 1 / 0.86; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; color: var(--fg); background: rgba(18, 18, 58, 0.85); border: 1px solid #2c2c70; border-radius: 12px; }
+  .st { aspect-ratio: 1 / 0.9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; color: var(--fg); background: rgba(18, 18, 58, 0.85); border: 1px solid #2c2c70; border-radius: 12px; }
   .st .no { font-family: var(--num); font-weight: 900; font-size: 18px; color: var(--cyan); }
   .st .sr { font-size: 11px; letter-spacing: 1px; color: #3a3a7a; }
   .st .sr i { font-style: normal; color: var(--yellow); text-shadow: 0 0 6px rgba(255, 230, 0, 0.7); }
@@ -111,6 +111,24 @@
   .st:disabled .no { color: var(--muted); }
   .st:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   #starTotal { font-family: var(--num); font-size: 14px; color: var(--yellow); }
+  #pStages { gap: 10px; }
+  #chap { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 6px; width: min(340px, 100%); }
+  #chInfo { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; }
+  #chNo { font-family: var(--num); font-size: 11px; letter-spacing: 0.14em; color: var(--muted); }
+  #chName { font-size: 19px; font-weight: 900; color: var(--pink); text-shadow: 0 0 12px rgba(255, 47, 209, 0.6); white-space: nowrap; }
+  #chStars { font-family: var(--num); font-size: 12px; color: var(--yellow); }
+  .nav { width: 44px; height: 44px; border-radius: 50%; font-size: 26px; line-height: 1; color: var(--cyan); background: transparent; border: 1px solid rgba(0, 240, 255, 0.55); padding: 0 0 3px; }
+  .nav:disabled { opacity: 0.25; cursor: default; }
+  .nav:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  #grid { touch-action: pan-y; min-height: 252px; align-content: start; }
+  #grid.slide-l { animation: slideL 0.22s ease-out; } #grid.slide-r { animation: slideR 0.22s ease-out; }
+  @keyframes slideL { from { transform: translateX(30px); opacity: 0.2; } } @keyframes slideR { from { transform: translateX(-30px); opacity: 0.2; } }
+  .st .nm { font-size: 10px; color: var(--muted); max-width: 92%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #dots { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+  #dots button { width: 26px; height: 26px; border-radius: 50%; padding: 0; font-family: var(--num); font-size: 10px; font-weight: 700; color: var(--muted); background: rgba(18, 18, 58, 0.85); border: 1px solid #2c2c70; }
+  #dots button.on { color: #04121a; background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 10px rgba(0, 240, 255, 0.6); }
+  #dots button.done { border-color: var(--yellow); }
+  #dots button:disabled { opacity: 0.3; }
 
   #rows { list-style: none; margin: 0; padding: 0; width: min(340px, 100%); display: grid; gap: 4px; text-align: left; }
   #rows li { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; padding: 7px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); font-size: 14px; }
@@ -184,7 +202,13 @@
       <div class="panel" id="pStages" hidden>
         <h2>스테이지</h2>
         <div id="starTotal"></div>
+        <div id="chap">
+          <button class="nav" id="chPrev" type="button" aria-label="이전 챕터">‹</button>
+          <div id="chInfo"><small id="chNo"></small><b id="chName"></b><span id="chStars"></span></div>
+          <button class="nav" id="chNext" type="button" aria-label="다음 챕터">›</button>
+        </div>
         <div id="grid"></div>
+        <div id="dots" role="tablist" aria-label="챕터"></div>
         <button class="go ghost" id="stagesBack" type="button">돌아가기</button>
       </div>
       <div class="panel" id="pResult" hidden>
