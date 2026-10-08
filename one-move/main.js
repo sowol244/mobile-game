@@ -13,7 +13,7 @@ const store = {
   set(k, v) { try { localStorage.setItem('onemove-' + k, JSON.stringify(v)); } catch (e) {} },
 };
 const UNDOS = 3, HINTS = 2;
-const DIR_ARROW = ['위', '오른쪽', '아래', '왼쪽'];
+const DIR_ARROW = ['위로', '오른쪽으로', '아래로', '왼쪽으로'];
 
 let recs = store.get('rec', {});        // stage id -> { stars, best }
 let dailyRecs = store.get('daily', {}); // day number -> { stars, best }
@@ -62,7 +62,7 @@ function layoutBoard() {
   boardEl.style.width = boardEl.style.height = size + 'px';
   boardEl.style.setProperty('--cs', geo.cs + 'px');
   $('status').style.top = boardEl.offsetTop + size + 14 + 'px';
-  boardEl.querySelectorAll('.cell').forEach(el => { const [x, y] = xy(+el.dataset.k); el.style.transform = `translate(${x}px,${y}px)`; });
+  boardEl.querySelectorAll('.cell, .goalRing').forEach(el => { const [x, y] = xy(+el.dataset.k); el.style.transform = `translate(${x}px,${y}px)`; });
   for (const el of tileEls.values()) el.style.transition = 'none';
   sync(null);
   requestAnimationFrame(() => { for (const el of tileEls.values()) el.style.transition = ''; });
@@ -78,6 +78,7 @@ function buildCells() {
     c.dataset.k = k;
     boardEl.append(c);
   }
+  if (st.goal >= 0) { const g = document.createElement('div'); g.className = 'goalRing'; g.dataset.k = st.goal; boardEl.append(g); }
 }
 function paint(el, code) {
   const kind = kindOf(code), v = valueOf(code), digits = String(v).length;
@@ -152,7 +153,9 @@ function drawMarks() {
     const k = from + DIRS[d][0] * st.n + DIRS[d][1], a = document.createElement('div');
     a.className = 'arrow ' + cls;
     a.style.setProperty('--rot', d * 90 + 'deg'); a.style.setProperty('--dx', DIRS[d][1]); a.style.setProperty('--dy', DIRS[d][0]);
-    place(a, k); boardEl.append(a);
+    place(a, k);
+    if (cls === 'merge') { const [x, y] = xy(k), o = -(geo.cs + geo.gap) * 0.3; a.style.transform = `translate(${x + DIRS[d][1] * o}px,${y + DIRS[d][0] * o}px)`; }
+    boardEl.append(a);
   };
   if (at >= 0 && movable(st.codes[at])) {
     for (let d = 0; d < 4; d++) {
@@ -191,7 +194,7 @@ function setHeader() {
   $('goalWhere').hidden = !d.goal;
   const cuts = $('cuts');
   if (mode === 'tutorial' || !d.opt) cuts.innerHTML = '<span>—</span>';
-  else { const c = starCut(d.opt, d.limit); cuts.innerHTML = `<span><b>★★★</b> ${c.three}수 이내</span>`; }
+  else { const c = starCut(d.opt, d.limit); cuts.innerHTML = `<span><b>★★★</b> ${Math.min(c.three, d.limit)}수 이내</span>`; }
   $('liveStars').innerHTML = mode === 'tutorial' ? '' : starsText(bestStars());
 }
 const starsText = n => '★'.repeat(n) + '<i>' + '★'.repeat(3 - n) + '</i>';
@@ -210,6 +213,8 @@ function showPanel(id) {
 }
 function loadDef(def) {
   st = parseStage(def);
+  boardEl.classList.remove('win');
+  document.querySelectorAll('.confetti').forEach(c => c.remove());
   history = []; selId = 0; hintMove = null;
   buildCells(); layoutBoard();
 }
@@ -315,7 +320,6 @@ function finish(win) {
   }
   lastResult.canUndo = !win && history.length && undos > 0;
   setHeader();
-  setTimeout(() => rNext.focus({ preventScroll: true }), 50);
 }
 function confetti(count) {
   const colors = ['#f5b276', '#e9706a', '#3f9a8a', '#f2b33d', '#b673cc', '#589fd4'];
@@ -351,7 +355,7 @@ async function hint() {
   }
   hints--; hinted = true;
   hintMove = mv; selId = st.ids[mv[0]];
-  toast(`힌트: 이 타일을 ${DIR_ARROW[mv[1]]}으로`, 2200);
+  toast(`힌트: 이 타일을 ${DIR_ARROW[mv[1]]}`, 2200);
   sound.hint(); hud(); drawMarks();
 }
 
@@ -393,7 +397,7 @@ function endTutorial() {
 
 /* ---------- panels ---------- */
 function showTitle() { mode = 'title'; showPanel('title'); }
-function unlocked(i) { return i === 0 || !!recs[STAGES[i - 1].id] || (i > 1 && !!recs[STAGES[i - 2].id]); }
+function unlocked(i) { return i === 0 || !!recs[STAGES[i].id] || !!recs[STAGES[i - 1].id] || (i > 1 && !!recs[STAGES[i - 2].id]); }
 function totalStars() { return STAGES.reduce((a, s) => a + (recs[s.id] ? recs[s.id].stars : 0), 0); }
 function showSelect() {
   mode = 'title'; showPanel('select');
@@ -442,16 +446,16 @@ async function playDaily() {
   startDef(cache.def, day);
 }
 const HELP = [
-  ['<div class="tile sel" data-e="1"><span class="n">2</span></div>', '타일을 눌러 고르고, 화살표나 밀기로 한 칸 옮겨요.'],
-  ['<div class="tile" data-e="2"><span class="n">4</span></div>', '같은 숫자에 부딪히면 합쳐져요. (2+2=4)'],
-  ['<div class="tile" data-e="3"><span class="n">8</span></div>', '다른 숫자·벽·가장자리로는 못 가요. 이동도 그대로예요.'],
-  ['<div class="tile" data-e="4"><span class="n">16</span></div>', '정해진 이동 안에 목표 숫자를 만들면 클리어!'],
-  ['<div class="tile wall"><span class="n"></span></div>', '벽은 길을 막아요. ★ 칸이 있으면 그 자리에서 만들어요.'],
-  ['<div class="tile pin" data-e="2"><span class="n">4</span></div>', '고정 타일은 못 움직여요. 같은 숫자는 합쳐져요.'],
-  ['<div class="tile once" data-e="1"><span class="n">2</span></div>', '①표시 타일은 한 번 움직이면 고정돼요.'],
+  ['<div class="tile sel" data-e="1"><span class="n">2</span></div>', '타일을 고르고, 눌러서나 밀어서 한 칸 옮겨요.'],
+  ['<div class="tile" data-e="2"><span class="n">4</span></div>', '같은 숫자는 합쳐지고, 다른 숫자엔 막혀요.'],
+  ['<div class="tile" data-e="4"><span class="n">16</span></div>', '이동 횟수 안에 목표 숫자를 만들면 클리어!'],
+  ['<div class="tile wall"><span class="n"></span></div>', '벽은 움직이지 않고 길을 막아요.'],
+  ['<div class="cell goal" style="position:absolute;--cs:30px;width:30px;height:30px"></div>', '★ 칸이 있으면 그 칸에서 만들어야 해요.'],
+  ['<div class="tile pin" data-e="2"><span class="n">4</span></div>', '고정 타일은 못 움직이지만 합쳐져요.'],
+  ['<div class="tile once" data-e="1"><span class="n">2</span></div>', '① 타일은 한 번 움직이면 고정돼요.'],
   ['<div class="tile gate"><span class="n">8</span></div>', '문은 적힌 숫자를 만들면 열려요.'],
-  ['<div class="tile" data-e="5"><span class="n">32</span></div>', '최소 이동에 가까울수록 별이 많아요. 힌트를 쓰면 최대 ★2.'],
-  ['<div class="tile" data-e="6"><span class="n">64</span></div>', 'PC: 클릭 후 방향키·WASD, Z 되돌리기, H 힌트, R 다시'],
+  ['<div class="tile" data-e="5"><span class="n">32</span></div>', '최소 이동에 가까울수록 별이 많아요.'],
+  ['<div class="tile" data-e="6"><span class="n">64</span></div>', 'PC: 클릭 후 방향키, Z 되돌리기, H 힌트'],
 ];
 function showHelp() {
   showPanel('help');
