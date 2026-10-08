@@ -5,7 +5,7 @@ export const STEP = 1 / 120;          // fixed physics step
 export const PHYS = {
   grav: 40,          // tiles/s²
   jumpV: 14,         // ≈ 2.4 tiles high
-  cutV: -6,          // releasing jump early caps the rise speed to this
+  cutV: -10,         // releasing jump early caps the rise speed (mild, so a quick tap still jumps well)
   maxFall: 20,
   run: 6,
   accGround: 70,

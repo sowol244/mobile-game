@@ -300,8 +300,9 @@ function stepCrates(s, dt) {
     if (!s.p.dead) others.push(s.p);
     const v0 = c.vy;
     if (moveAxis(s, c, c.vy * dt, 'y', others)) { if (v0 > 8) s.events.push({ type: 'thud', x: c.x + 0.5, y: c.y + 1 }); c.vy = 0; }
-    if (c.y > s.h + 2) { // fell out of the world: it comes back where it started
-      c.x = c.hx + (1 - c.w) / 2; c.y = c.hy + 1 - c.h; c.vy = 0;
+    const onSpikes = tileAt(s, Math.floor(c.x + c.w / 2), Math.floor(c.y + c.h - 0.05)) === '^';
+    if (c.y > s.h + 2 || onSpikes) { // fell out of the world or onto spikes: it comes back where it started
+      c.x = c.hx + (1 - c.w) / 2; c.y = c.hy; c.vy = 0;
       s.events.push({ type: 'crateBack', x: c.x, y: c.y });
     }
   }

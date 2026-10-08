@@ -8,7 +8,7 @@
 // World drawing uses tile units: the canvas transform maps 1 unit to one tile.
 
 import { castRay, lightSources, torchOrigin, tileAt, pointLight } from './game.js';
-import { COL, LIGHT } from './config.js';
+import { COL } from './config.js';
 import { drawPlayer, drawStatue, drawCrate } from './art.js';
 
 const TAU = Math.PI * 2;
@@ -186,7 +186,7 @@ export function createRenderer(canvas) {
       if (src.kind === 'zone') {
         const c = RGB[src.col];
         const grd = lctx.createLinearGradient(0, src.y, 0, src.y + src.h);
-        grd.addColorStop(0, rgba(c, 0.42)); grd.addColorStop(1, rgba(c, 0.2));
+        grd.addColorStop(0, rgba(c, 0.34)); grd.addColorStop(1, rgba(c, 0.15));
         lctx.fillStyle = grd; lctx.fillRect(src.x, src.y, src.w, src.h);
         continue;
       }
@@ -246,12 +246,8 @@ export function createRenderer(canvas) {
   function drawBackground(s, t) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const grd = ctx.createLinearGradient(0, 0, 0, H);
-    grd.addColorStop(0, '#060a17'); grd.addColorStop(0.6, '#0b1430'); grd.addColorStop(1, '#101a3a');
+    grd.addColorStop(0, '#060a17'); grd.addColorStop(0.6, '#0c1532'); grd.addColorStop(1, '#151f42'); // cold, a little foggy low down
     ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
-    // far fog band
-    const fog = ctx.createLinearGradient(0, H * 0.45, 0, H);
-    fog.addColorStop(0, 'rgba(60,90,160,0)'); fog.addColorStop(1, 'rgba(60,90,160,0.12)');
-    ctx.fillStyle = fog; ctx.fillRect(0, 0, W, H);
     // parallax silhouettes: far pillars and near trees
     const seed = [...s.def.id].reduce((a, c) => a * 31 + c.charCodeAt(0), 7);
     for (const [par, col, base, hgt] of [[0.18, '#0f1934', 0.78, 0.5], [0.4, '#0a1128', 0.86, 0.38]]) {
@@ -296,12 +292,12 @@ export function createRenderer(canvas) {
         ctx.save();
         ctx.globalAlpha = 1 - a;
         ctx.setLineDash([0.12, 0.09]); ctx.lineDashOffset = -t * 0.15;
-        ctx.strokeStyle = rgba(B.edge, c === 'S' ? 0.55 : 0.6); ctx.lineWidth = 0.045;
+        ctx.strokeStyle = rgba(B.edge, c === 'S' ? 0.42 : 0.6); ctx.lineWidth = 0.045;
         roundRect(ctx, x + 0.08, y + 0.08, 0.84, 0.84, 0.1); ctx.stroke();
         ctx.setLineDash([]);
         ctx.fillStyle = rgba(B.edge, 0.07); ctx.fill();
         // tiny glyph in the middle: sun for light-type, moon for shadow
-        ctx.fillStyle = rgba(B.edge, 0.4);
+        ctx.fillStyle = rgba(B.edge, c === 'S' ? 0.28 : 0.4);
         if (c === 'S') { ctx.beginPath(); ctx.arc(x + 0.5, y + 0.5, 0.11, 0, TAU); ctx.arc(x + 0.56, y + 0.46, 0.09, 0, TAU, true); ctx.fill('evenodd'); }
         else { ctx.beginPath(); ctx.arc(x + 0.5, y + 0.5, 0.06, 0, TAU); ctx.fill(); }
         ctx.restore();
@@ -534,16 +530,14 @@ export function createRenderer(canvas) {
     if (shake > 0) { shake = Math.max(0, shake - dt); sx = (Math.random() - 0.5) * shake * 0.5; sy = (Math.random() - 0.5) * shake * 0.5; }
     const cx = cam.x + sx, cy = cam.y + sy;
 
-    const P = window.__prof; let t0 = performance.now(); const mark = k => { if (P) { const n = performance.now(); P[k] = (P[k] || 0) + n - t0; t0 = n; } };
-    drawBackground(s, t); mark('bg');
-    const srcs = drawLight(s, t); mark('light');
+    drawBackground(s, t);
+    const srcs = drawLight(s, t);
     // light onto the background
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
     ctx.drawImage(light, 0, 0, canvas.width, canvas.height);
     ctx.globalAlpha = 0.55; ctx.drawImage(bloom, 0, 0, canvas.width, canvas.height); ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    mark('lightBlit');
     // rock
     const px = T * dpr;
     blit(ctx, layer, cx * px, cy * px, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
@@ -556,18 +550,17 @@ export function createRenderer(canvas) {
     rctx.drawImage(light, 0, 0);
     rctx.globalCompositeOperation = 'source-over';
     ctx.globalCompositeOperation = 'lighter';
-    for (let k = 0; k < 3; k++) ctx.drawImage(rimTmp, 0, 0, canvas.width, canvas.height); // light is dim in alpha; add it up
+    for (let k = 0; k < 2; k++) ctx.drawImage(rimTmp, 0, 0, canvas.width, canvas.height); // light is dim in alpha; add it up
     ctx.globalCompositeOperation = 'source-over';
 
-    mark('rockRims');
     // world-space things
     ctx.setTransform(px, 0, 0, px, -cx * px, -cy * px);
     ctx.fillStyle = '#04050a'; // outside the map is solid rock
     ctx.fillRect(-60, -60, 60, s.h + 120); ctx.fillRect(s.w, -60, 60, s.h + 120); ctx.fillRect(0, -60, s.w, 60); ctx.fillRect(0, s.h, s.w, 60);
     const vx0 = Math.floor(cx) - 1, vy0 = Math.floor(cy) - 1, vx1 = Math.ceil(cx + W / T) + 1, vy1 = Math.ceil(cy + H / T) + 1;
-    drawBlocks(s, t, vx0, vy0, vx1, vy1); mark('blocks');
-    drawProps(s, t, srcs); mark('props');
-    drawActors(s, t, srcs); mark('actors');
+    drawBlocks(s, t, vx0, vy0, vx1, vy1);
+    drawProps(s, t, srcs);
+    drawActors(s, t, srcs);
     // bright torch core on top of everything
     if (s.fl.on && !p.dead) {
       const o = torchOrigin(s), c = RGB[s.fl.col];
@@ -590,7 +583,7 @@ export function createRenderer(canvas) {
     vg.addColorStop(0, 'rgba(2,3,10,0)'); vg.addColorStop(1, 'rgba(2,3,10,0.6)');
     ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
     if (p.dead) { ctx.fillStyle = `rgba(0,0,0,${clamp(1 - p.dead / 0.7, 0, 1) * 0.6})`; ctx.fillRect(0, 0, W, H); }
-    if (!opts.noSigns) drawSigns(s); mark('rest');
+    if (!opts.noSigns) drawSigns(s);
   }
 
   return {

@@ -151,6 +151,14 @@ test('spikes kill; respawn goes back to the last checkpoint with the world as it
   assert.equal(s.crates[0].x, cx);
 });
 
+test('a crate pushed onto spikes comes back to where it started', () => {
+  const s = mk(['##########', '#........#', '#.PK.....#', '####.#####', '####^#####', '##########']);
+  const hx = s.crates[0].x;
+  run(s, { mx: 1 }, 0.6);
+  run(s, {}, 1);
+  assert.ok(Math.abs(s.crates[0].x - hx) < 1e-9 && s.crates[0].y === 2);
+});
+
 test('stars: clear, shard, par time', () => {
   const s = createGame(LEVELS[0]);
   s.t = 10; s.shard.got = true;

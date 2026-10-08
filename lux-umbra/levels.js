@@ -4,7 +4,7 @@
 //   R  붉은 블록: solid in red light        B  푸른 블록: solid in blue light
 //   r  붉은 유리 / b 푸른 유리: solid, light passing through takes its colour
 //   ^  spikes (v hangs from the ceiling)  D  goal door   H  door hidden in the wall until light touches it
-//   =  lever (toggles the groups in `levers`, in reading order)
+//   =  lever (toggles the groups in `levers`)        — `levers`, `lenses` and `signs` are listed in reading order
 //   %  lens stand (sets the torch colour from `lenses`)
 //   ?  sign (text from `signs`)            C  checkpoint
 //   P  player   K  crate   M  stone statue   o  light shard (★)
@@ -82,7 +82,7 @@ export const LEVELS = [
   // ---------------- 2. 그림자 ----------------
   {
     id: '2-1', ch: 1, name: '방의 불', par: 25,
-    signs: ['레버를 건드리면 방 불이 켜져요', '불을 끄면 그림자 다리가 생겨요'],
+    signs: ['불을 끄면 그림자 다리가 생겨요', '레버를 건드리면 방 불이 켜져요'],
     zones: [{ x: 1, y: 2, w: 24, h: 11, g: 'a', on: false }],
     levers: ['a', 'a'],
     rows: [

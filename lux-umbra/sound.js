@@ -72,7 +72,7 @@ const CHORDS = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];
 const PENTA = [69, 72, 74, 76, 79, 81, 84];
 const hz = m => 440 * Math.pow(2, (m - 69) / 12);
 const STEP_S = 0.3;
-let timer = null, nextT = 0, stepN = 0, lightOn = false, musicWanted = false;
+let timer = null, nextT = 0, stepN = 0, lightOn = false;
 
 function pad(chord, t) {
   for (const m of [chord[0] - 12, ...chord]) {
@@ -116,7 +116,6 @@ function schedule() {
 }
 
 export function music(on) {
-  musicWanted = on;
   if (!ac) return;
   if (on && !timer) {
     if (!noiseBuf) noise(0.01, 0.0001);
@@ -125,11 +124,9 @@ export function music(on) {
     musicBus.gain.setTargetAtTime(0.9, ac.currentTime, 0.6);
   } else if (!on && timer) {
     musicBus.gain.setTargetAtTime(0, ac.currentTime, 0.3);
-    const t = timer; timer = null;
-    setTimeout(() => { if (!timer) clearInterval(t); else clearInterval(t); }, 900);
+    clearInterval(timer); timer = null; // notes already scheduled fade out with the bus
   }
 }
-export const musicWantedNow = () => musicWanted;
 
 // Lights on → the plucked layer fades in; lights off → back to the calm pad.
 export function musicLight(on) {
