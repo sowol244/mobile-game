@@ -1,25 +1,26 @@
 // Maps are text. Only the top half (red side) is written; the bottom half is the same
 // rows rotated 180°, so both teams get an identical, fair layout.
 //   .  grass      #  wall (blocks walking and bullets)
-//   ~  water (blocks walking, bullets fly over)      R  red spawn (becomes B for blue)
+//   ~  water (blocks walking, bullets fly over)      *  bush (hides whoever stands in it)
+//   R  red spawn (becomes B for blue)
 
 const TEAM_TOP = [
   '...................',
   '.....R...R...R.....',
   '...................',
   '..###.........###..',
-  '...................',
+  '.***...........***.',
   '.......#####.......',
-  '~~.................',
+  '~~..........***....',
   '~~....#.....#......',
-  '......#.....#......',
+  '......#.***.#......',
   '..##.........##....',
   '..#...........~~~..',
   '.......##.##.......',
-  '....#.........#....',
+  '....#..**.....#....',
   '....#...~~~...#....',
 ];
-const TEAM_MID = '...##....#....##...';
+const TEAM_MID = '...##.**.#.**.##...';
 
 function mirror(top, mid) {
   const bottom = top.map(r => [...r].reverse().join('').replace(/R/g, 'B')).reverse();
@@ -45,4 +46,24 @@ export function parseMap(rows) {
 
 export const MAPS = {
   team: { name: '돌담 광장', rows: mirror(TEAM_TOP, TEAM_MID) },
+  // Small practice yard for the tutorial: one dummy (R) to shoot at, a wall and a bush.
+  tutorial: {
+    name: '연습장',
+    rows: [
+      '.............',
+      '.............',
+      '......R......',
+      '.............',
+      '..###....***.',
+      '.........***.',
+      '.............',
+      '...~~........',
+      '.............',
+      '.............',
+      '.............',
+      '......B......',
+      '.............',
+    ],
+    marker: { x: 9.5, y: 8.5 }, // where the "walk here" step points
+  },
 };

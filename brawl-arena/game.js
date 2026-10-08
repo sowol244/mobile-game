@@ -1,9 +1,10 @@
 // Match rules. No DOM here: the browser and the node tests drive the same code.
-// A match is stepped with a control per brawler: { mx, my, fire }
-//   mx, my  movement, length 0..1
-//   fire    null, or an angle in radians (0 = right, π/2 = down)
+// A match is stepped with a control per brawler: { mx, my, fire, sup }
+//   mx, my     movement, length 0..1
+//   fire, sup  null, or { a, d }: aim angle in radians (0 = right, π/2 = down) and
+//              distance in tiles (only lobbed attacks use d; null means full range)
 
-import { BRAWLERS, TEAM_MODE, HEAL } from './config.js';
+import { BRAWLERS, KINDS, TEAM_MODE, HEAL, BUSH } from './config.js';
 import { parseMap } from './maps.js';
 
 export const BLUE = 0, RED = 1;
@@ -23,6 +24,7 @@ export function rng(seed) {
 export const tileAt = (map, tx, ty) => (tx < 0 || ty < 0 || tx >= map.w || ty >= map.h ? '#' : map.tiles[ty * map.w + tx]);
 export const blocksWalk = ch => ch === '#' || ch === '~';
 export const blocksShot = ch => ch === '#';
+export const inBush = (map, x, y) => tileAt(map, Math.floor(x), Math.floor(y)) === '*';
 
 export function hitsWall(map, x, y, r) {
   for (let ty = Math.floor(y - r); ty <= Math.floor(y + r); ty++)
@@ -40,55 +42,72 @@ export function lineOfSight(map, ax, ay, bx, by) {
   return true;
 }
 
-// ---------- match ----------
+// Can the given team see brawler o? Teammates always; enemies unless hidden in a bush.
+export function visibleTo(m, team, o) {
+  if (!o.alive) return false;
+  if (o.team === team || o.revealT > 0 || !inBush(m.map, o.x, o.y)) return true;
+  return m.brawlers.some(v => v.alive && v.team === team && Math.hypot(v.x - o.x, v.y - o.y) <= BUSH.seeDist);
+}
+
+// ---------- match setup ----------
 const BOT_NAMES = [['봇 하늘', '봇 바다'], ['봇 불꽃', '봇 번개', '봇 태풍']];
 
-export function createMatch({ mapDef, seed = 1, playerKind = 'gyo', botsOnly = false } = {}) {
+// The usual 3:3 line-up: the player in the middle of the blue team, bots on random brawlers.
+export function teamRoster({ playerKind = 'gyo', botsOnly = false, rand = Math.random } = {}) {
+  const pick = () => KINDS[Math.floor(rand() * KINDS.length)];
+  const roster = [];
+  for (const team of [BLUE, RED]) for (let slot = 0; slot < 3; slot++) {
+    const isPlayer = !botsOnly && team === BLUE && slot === 1;
+    roster.push({
+      team, slot, isPlayer,
+      kind: isPlayer ? playerKind : pick(),
+      name: isPlayer ? '나' : team === BLUE ? BOT_NAMES[0][slot === 0 ? 0 : 1] : BOT_NAMES[1][slot],
+    });
+  }
+  return roster;
+}
+
+// endless: practice matches (the tutorial) never end and keep no time limit.
+export function createMatch({ mapDef, seed = 1, roster = null, playerKind = 'gyo', botsOnly = false, respawn = TEAM_MODE.respawn, endless = false } = {}) {
   const map = parseMap(mapDef.rows);
   const m = {
-    map, rand: rng(seed), t: 0, tick: 0,
+    map, mapDef, rand: rng(seed), t: 0, tick: 0, respawn, endless,
     phase: 'play', // play → sudden → over
     score: [0, 0], winner: null, // BLUE, RED, or 'draw'
-    brawlers: [], bullets: [], events: [],
+    brawlers: [], bullets: [], lobs: [], zones: [], events: [],
   };
-  for (const team of [BLUE, RED]) {
-    for (let i = 0; i < 3; i++) {
-      const isPlayer = !botsOnly && team === BLUE && i === 1;
-      const kind = isPlayer ? playerKind : 'gyo';
-      const name = isPlayer ? '나' : team === BLUE ? BOT_NAMES[0][i === 0 ? 0 : 1] : BOT_NAMES[1][i];
-      m.brawlers.push(newBrawler(m, m.brawlers.length, team, i, kind, name, isPlayer));
-    }
-  }
+  const list = roster || teamRoster({ playerKind, botsOnly, rand: m.rand });
+  for (const r of list) m.brawlers.push(newBrawler(m, m.brawlers.length, r));
   return m;
 }
 
-function newBrawler(m, id, team, slot, kind, name, isPlayer) {
+function newBrawler(m, id, { team, slot = 0, kind = 'gyo', name = '', isPlayer = false, dummy = false }) {
   const def = BRAWLERS[kind];
   const b = {
-    id, team, slot, kind, def, name, isPlayer,
+    id, team, slot, kind, def, name, isPlayer, dummy,
     x: 0, y: 0, vx: 0, vy: 0, face: team === BLUE ? -Math.PI / 2 : Math.PI / 2,
     r: def.radius, maxHp: def.hp, hp: def.hp,
-    ammo: def.ammo, reloadT: 0, fireCd: 0, burst: null,
+    ammo: def.ammo, reloadT: 0, fireCd: 0, burst: null, dash: null,
+    charge: 0, revealT: 0,
     alive: true, respawnT: 0, shieldT: 0, calm: 0, hurtFlash: 0,
-    kills: 0, deaths: 0, damage: 0,
+    kills: 0, deaths: 0, damage: 0, lastTarget: null,
   };
   placeAtSpawn(m, b);
   return b;
 }
 
 function placeAtSpawn(m, b) {
-  const s = m.map.spawns[b.team][b.slot % m.map.spawns[b.team].length];
+  const list = m.map.spawns[b.team], s = list[b.slot % list.length];
   b.x = s.x; b.y = s.y; b.vx = b.vy = 0;
   b.face = b.team === BLUE ? -Math.PI / 2 : Math.PI / 2;
-  b.hp = b.maxHp; b.ammo = b.def.ammo; b.reloadT = 0; b.fireCd = 0; b.burst = null;
-  b.alive = true; b.shieldT = TEAM_MODE.spawnShield; b.calm = 0;
+  b.hp = b.maxHp; b.ammo = b.def.ammo; b.reloadT = 0; b.fireCd = 0; b.burst = null; b.dash = null;
+  b.alive = true; b.shieldT = TEAM_MODE.spawnShield; b.calm = 0; b.revealT = 0;
 }
 
-export const enemiesOf = (m, b) => m.brawlers.filter(o => o.team !== b.team);
-export const alliesOf = (m, b) => m.brawlers.filter(o => o.team === b.team && o !== b);
+export function canFire(b) { return b.alive && b.ammo >= 1 && b.fireCd <= 0 && !b.burst && !b.dash; }
+export const superReady = b => b.alive && b.charge >= 1 && !b.dash;
 
-export function canFire(b) { return b.alive && b.ammo >= 1 && b.fireCd <= 0 && !b.burst; }
-
+// ---------- the tick ----------
 export function step(m, dt, controls) {
   if (m.phase === 'over') return;
   m.t += dt; m.tick++;
@@ -99,16 +118,14 @@ export function step(m, dt, controls) {
       if (b.respawnT <= 0) { placeAtSpawn(m, b); m.events.push({ type: 'spawn', id: b.id }); }
       continue;
     }
-    const c = controls[b.id] || { mx: 0, my: 0, fire: null };
-    move(m, b, c, dt);
-    if (c.fire != null && canFire(b)) {
-      b.ammo -= 1; b.fireCd = b.def.fireCd; b.face = c.fire; b.calm = 0; b.shieldT = 0;
-      b.burst = { left: b.def.attack.bullets, t: 0, angle: c.fire };
-    }
+    const c = controls[b.id] || {};
+    if (b.dash) dashStep(m, b, dt); else move(m, b, c, dt);
+    if (c.sup && superReady(b)) useSuper(m, b, c.sup);
+    else if (c.fire && canFire(b)) attack(m, b, c.fire);
     if (b.burst) {
       b.burst.t -= dt;
       while (b.burst && b.burst.t <= 0) {
-        shoot(m, b, b.burst.angle);
+        shoot(m, b, b.burst.angle, b.def.attack, false);
         b.burst.left--; b.burst.t += b.def.attack.gap;
         if (b.burst.left <= 0) b.burst = null;
       }
@@ -120,12 +137,51 @@ export function step(m, dt, controls) {
     } else b.reloadT = 0;
     b.shieldT = Math.max(0, b.shieldT - dt);
     b.hurtFlash = Math.max(0, b.hurtFlash - dt);
+    b.revealT = Math.max(0, b.revealT - dt);
     b.calm += dt;
     if (b.calm >= HEAL.delay && b.hp < b.maxHp) b.hp = Math.min(b.maxHp, b.hp + b.maxHp * HEAL.rate * dt);
   }
   separate(m);
   moveBullets(m, dt);
+  moveLobs(m, dt);
+  burnZones(m, dt);
   clock(m);
+}
+
+function acted(b) { b.calm = 0; b.shieldT = 0; b.revealT = Math.max(b.revealT, 1); }
+
+function attack(m, b, aim) {
+  const at = b.def.attack;
+  b.ammo -= 1; b.fireCd = b.def.fireCd; b.face = aim.a; acted(b);
+  if (at.type === 'burst') b.burst = { left: at.bullets, t: 0, angle: aim.a };
+  else if (at.type === 'arrow') shoot(m, b, aim.a, at, false);
+  else if (at.type === 'lob') lob(m, b, aim, at, false);
+  m.events.push({ type: 'attack', id: b.id, kind: at.type });
+}
+
+function useSuper(m, b, aim) {
+  const sp = b.def.super;
+  b.charge = 0; b.face = aim.a; acted(b);
+  if (sp.type === 'storm') b.dash = { vx: Math.cos(aim.a) * sp.dash / sp.dashTime, vy: Math.sin(aim.a) * sp.dash / sp.dashTime, t: sp.dashTime };
+  else if (sp.type === 'pierce') shoot(m, b, aim.a, sp, true);
+  else if (sp.type === 'firebomb') lob(m, b, aim, sp, true);
+  m.events.push({ type: 'super', id: b.id, kind: sp.type, x: b.x, y: b.y });
+}
+
+// 교행이's super: a quick roll, then bullets in every direction.
+function dashStep(m, b, dt) {
+  const px = b.x, py = b.y, d = b.dash;
+  const nx = b.x + d.vx * dt, ny = b.y + d.vy * dt;
+  if (!hitsWall(m.map, nx, b.y, b.r)) b.x = nx;
+  if (!hitsWall(m.map, b.x, ny, b.r)) b.y = ny;
+  b.vx = (b.x - px) / dt; b.vy = (b.y - py) / dt;
+  d.t -= dt;
+  if (d.t <= 0) {
+    b.dash = null;
+    const sp = b.def.super;
+    for (let i = 0; i < sp.bullets; i++) shoot(m, b, (i / sp.bullets) * Math.PI * 2 + 0.1, sp, true, true);
+    m.events.push({ type: 'storm', x: b.x, y: b.y });
+  }
 }
 
 function move(m, b, c, dt) {
@@ -170,12 +226,18 @@ function separate(m) {
   }
 }
 
-function shoot(m, b, angle) {
-  const at = b.def.attack, a = angle + (m.rand() - 0.5) * 2 * at.spread;
-  const sx = b.x + Math.cos(angle) * b.r, sy = b.y + Math.sin(angle) * b.r;
-  // Muzzle inside a wall (hugging it): the bullet is spent immediately.
-  if (blocksShot(tileAt(m.map, Math.floor(sx), Math.floor(sy)))) return;
-  m.bullets.push({ x: sx, y: sy, vx: Math.cos(a) * at.speed, vy: Math.sin(a) * at.speed, left: at.range - b.r, dmg: at.damage, r: at.radius, team: b.team, owner: b.id });
+// ---------- straight shots (bullets, arrows) ----------
+function shoot(m, b, angle, spec, isSuper, fromCentre = false) {
+  const a = angle + (spec.spread ? (m.rand() - 0.5) * 2 * spec.spread : 0);
+  const off = fromCentre ? 0 : b.r;
+  const sx = b.x + Math.cos(angle) * off, sy = b.y + Math.sin(angle) * off;
+  // Muzzle inside a wall (hugging it): the shot is spent immediately, unless it pierces walls.
+  if (spec.type !== 'pierce' && blocksShot(tileAt(m.map, Math.floor(sx), Math.floor(sy)))) return;
+  m.bullets.push({
+    x: sx, y: sy, vx: Math.cos(a) * spec.speed, vy: Math.sin(a) * spec.speed, left: spec.range - off,
+    dmg: spec.damage, r: spec.radius, team: b.team, owner: b.id, kind: spec.type, isSuper,
+    pierce: spec.type === 'pierce', hit: spec.type === 'pierce' ? new Set() : null,
+  });
   m.events.push({ type: 'shot', id: b.id });
 }
 
@@ -187,13 +249,13 @@ function moveBullets(m, dt) {
     for (let k = 0; k < n && !dead; k++) {
       s.x += s.vx * dt / n; s.y += s.vy * dt / n; s.left -= stepLen / n;
       if (s.left <= 0) { dead = true; break; }
-      if (blocksShot(tileAt(m.map, Math.floor(s.x), Math.floor(s.y)))) { dead = true; m.events.push({ type: 'spark', x: s.x, y: s.y }); break; }
+      if (!s.pierce && blocksShot(tileAt(m.map, Math.floor(s.x), Math.floor(s.y)))) { dead = true; m.events.push({ type: 'spark', x: s.x, y: s.y }); break; }
       for (const o of m.brawlers) {
-        if (!o.alive || o.team === s.team) continue;
+        if (!o.alive || o.team === s.team || (s.hit && s.hit.has(o.id))) continue;
         if (Math.hypot(o.x - s.x, o.y - s.y) > o.r + s.r) continue;
-        dead = true;
+        if (s.pierce) s.hit.add(o.id); else dead = true;
         if (o.shieldT > 0) { m.events.push({ type: 'spark', x: s.x, y: s.y }); break; }
-        hurt(m, o, s.dmg, m.brawlers[s.owner]);
+        hurt(m, o, s.dmg, m.brawlers[s.owner], !s.isSuper);
         break;
       }
     }
@@ -202,20 +264,63 @@ function moveBullets(m, dt) {
   m.bullets = keep;
 }
 
-export function hurt(m, o, dmg, by) {
-  o.hp -= dmg; o.calm = 0; o.hurtFlash = 0.12;
-  if (by) { by.damage += dmg; by.lastTarget = o.id; }
+// ---------- lobbed bowls (fly over walls, splash where they land) ----------
+function lob(m, b, aim, spec, isSuper) {
+  const d = Math.max(1, Math.min(spec.range, aim.d ?? spec.range));
+  const tx = b.x + Math.cos(aim.a) * d, ty = b.y + Math.sin(aim.a) * d;
+  m.lobs.push({ sx: b.x, sy: b.y, tx, ty, t: 0, dur: spec.flight * (0.55 + 0.45 * d / spec.range), spec, isSuper, team: b.team, owner: b.id });
+}
+
+function moveLobs(m, dt) {
+  const keep = [];
+  for (const l of m.lobs) {
+    l.t += dt;
+    if (l.t < l.dur) { keep.push(l); continue; }
+    const by = m.brawlers[l.owner];
+    m.events.push({ type: 'splash', x: l.tx, y: l.ty, r: l.spec.blast, isSuper: l.isSuper });
+    for (const o of m.brawlers) {
+      if (!o.alive || o.team === l.team || o.shieldT > 0) continue;
+      if (Math.hypot(o.x - l.tx, o.y - l.ty) <= l.spec.blast + o.r * 0.5) hurt(m, o, l.spec.damage, by, !l.isSuper);
+    }
+    if (l.spec.burn) m.zones.push({ x: l.tx, y: l.ty, r: l.spec.burn.radius, t: l.spec.burn.time, dps: l.spec.burn.dps, tick: 0, team: l.team, owner: l.owner });
+  }
+  m.lobs = keep;
+}
+
+function burnZones(m, dt) {
+  for (const z of m.zones) {
+    z.t -= dt; z.tick -= dt;
+    if (z.tick > 0) continue;
+    z.tick = 0.5;
+    for (const o of m.brawlers) {
+      if (!o.alive || o.team === z.team || o.shieldT > 0) continue;
+      if (Math.hypot(o.x - z.x, o.y - z.y) <= z.r) hurt(m, o, Math.round(z.dps * 0.5), m.brawlers[z.owner], false);
+    }
+  }
+  m.zones = m.zones.filter(z => z.t > 0);
+}
+
+// ---------- damage, score, clock ----------
+export function hurt(m, o, dmg, by, charges = true) {
+  if (!o.alive) return;
+  o.hp -= dmg; o.calm = 0; o.hurtFlash = 0.12; o.revealT = Math.max(o.revealT, BUSH.reveal);
+  if (by) {
+    by.damage += dmg; by.lastTarget = o.id;
+    if (charges) by.charge = Math.min(1, by.charge + dmg / by.def.superCharge);
+  }
   m.events.push({ type: 'hit', id: o.id, by: by ? by.id : null, dmg, x: o.x, y: o.y });
   if (o.hp > 0) return;
-  o.hp = 0; o.alive = false; o.respawnT = TEAM_MODE.respawn; o.deaths++; o.burst = null;
+  o.hp = 0; o.alive = false; o.respawnT = m.respawn; o.deaths++; o.burst = null; o.dash = null;
   if (by) { by.kills++; m.score[by.team]++; }
   for (const x of m.brawlers) if (x.lastTarget === o.id) x.lastTarget = null;
   m.events.push({ type: 'kill', id: o.id, by: by ? by.id : null, x: o.x, y: o.y });
+  if (m.endless) return;
   if (m.phase === 'sudden' && by) finish(m, by.team);
   else if (by && m.score[by.team] >= TEAM_MODE.killsToWin) finish(m, by.team);
 }
 
 function clock(m) {
+  if (m.endless) return;
   if (m.phase === 'play' && m.t >= TEAM_MODE.time) {
     if (m.score[BLUE] !== m.score[RED]) finish(m, m.score[BLUE] > m.score[RED] ? BLUE : RED);
     else { m.phase = 'sudden'; m.events.push({ type: 'sudden' }); }
@@ -224,7 +329,7 @@ function clock(m) {
 
 function finish(m, winner) {
   if (m.phase === 'over') return;
-  m.phase = 'over'; m.winner = winner; m.bullets = [];
+  m.phase = 'over'; m.winner = winner; m.bullets = []; m.lobs = []; m.zones = [];
   m.events.push({ type: 'over', winner });
 }
 

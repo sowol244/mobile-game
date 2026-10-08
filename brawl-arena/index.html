@@ -19,6 +19,10 @@
     <canvas id="c"></canvas>
     <button id="pause" type="button" aria-label="일시정지" hidden>Ⅱ</button>
     <div id="banner" aria-live="polite"></div>
+    <div id="coach" hidden>
+      <div class="ct"><span id="cstep"></span><button id="cskip" type="button">건너뛰기</button></div>
+      <p id="ctext" role="status" aria-live="polite"></p>
+    </div>
     <div id="overlay">
       <div class="panel" id="pMain">
         <h1 id="title">대난투 아레나</h1>
@@ -38,18 +42,29 @@
       <div class="panel" id="pHelp" hidden>
         <h1>게임 설명</h1>
         <ul class="helplist">
-          <li class="now"><b>지금 버전</b> 3:3 팀전과 교행이로 플레이할 수 있어요. 생존전·짬뽕이·소월이·필살기·수풀은 곧 추가돼요.</li>
+          <li class="now"><b>지금 버전</b> 3:3 팀전에서 교행이·짬뽕이·소월이를 고를 수 있어요. 생존전은 곧 추가돼요.</li>
           <li><b>생존전</b> 6명이 각자 싸워요. 마지막까지 살아남으면 1등!</li>
           <li><b>3:3 팀전</b> 나와 아군 봇 2명이 상대 봇 3명과 싸워요. 쓰러져도 3초 뒤 부활, 먼저 <b>10번</b> 쓰러뜨린 팀이 승리!</li>
           <li><b>브롤러</b> <b>교행이</b>는 소총을 연발로 쏘는 총잡이, <b>짬뽕이</b>는 벽 너머로 짬뽕 그릇을 던지는 투척형, <b>소월이</b>는 멀리서 화살을 쏘는 저격형이에요.</li>
-          <li><b>이동</b> 화면 왼쪽 아래를 누르면 조이스틱이 생겨요. (PC: WASD)</li>
+          <li><b>이동</b> 화면 왼쪽 절반 어디든 누르고 끌면 걸어가요. 왼쪽 아래 <b>이동</b> 자리가 기본 위치예요. (PC: WASD)</li>
           <li><b>공격</b> 오른쪽 조이스틱을 <b>톡</b> 치면 가까운 적에게 자동 조준, <b>끌었다 놓으면</b> 그 방향으로 쏴요. 탄약은 3칸, 시간이 지나면 다시 차요.</li>
-          <li><b>필살기</b> 적을 맞히면 게이지가 차요. 가득 차면 ★ 버튼으로 강한 공격!</li>
+          <li><b>필살기</b> 적을 맞히면 ★ 버튼 둘레의 게이지가 차요. 가득 차면 ★를 톡 치거나 끌어서 강한 공격! (PC: E)</li>
           <li><b>수풀·상자</b> 수풀에 숨으면 적에게 안 보여요. 생존전에서는 상자를 부수면 <b>파워 큐브</b>가 나와 강해져요.</li>
           <li><b>독구름</b> 생존전에서 1분이 지나면 바깥부터 독구름이 좁혀 와요. 안쪽으로 피하세요.</li>
           <li><b>트로피</b> 등수나 승패에 따라 트로피를 얻거나 잃어요. 트로피를 모으면 브롤러가 강해져요.</li>
         </ul>
+        <button class="go ghost" id="tutBtn" type="button">튜토리얼 다시 하기</button>
         <button class="go back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pSelect" hidden>
+        <h1>브롤러 선택</h1>
+        <div class="modes" role="group" aria-label="모드">
+          <button class="mode on" type="button" data-mode="team">3:3 팀전</button>
+          <button class="mode" type="button" data-mode="survival" disabled>생존전<small>준비 중</small></button>
+        </div>
+        <div id="cards" role="radiogroup" aria-label="브롤러"></div>
+        <button class="go" id="go" type="button">출전!</button>
+        <button class="go ghost back" type="button">돌아가기</button>
       </div>
       <div class="panel" id="pPause" hidden>
         <h1>일시정지</h1>

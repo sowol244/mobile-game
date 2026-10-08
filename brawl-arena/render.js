@@ -1,11 +1,12 @@
 // Drawing only. Reads the match, never changes it.
 
-import { BLUE, tileAt } from './game.js';
-import { PAL, paintGround, drawRipples, drawObstacle, drawPerson } from './art.js';
+import { BLUE, tileAt, inBush, visibleTo, superReady } from './game.js';
+import { PAL, paintGround, drawRipples, drawObstacle, drawBush, drawPerson } from './art.js';
+import { stickLayout } from './input.js';
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
-  const fx = { pops: [], sparks: [], shake: 0 };
+  const fx = { pops: [], sparks: [], rings: [], shake: 0 };
   let W = 0, H = 0;
   const cam = { x: 0, y: 0, px: 40, ready: false };
   const walkPhase = new Map();
@@ -25,6 +26,9 @@ export function createRenderer(canvas) {
         fx.pops.push({ x: e.x + (Math.random() - 0.5) * 0.4, y: e.y - 1.15, t: 0.7, text: String(e.dmg), col: b.team === BLUE ? '#ffffff' : PAL.me });
         if (e.id === meId) fx.shake = Math.min(0.25, fx.shake + 0.08);
       } else if (e.type === 'spark') fx.sparks.push({ x: e.x, y: e.y, t: 0.18 });
+      else if (e.type === 'splash') fx.rings.push({ x: e.x, y: e.y, r: e.r, t: 0.35, max: 0.35, col: e.isSuper ? '#ff7a2e' : '#ffd36b' });
+      else if (e.type === 'storm') fx.rings.push({ x: e.x, y: e.y, r: 1.4, t: 0.3, max: 0.3, col: '#fff3b0' });
+      else if (e.type === 'super') fx.rings.push({ x: e.x, y: e.y, r: 0.9, t: 0.3, max: 0.3, col: '#ffe14d' });
       else if (e.type === 'kill') {
         for (let i = 0; i < 10; i++) { const a = Math.random() * Math.PI * 2, v = 1 + Math.random() * 2.5; fx.sparks.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0.45, col: PAL.team[m.brawlers[e.id].team] }); }
       }
@@ -33,7 +37,7 @@ export function createRenderer(canvas) {
   }
 
   function draw(m, opts, dt) {
-    const { meId = null, aim = null, input = null, focus = null } = opts;
+    const { meId = null, aim = null, input = null, focus = null, viewTeam = null, marker = null } = opts;
     absorb(m, meId);
     cam.px = Math.max(30, Math.min(64, W / (opts.tilesAcross || 10)));
     const T = cam.px;
@@ -43,11 +47,13 @@ export function createRenderer(canvas) {
     cam.x += (fx0 - cam.x) * Math.min(1, dt * 8); cam.y += (fy0 - cam.y) * Math.min(1, dt * 8);
     const halfW = W / T / 2, halfH = H / T / 2;
     const cx = m.map.w / 2 > halfW ? Math.max(halfW - 1, Math.min(m.map.w - halfW + 1, cam.x)) : m.map.w / 2;
-    const cy = m.map.h / 2 > halfH ? Math.max(halfH - 1, Math.min(m.map.h - halfH + 1, cam.y)) : m.map.h / 2;
+    // A little extra room below the map so the player at the bottom spawn isn't under the thumb controls.
+    const cy = m.map.h / 2 > halfH ? Math.max(halfH - 1, Math.min(m.map.h - halfH + 5, cam.y)) : m.map.h / 2 + 1.5;
     fx.shake = Math.max(0, fx.shake - dt);
     const sh = fx.shake * 18;
     const ox = W / 2 - cx * T + (Math.random() - 0.5) * sh, oy = H / 2 - cy * T + (Math.random() - 0.5) * sh;
     const sx = x => ox + x * T, sy = y => oy + y * T;
+    const drawGuide = (b, aim) => drawGuideImpl(m, b, aim, sx, sy, T);
 
     ctx.fillStyle = '#2f6b3a'; ctx.fillRect(0, 0, W, H);
     const x0 = Math.max(0, Math.floor(-ox / T)), x1 = Math.min(m.map.w - 1, Math.ceil((W - ox) / T));
@@ -71,30 +77,54 @@ export function createRenderer(canvas) {
       ctx.setLineDash([T * 0.12, T * 0.1]); ctx.beginPath(); ctx.ellipse(sx(s.x), sy(s.y), T * 0.5, T * 0.32, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
     }
 
+    // Fire zones from 짬뽕이's super.
+    for (const z of m.zones) {
+      ctx.fillStyle = 'rgba(255,110,30,0.28)'; ctx.beginPath(); ctx.ellipse(sx(z.x), sy(z.y), z.r * T, z.r * T * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+      for (let k = 0; k < 7; k++) {
+        const a = k / 7 * Math.PI * 2 + m.t, rr = z.r * (0.25 + 0.5 * ((k * 37) % 10) / 10);
+        const fxp = sx(z.x + Math.cos(a) * rr), fyp = sy(z.y + Math.sin(a) * rr * 0.8), hgt = T * (0.25 + 0.12 * Math.sin(m.t * 12 + k));
+        ctx.fillStyle = k % 2 ? '#ff9a2e' : '#ffd23f';
+        ctx.beginPath(); ctx.moveTo(fxp - T * 0.1, fyp); ctx.quadraticCurveTo(fxp, fyp - hgt * 1.4, fxp + T * 0.1, fyp); ctx.fill();
+      }
+    }
+    // Where lobbed bowls will land (a fair warning for everybody).
+    for (const l of m.lobs) {
+      ctx.strokeStyle = l.isSuper ? 'rgba(255,90,30,0.8)' : 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.ellipse(sx(l.tx), sy(l.ty), l.spec.blast * T, l.spec.blast * T * 0.8, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (marker) {
+      const pulse = 1 + Math.sin(m.t * 5) * 0.08;
+      ctx.strokeStyle = PAL.me; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(sx(marker.x), sy(marker.y), T * 0.6 * pulse, T * 0.4 * pulse, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = PAL.me; ctx.beginPath(); const ay = sy(marker.y) - T * (0.9 + Math.sin(m.t * 5) * 0.12);
+      ctx.moveTo(sx(marker.x), ay + T * 0.3); ctx.lineTo(sx(marker.x) - T * 0.18, ay); ctx.lineTo(sx(marker.x) + T * 0.18, ay); ctx.fill();
+    }
+
     // Aim guide under everything that moves.
     const me = meId != null ? m.brawlers[meId] : null;
-    if (me && me.alive && aim != null) {
-      // The guide stops where the first wall would stop the bullets.
-      let reach = me.def.attack.range;
-      for (let d = me.r; d < reach; d += 0.1) {
-        if (tileAt(m.map, Math.floor(me.x + Math.cos(aim) * d), Math.floor(me.y + Math.sin(aim) * d)) === '#') { reach = d; break; }
-      }
-      const len = reach * T;
-      ctx.save(); ctx.translate(sx(me.x), sy(me.y)); ctx.rotate(aim);
-      ctx.fillStyle = me.ammo >= 1 ? 'rgba(255,255,255,0.28)' : 'rgba(255,90,90,0.25)';
-      ctx.fillRect(0, -T * 0.16, len, T * 0.32);
-      ctx.restore();
-    }
+    if (me && me.alive && aim) drawGuide(me, aim);
 
     // Walls and brawlers sorted by y so things lower on screen draw on top.
     const items = [];
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++)
       if (tileAt(m.map, x, y) === '#') items.push({ y: y + 1, wall: [x, y] });
-    for (const b of m.brawlers) if (b.alive) items.push({ y: b.y + 0.05, b });
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++)
+      if (tileAt(m.map, x, y) === '*') items.push({ y: y + 1, bush: [x, y] });
+    for (const b of m.brawlers) {
+      if (!b.alive || (viewTeam != null && !visibleTo(m, viewTeam, b))) continue;
+      // Someone in a bush is drawn over it, see-through, so the bush doesn't swallow them.
+      const hidden = inBush(m.map, b.x, b.y);
+      items.push({ y: hidden ? Math.floor(b.y) + 1.01 : b.y + 0.05, b, hidden });
+    }
     items.sort((a, b) => a.y - b.y);
     for (const it of items) {
       if (it.wall) drawObstacle(ctx, m.map, it.wall[0], it.wall[1], sx, sy, T);
-      else drawBrawler(it.b, it.b.id === meId);
+      else if (it.bush) drawBush(ctx, m.map, it.bush[0], it.bush[1], sx, sy, T, m.t);
+      else {
+        if (it.hidden) ctx.globalAlpha = 0.6;
+        drawBrawler(it.b, it.b.id === meId);
+        ctx.globalAlpha = 1;
+      }
     }
     // Map edge.
     ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 4; ctx.strokeRect(sx(0), sy(0), m.map.w * T, m.map.h * T);
@@ -102,11 +132,37 @@ export function createRenderer(canvas) {
     for (const s of m.bullets) {
       const a = Math.atan2(s.vy, s.vx);
       ctx.save(); ctx.translate(sx(s.x), sy(s.y)); ctx.rotate(a);
-      ctx.fillStyle = s.team === BLUE ? '#bff0ff' : '#ffd0d5';
-      ctx.fillRect(-T * 0.28, -T * 0.06, T * 0.36, T * 0.12);
-      ctx.fillStyle = s.team === BLUE ? PAL.team[0] : PAL.team[1];
-      ctx.fillRect(-T * 0.08, -T * 0.08, T * 0.16, T * 0.16);
+      if (s.kind === 'arrow' || s.kind === 'pierce') {
+        const big = s.kind === 'pierce' ? 1.8 : 1;
+        if (big > 1) { ctx.fillStyle = 'rgba(160,220,255,0.45)'; ctx.beginPath(); ctx.ellipse(-T * 0.2, 0, T * 0.6, T * 0.18, 0, 0, Math.PI * 2); ctx.fill(); }
+        ctx.strokeStyle = '#6b4424'; ctx.lineWidth = Math.max(2, T * 0.05) * big;
+        ctx.beginPath(); ctx.moveTo(-T * 0.4 * big, 0); ctx.lineTo(T * 0.12 * big, 0); ctx.stroke();
+        ctx.fillStyle = '#dfe6f0'; ctx.beginPath(); ctx.moveTo(T * 0.25 * big, 0); ctx.lineTo(T * 0.1 * big, -T * 0.07 * big); ctx.lineTo(T * 0.1 * big, T * 0.07 * big); ctx.fill();
+        ctx.fillStyle = PAL.team[s.team]; ctx.fillRect(-T * 0.42 * big, -T * 0.06 * big, T * 0.1 * big, T * 0.12 * big);
+      } else {
+        ctx.fillStyle = s.isSuper ? '#fff3b0' : s.team === BLUE ? '#bff0ff' : '#ffd0d5';
+        ctx.fillRect(-T * 0.28, -T * 0.06, T * 0.36, T * 0.12);
+        ctx.fillStyle = s.isSuper ? '#ffb31a' : PAL.team[s.team];
+        ctx.fillRect(-T * 0.08, -T * 0.08, T * 0.16, T * 0.16);
+      }
       ctx.restore();
+    }
+    // Bowls in flight: an arc with a shadow on the ground below.
+    for (const l of m.lobs) {
+      const k = l.t / l.dur, gx = l.sx + (l.tx - l.sx) * k, gy = l.sy + (l.ty - l.sy) * k, h = Math.sin(Math.PI * k) * (1.2 + 0.4 * Math.hypot(l.tx - l.sx, l.ty - l.sy) / 6);
+      const sc = l.isSuper ? 1.5 : 1;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(sx(gx), sy(gy), T * 0.18 * sc, T * 0.08 * sc, 0, 0, Math.PI * 2); ctx.fill();
+      const bx = sx(gx), by2 = sy(gy - h);
+      ctx.fillStyle = '#d63a2f'; ctx.beginPath(); ctx.ellipse(bx, by2, T * 0.17 * sc, T * 0.13 * sc, 0, 0, Math.PI); ctx.fill();
+      ctx.fillStyle = l.isSuper ? '#ff7a2e' : '#ffcf5a'; ctx.beginPath(); ctx.ellipse(bx, by2, T * 0.16 * sc, T * 0.06 * sc, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    for (let i = fx.rings.length - 1; i >= 0; i--) {
+      const r = fx.rings[i]; r.t -= dt;
+      if (r.t <= 0) { fx.rings.splice(i, 1); continue; }
+      const k = 1 - r.t / r.max;
+      ctx.globalAlpha = r.t / r.max; ctx.strokeStyle = r.col; ctx.lineWidth = Math.max(3, T * 0.12) * (1 - k * 0.6);
+      ctx.beginPath(); ctx.ellipse(sx(r.x), sy(r.y), r.r * T * (0.4 + k * 0.6), r.r * T * 0.8 * (0.4 + k * 0.6), 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
     }
 
     for (let i = fx.sparks.length - 1; i >= 0; i--) {
@@ -128,7 +184,7 @@ export function createRenderer(canvas) {
     }
     ctx.globalAlpha = 1;
 
-    if (input) drawSticks(input);
+    if (input) drawSticks(input, me);
 
     function drawBrawler(b, isMe) {
       const x = sx(b.x), y = sy(b.y), r = b.r * T;
@@ -160,15 +216,68 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawSticks(st) {
+  // Aim preview while a stick is held: a lane for shots, a landing circle for lobs, a dash arrow for 교행이's super.
+  function drawGuideImpl(m, me, aim, sx, sy, T) {
+    const spec = aim.type === 'super' ? me.def.super : me.def.attack;
+    const col = aim.type === 'super' ? 'rgba(255,214,60,0.45)' : me.ammo >= 1 ? 'rgba(255,255,255,0.3)' : 'rgba(255,90,90,0.28)';
+    const cx = sx(me.x), cy = sy(me.y);
+    if (spec.type === 'lob' || spec.type === 'firebomb') {
+      const d = Math.max(1, spec.range * aim.f), tx = me.x + Math.cos(aim.a) * d, ty = me.y + Math.sin(aim.a) * d;
+      ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.setLineDash([6, 6]);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.quadraticCurveTo((cx + sx(tx)) / 2, (cy + sy(ty)) / 2 - T * 1.5, sx(tx), sy(ty)); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(sx(tx), sy(ty), spec.blast * T, spec.blast * T * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+    if (spec.type === 'storm') {
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(aim.a);
+      ctx.fillStyle = col; ctx.fillRect(0, -T * 0.25, spec.dash * T, T * 0.5); ctx.restore();
+      const ex = me.x + Math.cos(aim.a) * spec.dash, ey = me.y + Math.sin(aim.a) * spec.dash;
+      ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(sx(ex), sy(ey), spec.range * T, 0, Math.PI * 2); ctx.stroke();
+      return;
+    }
+    // Straight shots stop at the first wall, except the piercing super.
+    let reach = spec.range;
+    if (spec.type !== 'pierce') for (let d = me.r; d < reach; d += 0.1) {
+      if (tileAt(m.map, Math.floor(me.x + Math.cos(aim.a) * d), Math.floor(me.y + Math.sin(aim.a) * d)) === '#') { reach = d; break; }
+    }
+    const wdt = spec.type === 'pierce' ? 0.5 : 0.32;
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(aim.a);
+    ctx.fillStyle = col; ctx.fillRect(0, -T * wdt / 2, reach * T, T * wdt);
+    ctx.restore();
+  }
+
+  function drawSticks(st, me) {
+    const L = stickLayout(W, H);
+    // Resting spots: faint, so they show where to put the thumbs without hiding the arena.
+    const ghost = (x, y, r, icon, on) => {
+      ctx.fillStyle = on ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.13)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = `${Math.round(r * 0.36)}px Jua, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(icon, x, y + 1);
+    };
+    if (!st.move) ghost(L.move.x, L.move.y, L.radius, '이동', false);
+    if (!st.aim || st.aim.type !== 'fire') ghost(L.attack.x, L.attack.y, L.radius, '공격', false);
+    // ★ button with the charge filling around it.
+    if (me) {
+      const S = L.super, ready = superReady(me);
+      ctx.fillStyle = ready ? 'rgba(255,200,40,0.9)' : 'rgba(0,0,0,0.35)';
+      ctx.beginPath(); ctx.arc(S.x, S.y, S.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(S.x, S.y, S.r + 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = ready ? '#fff6c2' : '#ffc93c'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(S.x, S.y, S.r + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, me.charge)); ctx.stroke();
+      ctx.fillStyle = ready ? '#5a3a00' : 'rgba(255,255,255,0.55)'; ctx.font = `${Math.round(S.r * 1.1)}px Jua, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('★', S.x, S.y + 1);
+      if (ready) { ctx.globalAlpha = 0.4 + 0.3 * Math.sin(performance.now() / 150); ctx.strokeStyle = '#ffe14d'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(S.x, S.y, S.r + 9, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; }
+    }
     for (const s of [st.move, st.aim]) {
       if (!s) continue;
-      const isAim = s === st.aim;
+      const isAim = s === st.aim, isSuper = isAim && s.type === 'super';
       ctx.lineWidth = 2;
-      ctx.strokeStyle = isAim ? 'rgba(255,120,120,0.7)' : 'rgba(255,255,255,0.55)';
-      ctx.fillStyle = isAim ? 'rgba(255,90,90,0.12)' : 'rgba(255,255,255,0.1)';
+      ctx.strokeStyle = isSuper ? 'rgba(255,214,60,0.8)' : isAim ? 'rgba(255,120,120,0.7)' : 'rgba(255,255,255,0.55)';
+      ctx.fillStyle = isSuper ? 'rgba(255,214,60,0.15)' : isAim ? 'rgba(255,90,90,0.12)' : 'rgba(255,255,255,0.1)';
       ctx.beginPath(); ctx.arc(s.ox, s.oy, st.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = isAim ? 'rgba(255,110,110,0.85)' : 'rgba(255,255,255,0.75)';
+      ctx.fillStyle = isSuper ? 'rgba(255,214,60,0.95)' : isAim ? 'rgba(255,110,110,0.85)' : 'rgba(255,255,255,0.75)';
       ctx.beginPath(); ctx.arc(s.ox + s.x * st.radius, s.oy + s.y * st.radius, 22, 0, Math.PI * 2); ctx.fill();
     }
   }

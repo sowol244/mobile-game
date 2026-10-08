@@ -2,7 +2,7 @@
 // Walking around walls uses a distance field (BFS) from the goal tile, cached per tile since walls never move.
 
 import { BOT_LEVELS } from './config.js';
-import { tileAt, blocksWalk, lineOfSight, canFire, hitsWall, BLUE } from './game.js';
+import { tileAt, blocksWalk, lineOfSight, canFire, superReady, hitsWall, visibleTo, BLUE } from './game.js';
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
@@ -67,13 +67,17 @@ export function walkToward(m, b, gx, gy) {
 const norm = (x, y) => { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
 
 export function makeBrain(level = 0) {
-  return { skill: BOT_LEVELS[Math.max(0, Math.min(BOT_LEVELS.length - 1, level))], react: 0.5, target: null, strafe: 1, strafeT: 0, stuckT: 0, unstick: null, lastX: 0, lastY: 0 };
+  return {
+    skill: BOT_LEVELS[Math.max(0, Math.min(BOT_LEVELS.length - 1, level))],
+    react: 0.5, target: null, seen: null, strafe: 1, strafeT: 0, flipT: 0,
+    stuckT: 0, unstick: null, lastX: 0, lastY: 0, following: false, atGoal: false,
+  };
 }
 
 export function botControl(m, b, brain, dt) {
-  const at = b.def.attack, R = at.range;
-  const out = { mx: 0, my: 0, fire: null };
-  brain.react -= dt; brain.strafeT -= dt;
+  const def = b.def, at = def.attack, R = at.range, lobber = at.type === 'lob';
+  const out = { mx: 0, my: 0, fire: null, sup: null };
+  brain.react -= dt; brain.strafeT -= dt; brain.flipT -= dt;
 
   // Stuck on a corner for a while: walk somewhere random for a moment.
   if (brain.unstick) {
@@ -82,55 +86,87 @@ export function botControl(m, b, brain, dt) {
     return out;
   }
 
-  const foes = m.brawlers.filter(o => o.alive && o.team !== b.team);
+  // Only enemies this team can actually see (bushes hide people).
   let target = null, best = 1e9;
-  for (const o of foes) {
+  for (const o of m.brawlers) {
+    if (o.team === b.team || !visibleTo(m, b.team, o)) continue;
     const d = Math.hypot(o.x - b.x, o.y - b.y);
     if (d > 11) continue;
-    const score = d + (lineOfSight(m.map, b.x, b.y, o.x, o.y) ? 0 : 4) + (o.id === brain.target ? -1.5 : 0) + o.hp / o.maxHp * 2;
+    const blocked = !lobber && !lineOfSight(m.map, b.x, b.y, o.x, o.y);
+    const score = d + (blocked ? 4 : 0) + (o.id === brain.target ? -1.5 : 0) + o.hp / o.maxHp * 2;
     if (score < best) { best = score; target = o; }
   }
   // Teammates of the player help with whatever the player is shooting at.
   const player = m.brawlers.find(o => o.isPlayer && o.team === b.team && o.alive);
   if (player && player.lastTarget != null) {
     const pt = m.brawlers[player.lastTarget];
-    if (pt && pt.alive && Math.hypot(pt.x - b.x, pt.y - b.y) < 10) target = pt;
+    if (pt && visibleTo(m, b.team, pt) && Math.hypot(pt.x - b.x, pt.y - b.y) < 10) target = pt;
   }
   brain.target = target ? target.id : null;
+  if (target) brain.seen = { x: target.x, y: target.y, t: 1.5 };
+  else if (brain.seen && (brain.seen.t -= dt) <= 0) brain.seen = null;
 
   let dir = { x: 0, y: 0 };
   if (target) {
     const d = Math.hypot(target.x - b.x, target.y - b.y), los = lineOfSight(m.map, b.x, b.y, target.x, target.y);
     const low = b.hp < b.maxHp * 0.3;
+    const ux = (target.x - b.x) / d, uy = (target.y - b.y) / d;
     if (low && d < R + 1.5) {
-      const home = m.map.spawns[b.team][b.slot];
+      const home = m.map.spawns[b.team][b.slot % m.map.spawns[b.team].length];
       dir = walkToward(m, b, home.x, home.y);
-    } else if (!los) {
+    } else if (!los && !lobber) {
       dir = walkToward(m, b, target.x, target.y);
     } else {
-      const want = R * 0.62, ux = (target.x - b.x) / d, uy = (target.y - b.y) / d;
+      const want = R * def.prefer;
       const radial = d > want + 0.8 ? 1 : d < want - 0.8 ? -0.8 : 0;
       if (brain.strafeT <= 0) { brain.strafe = m.rand() < 0.5 ? -1 : 1; brain.strafeT = 0.5 + m.rand() * 0.9; }
-      // Don't strafe into a wall: switch sides when that way is blocked.
-      if (hitsWall(m.map, b.x - uy * brain.strafe * 0.6, b.y + ux * brain.strafe * 0.6, b.r)) { brain.strafe = -brain.strafe; brain.strafeT = 0.6; }
-      dir = { x: ux * radial - uy * brain.strafe * 0.85, y: uy * radial + ux * brain.strafe * 0.85 };
+      // Don't strafe into a wall: switch sides when that way is blocked (not every frame, or it shivers).
+      const blockedSide = s => hitsWall(m.map, b.x - uy * s * 0.6, b.y + ux * s * 0.6, b.r);
+      let strafe = brain.strafe;
+      if (blockedSide(strafe)) {
+        if (brain.flipT <= 0 && !blockedSide(-strafe)) { brain.strafe = strafe = -strafe; brain.strafeT = 0.6; brain.flipT = 0.4; }
+        else strafe = 0;
+      }
+      dir = { x: ux * radial - uy * strafe * 0.85, y: uy * radial + ux * strafe * 0.85 };
       // Something solid (a wall, or water between us) right ahead: walk around it on the path instead.
       const dl = Math.hypot(dir.x, dir.y);
       if (dl > 0.1 && hitsWall(m.map, b.x + dir.x / dl * 0.35, b.y + dir.y / dl * 0.35, b.r)) dir = radial >= 0 ? walkToward(m, b, target.x, target.y) : { x: -ux, y: -uy };
     }
-    if (los && d < R * 0.95 && brain.react <= 0 && canFire(b) && (b.ammo >= 2 || d < R * 0.6 || low)) {
-      const lead = d / at.speed * brain.skill.lead;
-      const ax = target.x + target.vx * lead, ay = target.y + target.vy * lead;
-      out.fire = Math.atan2(ay - b.y, ax - b.x) + (m.rand() - 0.5) * 2 * brain.skill.aimError;
+
+    const lead = t => ({ x: target.x + target.vx * t * brain.skill.lead, y: target.y + target.vy * t * brain.skill.lead });
+    const err = () => (m.rand() - 0.5) * 2 * brain.skill.aimError;
+    const flight = lobber ? at.flight * (0.55 + 0.45 * Math.min(1, d / R)) : d / at.speed;
+    if (brain.react <= 0 && superReady(b)) {
+      const sp = def.super;
+      const ok = sp.type === 'storm' ? d < 3.8 && los : sp.type === 'firebomb' ? d < sp.range : d < sp.range * 0.9;
+      if (ok) {
+        const p = lead(sp.type === 'pierce' ? d / sp.speed : sp.type === 'firebomb' ? sp.flight : 0);
+        out.sup = { a: Math.atan2(p.y - b.y, p.x - b.x) + err() * 0.5, d: Math.hypot(p.x - b.x, p.y - b.y) };
+        brain.react = brain.skill.reaction;
+      }
+    }
+    const canHit = lobber ? d < R : los && d < R * 0.95;
+    if (!out.sup && canHit && brain.react <= 0 && canFire(b) && (b.ammo >= 2 || d < R * 0.6 || low)) {
+      const p = lead(flight);
+      out.fire = { a: Math.atan2(p.y - b.y, p.x - b.x) + err(), d: Math.hypot(p.x - b.x, p.y - b.y) * (1 + err() * 0.5) };
       brain.react = brain.skill.reaction * (0.7 + m.rand() * 0.6);
     }
-  } else if (player && player !== b && Math.hypot(player.x - b.x, player.y - b.y) > 3.5) {
-    dir = walkToward(m, b, player.x, player.y);
+  } else if (brain.seen) {
+    // Lost sight (they ducked into a bush): check where they were last seen.
+    dir = Math.hypot(brain.seen.x - b.x, brain.seen.y - b.y) > 0.8 ? walkToward(m, b, brain.seen.x, brain.seen.y) : { x: 0, y: 0 };
+  } else if (player && player !== b) {
+    // Escort the player. Start following beyond 4.5 tiles, stop within 2.5 — the gap keeps bots from
+    // flip-flopping between "follow" and "wait" every frame (that was the shivering at the start).
+    const d = Math.hypot(player.x - b.x, player.y - b.y);
+    if (d > 4.5) brain.following = true; else if (d < 2.5) brain.following = false;
+    if (brain.following) dir = walkToward(m, b, player.x, player.y);
   } else {
     // Nobody in sight: push toward the enemy side, a little off-centre per slot.
     const goalY = b.team === BLUE ? m.map.h * 0.3 : m.map.h * 0.7;
-    const lane = 0.25 + 0.25 * b.slot, goalX = m.map.w * (b.team === BLUE ? lane : 1 - lane);
-    dir = Math.hypot(goalX - b.x, goalY - b.y) > 1.5 ? walkToward(m, b, goalX, goalY) : { x: 0, y: 0 };
+    const lane = 0.25 + 0.25 * (b.slot % 3), goalX = m.map.w * (b.team === BLUE ? lane : 1 - lane);
+    const d = Math.hypot(goalX - b.x, goalY - b.y);
+    if (d < 1) brain.atGoal = true; else if (d > 2.5) brain.atGoal = false;
+    if (!brain.atGoal) dir = walkToward(m, b, goalX, goalY);
   }
   out.mx = dir.x; out.my = dir.y;
 

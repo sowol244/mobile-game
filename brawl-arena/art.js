@@ -184,6 +184,18 @@ export function drawObstacle(ctx, map, x, y, sx, sy, T) {
   }
 }
 
+// Bush: a clump of round leaves, tall enough to cover whoever stands in it.
+export function drawBush(ctx, map, x, y, sx, sy, T, t) {
+  const px = sx(x), py = sy(y), sway = Math.sin(t * 1.5 + x * 0.7 + y) * T * 0.015;
+  const blobs = [[0.2, 0.72, 0.36], [0.55, 0.78, 0.4], [0.85, 0.7, 0.34], [0.35, 0.35, 0.36], [0.72, 0.38, 0.36], [0.52, 0.08, 0.3]];
+  ctx.fillStyle = '#2f7d3b';
+  for (const [bx, by, br] of blobs) { ctx.beginPath(); ctx.arc(px + bx * T + sway, py + by * T - T * 0.12, br * T, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#46a04f';
+  for (const [bx, by, br] of blobs) { ctx.beginPath(); ctx.arc(px + bx * T + sway - br * T * 0.2, py + by * T - T * 0.12 - br * T * 0.22, br * T * 0.62, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  ctx.beginPath(); ctx.arc(px + T * (0.3 + hash(x, y, 9) * 0.4) + sway, py + T * 0.2, T * 0.1, 0, Math.PI * 2); ctx.fill();
+}
+
 // ---------- brawlers ----------
 // A small chibi person: big round head, tiny body and stubby legs that waddle when walking,
 // holding a little rifle toward the aim. Team colour is the shirt (and the ring under the feet).
@@ -211,11 +223,33 @@ export function drawPerson(ctx, b, x, y, T, walk, flash) {
   const drawGun = () => {
     ctx.save(); ctx.translate(flip * u * 0.05, by + u * 0.02); ctx.rotate(face - tilt);
     if (flip < 0) ctx.scale(1, -1);
-    ctx.fillStyle = PAL.gunWood; roundRect(ctx, -u * 0.08, -u * 0.03, u * 0.12, u * 0.07, u * 0.025); ctx.fill();
-    ctx.fillStyle = PAL.gun; roundRect(ctx, u * 0.02, -u * 0.04, u * 0.24, u * 0.08, u * 0.03); ctx.fill();
-    ctx.fillRect(u * 0.24, -u * 0.02, u * 0.1, u * 0.04);
-    ctx.fillStyle = white(PAL.skin);
-    ctx.beginPath(); ctx.arc(u * 0.02, u * 0.03, u * 0.045, 0, Math.PI * 2); ctx.arc(u * 0.17, u * 0.03, u * 0.045, 0, Math.PI * 2); ctx.fill();
+    if (b.kind === 'jjam') {
+      // A red noodle bowl, ready to throw.
+      ctx.fillStyle = '#d63a2f'; ctx.beginPath(); ctx.ellipse(u * 0.17, u * 0.02, u * 0.11, u * 0.08, 0, 0, Math.PI); ctx.fill();
+      ctx.fillStyle = '#ffcf5a'; ctx.beginPath(); ctx.ellipse(u * 0.17, u * 0.02, u * 0.1, u * 0.035, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#ff7a2e'; ctx.lineWidth = Math.max(1, u * 0.018);
+      ctx.beginPath(); ctx.moveTo(u * 0.1, u * 0.02); ctx.quadraticCurveTo(u * 0.14, -u * 0.02, u * 0.18, u * 0.02); ctx.quadraticCurveTo(u * 0.22, u * 0.05, u * 0.25, u * 0.01); ctx.stroke();
+      ctx.fillStyle = white(PAL.skin);
+      ctx.beginPath(); ctx.arc(u * 0.07, u * 0.05, u * 0.045, 0, Math.PI * 2); ctx.arc(u * 0.27, u * 0.05, u * 0.045, 0, Math.PI * 2); ctx.fill();
+    } else if (b.kind === 'sowol') {
+      // A wooden bow held across, arrow nocked.
+      ctx.strokeStyle = '#8a5a34'; ctx.lineWidth = Math.max(1.5, u * 0.035); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(u * 0.08, 0, u * 0.17, -Math.PI * 0.42, Math.PI * 0.42); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1;
+      const ex = u * 0.08 + Math.cos(Math.PI * 0.42) * u * 0.17, ey = Math.sin(Math.PI * 0.42) * u * 0.17;
+      ctx.beginPath(); ctx.moveTo(ex, -ey); ctx.lineTo(u * 0.02, 0); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.strokeStyle = '#5a3a20'; ctx.lineWidth = Math.max(1, u * 0.02);
+      ctx.beginPath(); ctx.moveTo(u * 0.02, 0); ctx.lineTo(u * 0.32, 0); ctx.stroke();
+      ctx.fillStyle = '#c9ced8'; ctx.beginPath(); ctx.moveTo(u * 0.36, 0); ctx.lineTo(u * 0.3, -u * 0.03); ctx.lineTo(u * 0.3, u * 0.03); ctx.fill();
+      ctx.fillStyle = white(PAL.skin);
+      ctx.beginPath(); ctx.arc(u * 0.24, 0, u * 0.045, 0, Math.PI * 2); ctx.arc(u * 0.03, 0, u * 0.045, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = PAL.gunWood; roundRect(ctx, -u * 0.08, -u * 0.03, u * 0.12, u * 0.07, u * 0.025); ctx.fill();
+      ctx.fillStyle = PAL.gun; roundRect(ctx, u * 0.02, -u * 0.04, u * 0.24, u * 0.08, u * 0.03); ctx.fill();
+      ctx.fillRect(u * 0.24, -u * 0.02, u * 0.1, u * 0.04);
+      ctx.fillStyle = white(PAL.skin);
+      ctx.beginPath(); ctx.arc(u * 0.02, u * 0.03, u * 0.045, 0, Math.PI * 2); ctx.arc(u * 0.17, u * 0.03, u * 0.045, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.restore();
   };
   if (gunBehind) drawGun();
@@ -226,24 +260,50 @@ export function drawPerson(ctx, b, x, y, T, walk, flash) {
 
   if (!gunBehind) drawGun();
 
-  // Big round head.
+  // Big round head. Each brawler has its own hair (and 짬뽕이 a chef hat).
   const hr = u * 0.25, hx = dirX * u * 0.02, hy = by - u * 0.3;
+  const back = dirY < -0.55; // walking away from the camera: back of the head
+  const hair = white(b.kind === 'jjam' ? '#7a4526' : b.kind === 'sowol' ? '#1f1a2e' : PAL.hair);
+  if (b.kind === 'sowol') {
+    // Long hair falling behind the shoulders.
+    ctx.fillStyle = hair;
+    ctx.beginPath(); ctx.moveTo(hx - hr * 1.02, hy); ctx.lineTo(hx - hr * 0.95, by + u * 0.06);
+    ctx.quadraticCurveTo(hx, by + u * 0.12, hx + hr * 0.95, by + u * 0.06); ctx.lineTo(hx + hr * 1.02, hy); ctx.closePath(); ctx.fill();
+  }
   ctx.fillStyle = white(PAL.skin); ctx.strokeStyle = PAL.skinDark; ctx.lineWidth = Math.max(1, u * 0.022);
   ctx.beginPath(); ctx.arc(hx, hy, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  const back = dirY < -0.55; // walking away from the camera: back of the head
-  ctx.fillStyle = white(PAL.hair);
+  ctx.fillStyle = hair;
   ctx.beginPath();
   if (back) ctx.arc(hx, hy, hr * 1.03, 0, Math.PI * 2);
-  else {
+  else if (b.kind === 'sowol') {
+    // Straight bangs.
+    ctx.arc(hx, hy, hr * 1.03, Math.PI * 0.92, Math.PI * 2.08);
+    ctx.lineTo(hx + hr * 0.9, hy - hr * 0.15); ctx.lineTo(hx - hr * 0.9, hy - hr * 0.15); ctx.closePath();
+  } else {
     // Bowl cut with a soft fringe swept toward the facing side.
     ctx.arc(hx, hy, hr * 1.03, Math.PI * 0.95, Math.PI * 2.05);
     ctx.quadraticCurveTo(hx + hr * 0.7, hy - hr * 0.05, hx + flip * hr * 0.25, hy - hr * 0.3);
     ctx.quadraticCurveTo(hx - hr * 0.3, hy - hr * 0.05, hx - hr * 1.03, hy + hr * 0.05);
   }
   ctx.fill();
-  // A single curl sticking up on top.
-  ctx.strokeStyle = white(PAL.hair); ctx.lineWidth = Math.max(1.5, u * 0.035); ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(hx, hy - hr * 0.95); ctx.quadraticCurveTo(hx + flip * hr * 0.1, hy - hr * 1.45, hx + flip * hr * 0.45, hy - hr * 1.3); ctx.stroke();
+  let top = hy - hr * 1.3;
+  if (b.kind === 'jjam') {
+    // Puffy chef hat.
+    ctx.fillStyle = white('#ffffff'); ctx.strokeStyle = '#d9dbe6'; ctx.lineWidth = Math.max(1, u * 0.018);
+    roundRect(ctx, hx - hr * 0.6, hy - hr * 1.15, hr * 1.2, hr * 0.45, hr * 0.12); ctx.fill(); ctx.stroke();
+    for (const k of [-0.45, 0, 0.45]) { ctx.beginPath(); ctx.arc(hx + k * hr, hy - hr * 1.3, hr * 0.38, 0, Math.PI * 2); ctx.fill(); }
+    top = hy - hr * 1.75;
+  } else if (b.kind === 'sowol') {
+    // A little flower pin on the side.
+    const fx = hx - flip * hr * 0.7, fy = hy - hr * 0.55;
+    ctx.fillStyle = white('#ff8fb8');
+    for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2; ctx.beginPath(); ctx.arc(fx + Math.cos(a) * hr * 0.13, fy + Math.sin(a) * hr * 0.13, hr * 0.1, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = '#ffe36b'; ctx.beginPath(); ctx.arc(fx, fy, hr * 0.08, 0, Math.PI * 2); ctx.fill();
+  } else {
+    // A single curl sticking up on top.
+    ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1.5, u * 0.035); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(hx, hy - hr * 0.95); ctx.quadraticCurveTo(hx + flip * hr * 0.1, hy - hr * 1.45, hx + flip * hr * 0.45, hy - hr * 1.3); ctx.stroke();
+  }
 
   if (!back) {
     const ex = dirX * hr * 0.25, ey = hr * 0.18 + Math.max(0, dirY) * hr * 0.1;
@@ -260,7 +320,7 @@ export function drawPerson(ctx, b, x, y, T, walk, flash) {
     ctx.beginPath(); ctx.arc(hx + ex * 0.8, hy + hr * 0.42, hr * 0.12, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
   }
   ctx.restore();
-  return y - bob + hy - hr * 1.3; // top of the head, for the name and health bar
+  return y - bob + top; // top of the head, for the name and health bar
 }
 
 export function roundRect(ctx, x, y, w, h, r) {
