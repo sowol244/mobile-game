@@ -1,6 +1,8 @@
 // Synthesized sounds (no audio files). The AudioContext is created on the first user gesture.
 export function createSound() {
-  let ctx = null, muted = false, noiseBuf = null, master = null;
+  let ctx = null, muted = false, quiet = false, noiseBuf = null, master = null;
+  // Only a user gesture (unlock) creates the context; before that every sound is silently skipped.
+  const get = () => { if (ctx && ctx.state === 'suspended') ctx.resume(); return ctx; };
   const ensure = () => {
     try {
       if (!ctx) {
@@ -29,8 +31,8 @@ export function createSound() {
     return g;
   }
   function tone(freq, dur, { type = 'sine', vol = 0.05, delay = 0, slide = 0, attack = 0.005 } = {}) {
-    if (muted) return;
-    const c = ensure(); if (!c) return;
+    if (muted || quiet) return;
+    const c = get(); if (!c) return;
     const t = c.currentTime + delay, o = c.createOscillator();
     o.type = type; o.frequency.setValueAtTime(freq, t);
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * slide), t + dur);
@@ -38,8 +40,8 @@ export function createSound() {
   }
   // Filtered noise burst; f0 → f1 sweeps the filter.
   function hiss(dur, { vol = 0.1, delay = 0, type = 'bandpass', f0 = 1000, f1 = 0, q = 1, attack = 0.005 } = {}) {
-    if (muted) return;
-    const c = ensure(); if (!c) return;
+    if (muted || quiet) return;
+    const c = get(); if (!c) return;
     const t = c.currentTime + delay, s = c.createBufferSource(), f = c.createBiquadFilter();
     s.buffer = noise(c); f.type = type; f.Q.value = q; f.frequency.setValueAtTime(f0, t);
     if (f1) f.frequency.exponentialRampToValueAtTime(f1, t + dur);
@@ -53,7 +55,8 @@ export function createSound() {
     unlock: ensure,
     get muted() { return muted; },
     setMuted(v) { muted = !!v; },
-    click() { tone(note(12), 0.05, { type: 'triangle', vol: 0.04 }); },
+    setQuiet(v) { quiet = !!v; }, // the title-screen demo board plays silently
+    click() { const q = quiet; quiet = false; tone(note(12), 0.05, { type: 'triangle', vol: 0.04 }); quiet = q; },
     // Gravity change: a deep space-warp whoosh — swept noise plus a falling sub tone.
     whoosh(fast = false) {
       const d = fast ? 0.22 : 0.42;

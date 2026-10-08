@@ -272,7 +272,8 @@ export function stageState(def) {
 export const cloneState = s => ({ ...s, board: cloneBoard(s.board) });
 
 // Breadth-first search over gravity sequences. Returns the shortest list of directions that meets the goal
-// within maxDepth moves (or null). Moves that change nothing are skipped. `limit` caps explored states.
+// within maxDepth moves; null = proved impossible within maxDepth; undefined = gave up after `limit` states.
+// Moves that change nothing are skipped.
 export function solve(state0, goal, maxDepth = 8, limit = 400000) {
   if (goalMet(state0, goal)) return [];
   const seen = new Set([boardKey(state0.board) + (state0.rescued ? '!' : '')]);
@@ -290,7 +291,7 @@ export function solve(state0, goal, maxDepth = 8, limit = 400000) {
         const k = boardKey(t.board) + (t.rescued ? '!' : '');
         if (seen.has(k)) continue;
         seen.add(k);
-        if (++explored > limit) return null;
+        if (++explored > limit) return undefined; // gave up (not proved unsolvable)
         next.push({ s: t, path: [...path, d] });
       }
     }
@@ -369,10 +370,13 @@ export function spawnWave(state, wave, opts = {}) {
   }
   return res;
 }
-// Starting crash board: a few rows at the bottom with no ready-made groups of 3.
+// Starting crash board: uneven stacks (height 0..rows) at the bottom, with at least two empty columns so no line is
+// full whichever way gravity turns, and no ready-made groups of 3.
 export function crashStart(R, rows = 3) {
   const b = emptyBoard();
-  for (let r = N - rows; r < N; r++) for (let c = 0; c < N; c++) {
+  const h = Array.from({ length: N }, () => 1 + R.int(rows));
+  for (let k = 0; k < 2; k++) { let c; do { c = R.int(N); } while (!h[c] && h.some(Boolean)); h[c] = 0; }
+  for (let c = 0; c < N; c++) for (let r = N - h[c]; r < N; r++) {
     for (let tries = 0; tries < 20; tries++) {
       b[r][c] = mk('n', R.int(COLORS));
       if (!findGroups(b, 3).length) break;

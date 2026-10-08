@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#05040f">
+<title>그라비티 크래시</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Noto+Sans+KR:wght@500;700;900&display=swap">
+<style>
+  /* Layout: HUD on top, one canvas (9x9 board + spawn previews + background particles), item/tool bar at the bottom.
+     Menu panels overlay the canvas. Neon minimal cyberpunk on near-black. */
+  :root {
+    --bg: #05040f;
+    --fg: #e9ecff;
+    --muted: #7d82b0;
+    --line: #2a2a66;
+    --cyan: #00f0ff;
+    --pink: #ff2fd1;
+    --lime: #7dff3a;
+    --yellow: #ffe600;
+    --exit: #39ff9e;
+    color-scheme: dark;
+    --num: "Orbitron", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --kr: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+  }
+  html, body { height: 100%; margin: 0; }
+  [hidden] { display: none !important; }
+  body { background: radial-gradient(120% 70% at 50% 0%, #170f3d 0%, var(--bg) 62%); color: var(--fg); font-family: var(--kr); overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  #app { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px)); padding-block: 8px; gap: 6px; max-width: 560px; margin-inline: auto; }
+
+  #hud { display: grid; grid-template-columns: 1fr minmax(120px, 1.2fr) 1fr; align-items: end; gap: 8px; min-height: 50px; }
+  #hud small { display: block; color: var(--muted); font-size: 11px; letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #hud .v { font-family: var(--num); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  #hL .v { font-size: 28px; color: var(--cyan); text-shadow: 0 0 12px rgba(0, 240, 255, 0.7); }
+  #hR { text-align: right; }
+  #hR .v { font-size: 20px; color: var(--pink); text-shadow: 0 0 10px rgba(255, 47, 209, 0.6); }
+  #hR .v.low { color: #ff5a6e; text-shadow: 0 0 12px rgba(255, 60, 90, 0.8); }
+  #hM { text-align: center; padding-bottom: 3px; }
+  #hM small { margin-bottom: 3px; }
+  #gauge { position: relative; height: 12px; border-radius: 999px; background: #12123a; box-shadow: inset 0 0 0 1px #2c2c70; overflow: hidden; }
+  #gfill { position: absolute; inset: 0 auto 0 0; width: 0%; background: linear-gradient(90deg, #00f0ff, #ff2fd1); box-shadow: 0 0 12px rgba(255, 47, 209, 0.8); border-radius: 999px; transition: width 0.25s; }
+  #gauge.fever #gfill { background: linear-gradient(90deg, #ffe600, #ff2fd1, #00f0ff); background-size: 200% 100%; animation: fv 0.6s linear infinite; transition: width 0.1s linear; }
+  @keyframes fv { to { background-position: 200% 0; } }
+  #glabel { font-family: var(--num); font-weight: 700; font-size: 11px; color: var(--yellow); text-shadow: 0 0 8px rgba(255, 230, 0, 0.7); min-height: 1.3em; margin-top: 2px; }
+  #stars { font-size: 14px; letter-spacing: 2px; color: var(--yellow); text-shadow: 0 0 8px rgba(255, 230, 0, 0.6); min-height: 1.2em; }
+
+  #stage { position: relative; flex: 1; min-height: 0; touch-action: none; }
+  canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+  .corner { position: absolute; top: 4px; z-index: 1; width: 38px; height: 38px; border-radius: 12px; border: 1px solid #2c2c70; background: rgba(10, 10, 32, 0.7); color: var(--muted); font: inherit; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+  .corner:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  #mute { left: 0; }
+  #pause { right: 0; font-family: var(--num); font-weight: 900; font-size: 13px; }
+
+  #bar { display: flex; gap: 8px; min-height: 64px; }
+  .tool { flex: 1 1 0; min-width: 0; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font: inherit; font-size: 13px; font-weight: 700; color: var(--fg); background: rgba(18, 18, 58, 0.8); border: 1px solid #2c2c70; border-radius: 14px; cursor: pointer; padding: 6px 4px; }
+  .tool .ic { font-size: 20px; line-height: 1; filter: drop-shadow(0 0 6px currentColor); }
+  .tool .n { position: absolute; top: 4px; right: 6px; font-family: var(--num); font-size: 11px; color: var(--yellow); }
+  .tool:disabled { opacity: 0.35; cursor: default; }
+  .tool.ready { border-color: rgba(0, 240, 255, 0.75); box-shadow: 0 0 14px rgba(0, 240, 255, 0.3), inset 0 0 12px rgba(0, 240, 255, 0.12); }
+  .tool:not(:disabled):active { transform: scale(0.96); }
+  .tool:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  .tool .k { font-size: 10px; color: var(--muted); font-weight: 500; }
+  #iprog { position: absolute; left: 10px; right: 10px; bottom: 3px; height: 3px; border-radius: 3px; background: #1d1d4a; overflow: hidden; }
+  #iprog i { display: block; height: 100%; width: 0; background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+
+  #overlay { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 18px 14px; overflow-y: auto; touch-action: pan-y; background: rgba(5, 4, 15, 0.86); border-radius: 16px; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  .panel { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; margin: auto 0; }
+  #overlay h1 { margin: 0; font-size: 40px; font-weight: 900; line-height: 1.15; color: var(--cyan); text-shadow: 0 0 6px var(--cyan), 0 0 24px rgba(0, 240, 255, 0.7); letter-spacing: 0.02em; text-wrap: balance; }
+  #overlay h1 .p2 { color: var(--pink); text-shadow: 0 0 6px var(--pink), 0 0 24px rgba(255, 47, 209, 0.7); }
+  #overlay h2 { margin: 0; font-size: 28px; font-weight: 900; color: var(--cyan); text-shadow: 0 0 14px rgba(0, 240, 255, 0.6); }
+  #overlay p { margin: 0; color: #b9bfe8; font-size: 15px; line-height: 1.6; text-wrap: balance; }
+  #overlay b { color: var(--yellow); font-weight: 700; }
+  #final { font-family: var(--num); font-weight: 900; font-size: 40px; color: var(--pink); text-shadow: 0 0 16px rgba(255, 47, 209, 0.8); font-variant-numeric: tabular-nums; }
+  #toast { min-height: 1.3em; font-size: 14px !important; color: var(--yellow) !important; }
+  button { font: inherit; cursor: pointer; }
+  .btns { display: flex; flex-direction: column; gap: 10px; width: min(340px, 100%); }
+  .go { width: 100%; height: 52px; font-size: 20px; font-weight: 900; color: #04121a; background: var(--cyan); border: 0; border-radius: 999px; padding: 0 16px; box-shadow: 0 0 22px rgba(0, 240, 255, 0.55); }
+  .go:active { transform: scale(0.97); }
+  .go.ghost { background: transparent; color: var(--cyan); border: 1px solid rgba(0, 240, 255, 0.6); box-shadow: none; font-size: 17px; font-weight: 700; height: 48px; }
+  .go:focus-visible, .sub:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  #sec { display: flex; gap: 8px; }
+  .sub { flex: 1 1 0; min-width: 0; height: 44px; padding: 0 6px; font-size: 15px; font-weight: 700; color: var(--cyan); background: transparent; border: 1px solid rgba(0, 240, 255, 0.6); border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; box-sizing: border-box; text-decoration: none; cursor: pointer; }
+
+  .helplist { margin: 0; padding: 0; list-style: none; width: min(360px, 100%); display: grid; gap: 4px; text-align: left; font-size: 13.5px; line-height: 1.4; }
+  .helplist li { display: grid; grid-template-columns: 26px 1fr; gap: 8px; align-items: center; padding: 5px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); }
+  .helplist canvas { width: 26px; height: 26px; }
+  .row2 { display: flex; gap: 8px; width: min(340px, 100%); }
+  .row2 .go { flex: 1 1 0; min-width: 0; font-size: 16px; height: 48px; padding: 0 8px; }
+  #pHelp { gap: 10px; }
+  .helplist .tx { color: #dfe3ff; }
+
+  .modes { display: grid; gap: 10px; width: min(340px, 100%); }
+  .mode { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; text-align: left; padding: 14px 16px; color: var(--fg); background: rgba(18, 18, 58, 0.85); border: 1px solid #2c2c70; border-radius: 16px; }
+  .mode .t { font-size: 19px; font-weight: 900; }
+  .mode .d { grid-column: 1; font-size: 13px; color: var(--muted); }
+  .mode .r { grid-row: 1 / span 2; grid-column: 2; font-family: var(--num); font-weight: 700; font-size: 14px; color: var(--yellow); text-align: right; }
+  .mode.m1 { border-color: rgba(0, 240, 255, 0.55); } .mode.m1 .t { color: var(--cyan); }
+  .mode.m2 { border-color: rgba(255, 47, 209, 0.55); } .mode.m2 .t { color: var(--pink); }
+  .mode.m3 { border-color: rgba(255, 230, 0, 0.5); } .mode.m3 .t { color: var(--yellow); }
+  .mode:active { transform: scale(0.98); }
+  .mode:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+
+  #grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: min(340px, 100%); }
+  .st { aspect-ratio: 1 / 0.86; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; color: var(--fg); background: rgba(18, 18, 58, 0.85); border: 1px solid #2c2c70; border-radius: 12px; }
+  .st .no { font-family: var(--num); font-weight: 900; font-size: 18px; color: var(--cyan); }
+  .st .sr { font-size: 11px; letter-spacing: 1px; color: #3a3a7a; }
+  .st .sr i { font-style: normal; color: var(--yellow); text-shadow: 0 0 6px rgba(255, 230, 0, 0.7); }
+  .st.cur { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0, 240, 255, 0.35); }
+  .st:disabled { opacity: 0.35; cursor: default; }
+  .st:disabled .no { color: var(--muted); }
+  .st:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  #starTotal { font-family: var(--num); font-size: 14px; color: var(--yellow); }
+
+  #rows { list-style: none; margin: 0; padding: 0; width: min(340px, 100%); display: grid; gap: 4px; text-align: left; }
+  #rows li { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; padding: 7px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); font-size: 14px; }
+  #rows li.me { background: rgba(255, 230, 0, 0.14); box-shadow: inset 0 0 0 1px rgba(255, 230, 0, 0.6); }
+  #rows .rk { font-family: var(--num); font-weight: 700; color: var(--muted); font-size: 12px; }
+  #rows .nm { color: #c9cdf0; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #rows .sc { font-family: var(--num); font-weight: 700; color: var(--cyan); font-variant-numeric: tabular-nums; }
+  #rankNote, #puzNote { font-size: 13px !important; color: var(--muted) !important; }
+
+  #rStars { font-size: 46px; letter-spacing: 6px; line-height: 1; }
+  #rStars i { font-style: normal; color: #2a2a5a; display: inline-block; transition: transform 0.25s, color 0.25s, text-shadow 0.25s; transform: scale(0.6); }
+  #rStars i.on { color: var(--yellow); text-shadow: 0 0 18px rgba(255, 230, 0, 0.9); transform: scale(1); }
+
+  #coach { position: absolute; top: 4px; left: 44px; right: 44px; z-index: 2; background: rgba(10, 10, 34, 0.94); border: 1px solid rgba(0, 240, 255, 0.55); box-shadow: 0 0 16px rgba(0, 240, 255, 0.25); border-radius: 14px; padding: 7px 11px 9px; text-align: left; }
+  #coach .ct { display: flex; justify-content: space-between; align-items: center; font-family: var(--num); font-weight: 700; font-size: 11px; color: var(--cyan); letter-spacing: 0.1em; }
+  #cskip { font: inherit; font-size: 12px; color: var(--muted); background: transparent; border: 1px solid #2c2c70; border-radius: 999px; padding: 2px 10px; cursor: pointer; }
+  #ctext { margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: var(--fg); text-wrap: balance; }
+  #ctext b { color: var(--yellow); }
+  #ctext.ok { color: var(--lime); }
+  #ctext.warn { color: #ff8aa0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div id="hL"><small id="lLabel">점수</small><span class="v" id="lVal">0</span></div>
+    <div id="hM"><small id="mLabel">COMBO</small><div id="gauge"><div id="gfill"></div></div><div id="glabel" aria-live="polite"></div></div>
+    <div id="hR"><small id="rLabel">최고 기록</small><span class="v" id="rVal">0</span></div>
+  </div>
+  <div id="stage">
+    <canvas id="c" aria-label="게임 판"></canvas>
+    <button class="corner" id="mute" type="button" aria-pressed="false" aria-label="소리 끄기">♪</button>
+    <button class="corner" id="pause" type="button" aria-label="일시정지" hidden>II</button>
+    <div id="coach" hidden>
+      <div class="ct"><span id="cstep"></span><button id="cskip" type="button">건너뛰기</button></div>
+      <p id="ctext" role="status" aria-live="polite"></p>
+    </div>
+    <div id="overlay">
+      <div class="panel" id="pMain">
+        <h1 id="title">그라비티<br><span class="p2">크래시</span></h1>
+        <p id="msg">중력을 돌려 블록을 부수는 퍼즐 게임</p>
+        <div id="final" hidden></div>
+        <p id="toast" role="status" aria-live="polite"></p>
+        <div class="btns">
+          <button class="go" id="start" type="button">시작</button>
+          <div id="sec">
+            <button class="sub" id="home" type="button" hidden>처음으로</button>
+            <button class="sub" id="helpBtn" type="button">게임 설명</button>
+            <button class="sub" id="rankBtn" type="button">순위 보기</button>
+            <a class="sub" id="toMenu" href="../">게임 선택</a>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="pAsk" hidden>
+        <h2>처음이네요!</h2>
+        <p>1분 만에 조작을 익히는<br><b>튜토리얼</b>을 해 볼까요?</p>
+        <div class="btns">
+          <button class="go" id="askYes" type="button">튜토리얼 하기</button>
+          <button class="go ghost" id="askNo" type="button">건너뛰기</button>
+        </div>
+      </div>
+      <div class="panel" id="pMode" hidden>
+        <h2>모드 선택</h2>
+        <div class="modes">
+          <button class="mode m1" id="mPuzzle" type="button"><span class="t">퍼즐 모드</span><span class="d">정해진 횟수 안에 판을 풀어요</span><span class="r" id="mPuzzleR"></span></button>
+          <button class="mode m2" id="mCrash" type="button"><span class="t">크래시 모드</span><span class="d">사방에서 오는 블록을 버텨요</span><span class="r" id="mCrashR"></span></button>
+          <button class="mode m3" id="mDaily" type="button"><span class="t">오늘의 크래시</span><span class="d" id="mDailyD">오늘은 모두 같은 블록이 와요</span><span class="r" id="mDailyR"></span></button>
+        </div>
+        <button class="go ghost back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pStages" hidden>
+        <h2>스테이지</h2>
+        <div id="starTotal"></div>
+        <div id="grid"></div>
+        <button class="go ghost" id="stagesBack" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pResult" hidden>
+        <h2 id="rTitle">클리어!</h2>
+        <div id="rStars" aria-hidden="true"><i>★</i><i>★</i><i>★</i></div>
+        <p id="rMsg"></p>
+        <div class="btns">
+          <button class="go" id="rNext" type="button">다음 스테이지</button>
+          <div id="sec2" style="display:flex;gap:8px">
+            <button class="sub" id="rRetry" type="button">다시 하기</button>
+            <button class="sub" id="rList" type="button">스테이지</button>
+            <button class="sub" id="rHome" type="button">처음으로</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="pPause" hidden>
+        <h2>일시정지</h2>
+        <div class="btns">
+          <button class="go" id="resume" type="button">계속하기</button>
+          <button class="go ghost" id="pRetry" type="button">다시 하기</button>
+          <button class="go ghost" id="quit" type="button">처음으로</button>
+        </div>
+      </div>
+      <div class="panel" id="pHelp" hidden>
+        <h2>게임 설명</h2>
+        <ul class="helplist" id="helpList"></ul>
+        <div class="row2">
+          <button class="go ghost" id="tutBtn" type="button">튜토리얼</button>
+          <button class="go back" type="button">돌아가기</button>
+        </div>
+      </div>
+      <div class="panel" id="pRank" hidden>
+        <h2>내 기록 순위</h2>
+        <p id="puzNote"></p>
+        <ol id="rows"></ol>
+        <p id="rankNote"></p>
+        <button class="go back" type="button">돌아가기</button>
+      </div>
+    </div>
+  </div>
+  <div id="bar" hidden>
+    <button class="tool" id="t1" type="button"><span class="n" id="t1n"></span><span class="ic" id="t1i"></span><span id="t1l"></span><span class="k" id="t1k"></span></button>
+    <button class="tool" id="t2" type="button"><span class="n" id="t2n"></span><span class="ic" id="t2i"></span><span id="t2l"></span><span class="k" id="t2k"></span></button>
+    <button class="tool" id="t3" type="button"><span class="n" id="t3n"></span><span class="ic" id="t3i"></span><span id="t3l"></span><span class="k" id="t3k"></span><span id="iprog"><i id="iprogi"></i></span></button>
+  </div>
+</div>
+<script type="module" src="main.js"></script>
+</body>
+</html>
