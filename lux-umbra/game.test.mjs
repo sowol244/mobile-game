@@ -14,11 +14,14 @@ const at = (s, x, y) => s.tiles[y * s.w + x];
 const mk = (rows, extra = {}) => createGame({ id: 't', rows, ...extra });
 
 // ---------- data ----------
-test('12 stages in 4 chapters, ids unique', () => {
-  assert.equal(LEVELS.length, 12);
-  assert.equal(CHAPTERS.length, 4);
-  assert.equal(new Set(LEVELS.map(l => l.id)).size, 12);
-  for (let c = 0; c < 4; c++) assert.equal(LEVELS.filter(l => l.ch === c).length, 3);
+const byName = name => LEVELS.find(L => L.name === name);
+
+test('80 stages in 8 chapters of 10, ids and names unique', () => {
+  assert.equal(CHAPTERS.length, 8);
+  assert.equal(LEVELS.length, 80);
+  for (let c = 0; c < 8; c++) assert.equal(LEVELS.filter(l => l.ch === c).length, 10, `chapter ${c + 1}`);
+  assert.equal(new Set(LEVELS.map(l => l.id)).size, LEVELS.length);
+  assert.equal(new Set(LEVELS.map(l => l.name)).size, LEVELS.length);
 });
 
 test('every stage is rectangular, has one start, a door, a shard and only known tiles', () => {
@@ -29,9 +32,10 @@ test('every stage is rectangular, has one start, a door, a shard and only known 
     assert.equal(all.split('P').length - 1, 1, `${L.id} start`);
     assert.ok(/[DH]/.test(all), `${L.id} door`);
     assert.equal(all.split('o').length - 1, 1, `${L.id} shard`);
-    assert.match(all, /^[#.LSRBrb^vDH=%?CPKMo1-9]+$/, `${L.id} tiles`);
+    assert.match(all, /^[#.LSRBrb^vDH=%?CPKMo1-9f/\\{}]+$/, `${L.id} tiles`);
     assert.equal(all.split('?').length - 1, (L.signs || []).length, `${L.id} signs`);
     assert.equal(all.split('=').length - 1, (L.levers || []).length, `${L.id} levers`);
+    assert.equal(typeof L.solve, 'function', `${L.id} solve`);
     assert.equal(all.split('%').length - 1, (L.lenses || []).length, `${L.id} lenses`);
     for (const d of all.match(/[1-9]/g) || []) assert.ok(L.lamps && L.lamps[d], `${L.id} lamp ${d}`);
     assert.ok(L.par > 0 && L.name && SOLUTIONS[L.id], `${L.id} par/name/solution`);
@@ -159,6 +163,39 @@ test('a crate pushed onto spikes comes back to where it started', () => {
   assert.ok(Math.abs(s.crates[0].x - hx) < 1e-9 && s.crates[0].y === 2);
 });
 
+test('mirrors turn light 90°; a touched turning mirror flips', () => {
+  // red lamp shines down onto a mirror in the floor; '/' sends it left, '\' right
+  const s = mk(['############', '#...1......#', '#..........#', '#P.........#', '#RRR{RRR...#', '############'], { lamps: { 1: { kind: 'beam', dir: 90, spread: 5, range: 6, color: 'r' } } });
+  run(s, {}, 0.02);
+  assert.equal(isSolid(s, 2, 4), true, 'left side lit');
+  assert.equal(isSolid(s, 6, 4), false, 'right side dark');
+  run(s, { mx: 1 }, 1.2); // walk onto the mirror
+  assert.equal(s.mirrors[0].state, 1);
+  assert.equal(isSolid(s, 6, 4), true, 'now the right side is lit');
+});
+
+test('fog stops every light except your own halo', () => {
+  const s = mk(['##########', '#........#', '#P..S..L.#', '##########'], { zones: [{ x: 1, y: 1, w: 8, h: 2 }], fog: [{ x: 4, y: 2, w: 1, h: 1 }] });
+  run(s, {}, 0.02);
+  assert.equal(isSolid(s, 4, 2), true, 'shadow block in fog stays solid in a lit room');
+  assert.equal(isSolid(s, 7, 2), true);
+});
+
+test('a clock lever switches back by itself', () => {
+  const s = mk(['##########', '#........#', '#P=..S...#', '##########'], { zones: [{ x: 1, y: 1, w: 8, h: 2, g: 'a', on: true }], levers: [{ g: 'a', t: 1 }] });
+  run(s, { mx: 1 }, 0.3);
+  assert.equal(s.groups.a, false);
+  run(s, {}, 1.2);
+  assert.equal(s.groups.a, true);
+});
+
+test('lamps on rails move with the clock', () => {
+  const s = mk(['##########', '#1.......#', '#P.......#', '##########'], { lamps: { 1: { kind: 'radial', range: 3, move: [6, 0], period: 2 } } });
+  const x0 = s.lamps[0].x;
+  run(s, {}, 1);
+  assert.ok(Math.abs(s.lamps[0].x - (x0 + 6)) < 0.05);
+});
+
 test('stars: clear, shard, par time', () => {
   const s = createGame(LEVELS[0]);
   s.t = 10; s.shard.got = true;
@@ -167,14 +204,14 @@ test('stars: clear, shard, par time', () => {
   assert.deepEqual(starsFor(s), [true, false, false]);
 });
 
-test('1-1 cannot be crossed without the torch', () => {
-  const s = createGame(LEVELS[0]);
+test('첫 불빛 cannot be crossed without the torch', () => {
+  const s = createGame(byName('첫 불빛'));
   run(s, { mx: 1 }, 2.5);
   assert.ok(s.deaths >= 1);
 });
 
-test('2-2 cannot be crossed while the crate stays near the lamp', () => {
-  const s = createGame(LEVELS[4]);
+test('그림자 다리 cannot be crossed while the crate stays near the lamp', () => {
+  const s = createGame(byName('그림자 다리'));
   // hop over the crate and try to walk across without pushing it
   const next = driver(s, function* (b) { yield* b.go(4.3); yield* b.jump(5.5); yield* b.go(7); for (let i = 0; i < 6; i++) yield* b.jump(14); });
   try { for (let k = 0; k < 8 / STEP && !s.cleared; k++) step(s, next(), STEP); } catch { /* bot gives up */ }

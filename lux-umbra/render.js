@@ -40,7 +40,7 @@ export function createRenderer(canvas) {
   const rimTmp = document.createElement('canvas'), rctx = rimTmp.getContext('2d');
   let W = 300, H = 300, dpr = 1, T = 30;
   const cam = { x: 0, y: 0, ready: false };
-  let layer = null, warm = null, layerKey = '';
+  let layer = null, warm = null, layerKey = '', vig = null;
   let fade = null, fadeFor = null;
   let parts = [];
   let shake = 0;
@@ -52,7 +52,7 @@ export function createRenderer(canvas) {
     light.width = Math.ceil(canvas.width / 2); light.height = Math.ceil(canvas.height / 2);
     bloom.width = Math.ceil(canvas.width / 10); bloom.height = Math.ceil(canvas.height / 10);
     rimTmp.width = light.width; rimTmp.height = light.height;
-    baseT = clamp(Math.min(W / 12.5, H / 9.4), 22, 60);
+    baseT = clamp(Math.min(W / 12.5, H / 9.4), 22, 60); vig = null;
     T = baseT; levelH = 0;
     layerKey = '';
   }
@@ -175,6 +175,17 @@ export function createRenderer(canvas) {
     }
   }
 
+  const glows = {};
+  function glowSprite(col) {
+    if (glows[col]) return glows[col];
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+    const g = cv.getContext('2d'), c = RGB[col];
+    const grd = g.createRadialGradient(32, 32, 2.5, 32, 32, 32);
+    grd.addColorStop(0, rgba(c, 0.35)); grd.addColorStop(1, rgba(c, 0));
+    g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+    return (glows[col] = cv);
+  }
+
   function drawLight(s, t) {
     const k = dpr / 2 * T;
     lctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -212,10 +223,7 @@ export function createRenderer(canvas) {
       const c = s.tiles[i];
       if (!s.solid[i] || c === 'S' || c === 'H') continue;
       const x = i % s.w, y = (i / s.w) | 0;
-      const col = RGB[BLOCK[c].glow];
-      const grd = lctx.createRadialGradient(x + 0.5, y + 0.5, 0.1, x + 0.5, y + 0.5, 1.3);
-      grd.addColorStop(0, rgba(col, 0.35)); grd.addColorStop(1, rgba(col, 0));
-      lctx.fillStyle = grd; lctx.fillRect(x - 0.8, y - 0.8, 2.6, 2.6);
+      lctx.drawImage(glowSprite(BLOCK[c].glow), x - 0.8, y - 0.8, 2.6, 2.6);
     }
     for (const d of s.doors) {
       if (d.hidden && !s.reveal[d.y * s.w + d.x]) continue;
@@ -282,47 +290,57 @@ export function createRenderer(canvas) {
 
   function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r); g.lineTo(x + w, y + h - r); g.quadraticCurveTo(x + w, y + h, x + w - r, y + h); g.lineTo(x + r, y + h); g.quadraticCurveTo(x, y + h, x, y + h - r); g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y); g.closePath(); }
 
+  // Block looks are drawn once per tile size into small sprites, then stamped (much cheaper than paths each frame).
+  let sprites = null, spriteKey = '';
+  function blockSprites() {
+    const key = `${T}|${dpr}`;
+    if (spriteKey === key) return sprites;
+    spriteKey = key; sprites = {};
+    const px = Math.ceil(T * dpr);
+    for (const c of 'LSRB') {
+      const B = BLOCK[c];
+      for (const solid of [0, 1]) {
+        const cv = document.createElement('canvas'); cv.width = cv.height = px;
+        const g = cv.getContext('2d'); g.setTransform(px, 0, 0, px, 0, 0);
+        if (!solid) { // ghost: dashed outline + a small sun / moon mark, so the level stays readable
+          g.setLineDash([0.12, 0.09]);
+          g.strokeStyle = rgba(B.edge, c === 'S' ? 0.42 : 0.6); g.lineWidth = 0.045;
+          roundRect(g, 0.08, 0.08, 0.84, 0.84, 0.1); g.stroke(); g.setLineDash([]);
+          g.fillStyle = rgba(B.edge, 0.07); g.fill();
+          g.fillStyle = rgba(B.edge, c === 'S' ? 0.28 : 0.4);
+          if (c === 'S') { g.beginPath(); g.arc(0.5, 0.5, 0.11, 0, TAU); g.arc(0.56, 0.46, 0.09, 0, TAU, true); g.fill('evenodd'); }
+          else { g.beginPath(); g.arc(0.5, 0.5, 0.06, 0, TAU); g.fill(); }
+        } else if (c === 'S') {
+          g.fillStyle = '#0c0718'; roundRect(g, 0.02, 0.02, 0.96, 0.96, 0.08); g.fill();
+          g.strokeStyle = rgba(B.edge, 0.85); g.lineWidth = 0.05; g.stroke();
+          g.strokeStyle = rgba(B.edge, 0.22); g.lineWidth = 0.03;
+          g.beginPath(); for (let k = 0; k < 3; k++) { g.moveTo(0.15 + k * 0.28, 0.85); g.lineTo(0.4 + k * 0.28, 0.15); } g.stroke();
+        } else {
+          const grd = g.createLinearGradient(0, 0, 0, 1);
+          grd.addColorStop(0, rgba(B.fill.map(v => Math.min(255, v + 30)), 1)); grd.addColorStop(1, rgba(B.fill.map(v => v * 0.75), 1));
+          g.fillStyle = grd; roundRect(g, 0.03, 0.03, 0.94, 0.94, 0.08); g.fill();
+          g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 0.04;
+          g.beginPath(); g.moveTo(0.12, 0.12); g.lineTo(0.88, 0.12); g.stroke();
+          g.fillStyle = 'rgba(255,255,255,0.35)'; g.beginPath(); g.arc(0.5, 0.52, 0.12, 0, TAU); g.fill();
+        }
+        sprites[c + solid] = cv;
+      }
+    }
+    return sprites;
+  }
+
   function drawBlocks(s, t, vx0, vy0, vx1, vy1) {
+    const sp = blockSprites();
     for (const i of s.reactive) {
       const x = i % s.w, y = (i / s.w) | 0, c = s.tiles[i];
       if (c === 'H' || x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
-      const B = BLOCK[c], a = fade[i];
-      // ghost outline (always faintly there, so the player can read the level)
-      if (a < 0.99) {
-        ctx.save();
-        ctx.globalAlpha = 1 - a;
-        ctx.setLineDash([0.12, 0.09]); ctx.lineDashOffset = -t * 0.15;
-        ctx.strokeStyle = rgba(B.edge, c === 'S' ? 0.42 : 0.6); ctx.lineWidth = 0.045;
-        roundRect(ctx, x + 0.08, y + 0.08, 0.84, 0.84, 0.1); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = rgba(B.edge, 0.07); ctx.fill();
-        // tiny glyph in the middle: sun for light-type, moon for shadow
-        ctx.fillStyle = rgba(B.edge, c === 'S' ? 0.28 : 0.4);
-        if (c === 'S') { ctx.beginPath(); ctx.arc(x + 0.5, y + 0.5, 0.11, 0, TAU); ctx.arc(x + 0.56, y + 0.46, 0.09, 0, TAU, true); ctx.fill('evenodd'); }
-        else { ctx.beginPath(); ctx.arc(x + 0.5, y + 0.5, 0.06, 0, TAU); ctx.fill(); }
-        ctx.restore();
-      }
-      if (a > 0.01) {
-        ctx.save();
-        ctx.globalAlpha = a;
-        if (c === 'S') {
-          ctx.fillStyle = '#0c0718'; roundRect(ctx, x + 0.02, y + 0.02, 0.96, 0.96, 0.08); ctx.fill();
-          ctx.strokeStyle = rgba(B.edge, 0.85); ctx.lineWidth = 0.05; ctx.stroke();
-          ctx.strokeStyle = rgba(B.edge, 0.22); ctx.lineWidth = 0.03;
-          ctx.beginPath(); for (let k = 0; k < 3; k++) { ctx.moveTo(x + 0.15 + k * 0.28, y + 0.85); ctx.lineTo(x + 0.4 + k * 0.28, y + 0.15); } ctx.stroke();
-        } else {
-          const grd = ctx.createLinearGradient(0, y, 0, y + 1);
-          grd.addColorStop(0, rgba(B.fill.map(v => Math.min(255, v + 30)), 1)); grd.addColorStop(1, rgba(B.fill.map(v => v * 0.75), 1));
-          ctx.fillStyle = grd; roundRect(ctx, x + 0.03, y + 0.03, 0.94, 0.94, 0.08); ctx.fill();
-          ctx.strokeStyle = rgba([255, 255, 255], 0.55); ctx.lineWidth = 0.04;
-          ctx.beginPath(); ctx.moveTo(x + 0.12, y + 0.12); ctx.lineTo(x + 0.88, y + 0.12); ctx.stroke();
-          ctx.fillStyle = rgba([255, 255, 255], 0.35);
-          ctx.beginPath(); ctx.arc(x + 0.5, y + 0.52, 0.12, 0, TAU); ctx.fill();
-        }
-        ctx.restore();
-      }
+      const a = fade[i];
+      if (a < 0.99) { ctx.globalAlpha = 1 - a; ctx.drawImage(sp[c + 0], x, y, 1, 1); }
+      if (a > 0.01) { ctx.globalAlpha = a; ctx.drawImage(sp[c + 1], x, y, 1, 1); }
     }
+    ctx.globalAlpha = 1;
   }
+
 
   // ---------- props ----------
   function drawProps(s, t, srcs) {
@@ -336,7 +354,11 @@ export function createRenderer(canvas) {
       ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 0.035;
       ctx.beginPath(); ctx.moveTo(x + 0.25, y + 0.75); ctx.lineTo(x + 0.6, y + 0.2); ctx.stroke();
     }
-    // lamps
+    // lamps (rails first for the moving ones)
+    for (const L of s.lamps) if (L.move) {
+      ctx.strokeStyle = 'rgba(110,130,190,0.45)'; ctx.lineWidth = 0.05; ctx.setLineDash([0.12, 0.1]);
+      ctx.beginPath(); ctx.moveTo(L.x0, L.y0); ctx.lineTo(L.x0 + L.move[0], L.y0 + L.move[1]); ctx.stroke(); ctx.setLineDash([]);
+    }
     for (const L of s.lamps) {
       const on = L.g ? s.groups[L.g] : L.on, c = RGB[L.col];
       ctx.save(); ctx.translate(L.x, L.y);
@@ -390,6 +412,29 @@ export function createRenderer(canvas) {
       ctx.fillStyle = on ? '#ffd27a' : '#5a6380'; if (on) { ctx.shadowColor = '#ffd27a'; ctx.shadowBlur = 10; }
       ctx.beginPath(); ctx.arc(0, -0.58, 0.1, 0, TAU); ctx.fill();
       ctx.restore();
+      if (l.time) { // clock lever: a dial, and a ring that runs down while it is pulled
+        ctx.strokeStyle = 'rgba(140,165,230,0.7)'; ctx.lineWidth = 0.035;
+        ctx.beginPath(); ctx.arc(l.x + 0.5, l.y + 0.2, 0.16, 0, TAU); ctx.stroke();
+        if (l.timer > 0) {
+          ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 0.07;
+          ctx.beginPath(); ctx.arc(l.x + 0.5, l.y + 0.2, 0.16, -Math.PI / 2, -Math.PI / 2 + TAU * (l.timer / l.time)); ctx.stroke();
+        }
+      }
+    }
+    // mirrors: a silver plate on a dark frame; turning ones have a round base
+    for (const m of s.mirrors) {
+      ctx.fillStyle = '#0a0b12'; ctx.fillRect(m.x, m.y, 1, 1);
+      ctx.strokeStyle = 'rgba(120,140,200,0.55)'; ctx.lineWidth = 0.03; ctx.strokeRect(m.x + 0.03, m.y + 0.03, 0.94, 0.94);
+      const a = m.state === 0 ? [m.x + 0.14, m.y + 0.86, m.x + 0.86, m.y + 0.14] : [m.x + 0.14, m.y + 0.14, m.x + 0.86, m.y + 0.86];
+      const grd = ctx.createLinearGradient(a[0], a[1], a[2], a[3]);
+      grd.addColorStop(0, '#9fb4e8'); grd.addColorStop(0.5, '#f4f8ff'); grd.addColorStop(1, '#8aa0d8');
+      ctx.strokeStyle = grd; ctx.lineWidth = 0.14; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(a[2], a[3]); ctx.stroke(); ctx.lineCap = 'butt';
+      if (m.turn) {
+        ctx.strokeStyle = 'rgba(255,210,122,0.75)'; ctx.lineWidth = 0.04;
+        ctx.beginPath(); ctx.arc(m.x + 0.5, m.y + 0.5, 0.36, 0.3, 1.3); ctx.stroke();
+        ctx.beginPath(); ctx.arc(m.x + 0.5, m.y + 0.5, 0.36, Math.PI + 0.3, Math.PI + 1.3); ctx.stroke();
+      }
     }
     // lens stands
     for (const l of s.lenses) {
@@ -444,6 +489,18 @@ export function createRenderer(canvas) {
 
   let walkPhase = 0;
 
+  // fog: soft dark clouds drifting over their tiles
+  function drawFog(s, t, vx0, vy0, vx1, vy1) {
+    if (!s.fog.some(v => v)) return;
+    for (let y = Math.max(0, vy0); y <= Math.min(s.h - 1, vy1); y++) for (let x = Math.max(0, vx0); x <= Math.min(s.w - 1, vx1); x++) {
+      if (!s.fog[y * s.w + x]) continue;
+      const k = hash(x * 31 + y * 7), ox = Math.sin(t * 0.5 + k * 6) * 0.15, oy = Math.cos(t * 0.4 + k * 5) * 0.1;
+      const grd = ctx.createRadialGradient(x + 0.5 + ox, y + 0.5 + oy, 0.1, x + 0.5 + ox, y + 0.5 + oy, 0.95);
+      grd.addColorStop(0, 'rgba(24,20,44,0.85)'); grd.addColorStop(0.6, 'rgba(30,26,54,0.55)'); grd.addColorStop(1, 'rgba(30,26,54,0)');
+      ctx.fillStyle = grd; ctx.fillRect(x - 0.5, y - 0.5, 2, 2);
+    }
+  }
+
   function drawParticles(dt) {
     const next = [];
     for (const q of parts) {
@@ -472,7 +529,8 @@ export function createRenderer(canvas) {
       case 'reveal': burst(e.x + 0.5, e.y + 0.5, [255, 236, 180], 22, 2.5, 1, 0.07); break;
       case 'shard': burst(e.x + 0.5, e.y + 0.5, [255, 250, 220], 30, 4, 0.9, 0.08); break;
       case 'check': burst(e.x + 0.5, e.y, [255, 190, 110], 16, 2.5, 0.8, 0.07, -1); break;
-      case 'lever': burst(e.x + 0.5, e.y + 0.3, [255, 220, 150], 8, 2, 0.4, 0.06); break;
+      case 'lever': case 'leverBack': burst(e.x + 0.5, e.y + 0.3, [255, 220, 150], 8, 2, 0.4, 0.06); break;
+      case 'mirror': burst(e.x + 0.5, e.y + 0.5, [220, 235, 255], 12, 2, 0.5, 0.06); break;
       case 'lens': burst(e.x + 0.5, e.y + 0.25, RGB[COL[e.col]], 14, 2.2, 0.6, 0.07); break;
       case 'wake': burst(e.x, e.y + 0.4, [140, 130, 140], 10, 1.5, 0.7, 0.07, 3); break;
       case 'land': burst(cx, p.y + p.h, [40, 50, 80], 6, 1.6, 0.35, 0.06, 2); break;
@@ -548,9 +606,11 @@ export function createRenderer(canvas) {
     blit(rctx, warm, cx * px, cy * px, canvas.width, canvas.height, 0, 0, rimTmp.width, rimTmp.height);
     rctx.globalCompositeOperation = 'destination-in';
     rctx.drawImage(light, 0, 0);
+    rctx.globalCompositeOperation = 'lighter';
+    rctx.drawImage(rimTmp, 0, 0); // light is dim in alpha: double it here, at half size
     rctx.globalCompositeOperation = 'source-over';
     ctx.globalCompositeOperation = 'lighter';
-    for (let k = 0; k < 2; k++) ctx.drawImage(rimTmp, 0, 0, canvas.width, canvas.height); // light is dim in alpha; add it up
+    ctx.drawImage(rimTmp, 0, 0, canvas.width, canvas.height);
     ctx.globalCompositeOperation = 'source-over';
 
     // world-space things
@@ -561,6 +621,7 @@ export function createRenderer(canvas) {
     drawBlocks(s, t, vx0, vy0, vx1, vy1);
     drawProps(s, t, srcs);
     drawActors(s, t, srcs);
+    drawFog(s, t, vx0, vy0, vx1, vy1);
     // bright torch core on top of everything
     if (s.fl.on && !p.dead) {
       const o = torchOrigin(s), c = RGB[s.fl.col];
@@ -579,9 +640,14 @@ export function createRenderer(canvas) {
     }
     // vignette
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
-    vg.addColorStop(0, 'rgba(2,3,10,0)'); vg.addColorStop(1, 'rgba(2,3,10,0.6)');
-    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+    if (!vig) { // cached per size
+      vig = document.createElement('canvas'); vig.width = Math.ceil(W / 2); vig.height = Math.ceil(H / 2);
+      const vctx = vig.getContext('2d');
+      const vg = vctx.createRadialGradient(vig.width / 2, vig.height / 2, Math.min(vig.width, vig.height) * 0.35, vig.width / 2, vig.height / 2, Math.max(vig.width, vig.height) * 0.75);
+      vg.addColorStop(0, 'rgba(2,3,10,0)'); vg.addColorStop(1, 'rgba(2,3,10,0.6)');
+      vctx.fillStyle = vg; vctx.fillRect(0, 0, vig.width, vig.height);
+    }
+    ctx.drawImage(vig, 0, 0, W, H);
     if (p.dead) { ctx.fillStyle = `rgba(0,0,0,${clamp(1 - p.dead / 0.7, 0, 1) * 0.6})`; ctx.fillRect(0, 0, W, H); }
     if (!opts.noSigns) drawSigns(s);
   }

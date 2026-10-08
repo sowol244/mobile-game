@@ -11,7 +11,7 @@ import { PHYS, LIGHT, COL, DEATH_TIME } from './config.js';
 
 const REACTIVE = new Set(['L', 'S', 'R', 'B', 'H']);
 const ENTITY = new Set(['P', 'K', 'M', 'o']);
-const FIXTURE = new Set(['=', 'C', '?', '%', 'D']);
+const MIRROR = { '/': 0, '\\': 1, '{': 0, '}': 1 }; // '/' '\' fixed, '{' '}' turn when touched
 
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const approach = (v, t, d) => (v < t ? Math.min(t, v + d) : Math.max(t, v - d));
@@ -22,7 +22,7 @@ const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h 
 export function parseLevel(def) {
   const rows = def.rows, h = rows.length, w = Math.max(...rows.map(r => r.length));
   const tiles = new Array(w * h).fill('.');
-  const out = { w, h, tiles, start: null, crates: [], statues: [], shard: null, levers: [], lenses: [], signs: [], checks: [], lamps: [], doors: [] };
+  const out = { w, h, tiles, start: null, crates: [], statues: [], shard: null, levers: [], lenses: [], signs: [], checks: [], lamps: [], doors: [], mirrors: [] };
   let li = 0, ni = 0, si = 0;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const c = rows[y][x] || '#';
@@ -36,7 +36,8 @@ export function parseLevel(def) {
       continue;
     }
     tiles[i] = c;
-    if (c === '=') out.levers.push({ x, y, g: (def.levers || [])[li++] || 'a' });
+    if (c === '=') { const d = (def.levers || [])[li++] || 'a'; out.levers.push({ x, y, g: typeof d === 'string' ? d : d.g, time: typeof d === 'string' ? 0 : d.t || 0 }); }
+    else if (c in MIRROR) out.mirrors.push({ x, y, i, state: MIRROR[c], turn: c === '{' || c === '}' });
     else if (c === '%') out.lenses.push({ x, y, col: (def.lenses || [])[ni++] || 'w' });
     else if (c === '?') out.signs.push({ x, y, text: (def.signs || [])[si++] || '' });
     else if (c === 'C') out.checks.push({ x, y });
@@ -46,7 +47,9 @@ export function parseLevel(def) {
       out.lamps.push({
         x: x + 0.5 + (L.ox || 0), y: y + 0.5 + (L.oy || 0), kind: L.kind || 'radial', dir: ((L.dir ?? 0) * Math.PI) / 180,
         half: ((L.spread ?? 25) * Math.PI) / 180, range: L.range ?? 8, col: COL[L.color || 'w'], g: L.g || null, on: L.on ?? true, id: c,
+        move: L.move || null, period: L.period || 4, phase: L.phase || 0,
       });
+      const lp = out.lamps[out.lamps.length - 1]; lp.x0 = lp.x; lp.y0 = lp.y;
       tiles[i] = '.';
     }
   }
@@ -62,7 +65,7 @@ export function createGame(def) {
     def, w, h, tiles: lv.tiles,
     solid: new Uint8Array(w * h), light: new Uint8Array(w * h), reveal: new Uint8Array(w * h),
     reactive: [],
-    lamps: lv.lamps, levers: lv.levers.map(l => ({ ...l, touch: false })), lenses: lv.lenses.map(l => ({ ...l, touch: false })),
+    lamps: lv.lamps, levers: lv.levers.map(l => ({ ...l, touch: false, timer: 0 })), mirrors: lv.mirrors.map(m => ({ ...m, touch: false })), lenses: lv.lenses.map(l => ({ ...l, touch: false })),
     signs: lv.signs, checks: lv.checks.map(c => ({ ...c, on: false })), doors: lv.doors,
     zones: (def.zones || []).map(z => ({ x: z.x, y: z.y, w: z.w, h: z.h, col: COL[z.color || 'w'], g: z.g || null, on: z.on ?? true })),
     groups: { ...(def.groups || {}) },
@@ -73,6 +76,12 @@ export function createGame(def) {
     t: 0, deaths: 0, cleared: false, events: [], snap: null, startPos: lv.start,
   };
   for (let i = 0; i < w * h; i++) if (REACTIVE.has(lv.tiles[i])) s.reactive.push(i);
+  s.mirrorAt = new Map(s.mirrors.map(m => [m.i, m]));
+  // fog: rectangles from the level data plus 'f' tiles. Nothing but your own halo reaches into it.
+  s.fog = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) if (lv.tiles[i] === 'f') s.fog[i] = 1;
+  for (const f of def.fog || []) for (let y = f.y; y < f.y + f.h; y++) for (let x = f.x; x < f.x + f.w; x++) if (x >= 0 && y >= 0 && x < w && y < h) s.fog[y * w + x] = 1;
+  moveLamps(s);
   // a lamp / zone with a group follows that group; groups default to the lamp's own "on"
   for (const L of [...s.lamps, ...s.zones]) if (L.g) for (const g of L.g) if (!(g in s.groups)) s.groups[g] = L.on;
   s.p = makePlayer(lv.start.x, lv.start.y);
@@ -90,6 +99,7 @@ function snapshot(s, at) {
     at: { ...at },
     crates: s.crates.map(c => ({ ...c })), statues: s.statues.map(m => ({ ...m })),
     groups: { ...s.groups }, reveal: s.reveal.slice(), lens: s.fl.col,
+    mirrors: s.mirrors.map(m => m.state), timers: s.levers.map(l => l.timer),
   };
 }
 
@@ -100,7 +110,8 @@ function restore(s) {
   const face = s.p.face;
   s.p = makePlayer(sn.at.x, sn.at.y); s.p.face = face;
   s.fl.aim = face > 0 ? LIGHT.defaultAim : Math.PI - LIGHT.defaultAim;
-  for (const l of s.levers) l.touch = false;
+  s.levers.forEach((l, k) => { l.touch = false; l.timer = sn.timers[k]; });
+  s.mirrors.forEach((m, k) => { m.touch = false; m.state = sn.mirrors[k]; });
   for (const l of s.lenses) l.touch = false;
   updateLight(s, true);
 }
@@ -112,7 +123,7 @@ export function isSolid(s, x, y) {
   if (x < 0 || x >= s.w || y < 0) return true;
   if (y >= s.h) return false;
   const i = y * s.w + x, c = s.tiles[i];
-  if (c === '#' || c === 'r' || c === 'b') return true;
+  if (c === '#' || c === 'r' || c === 'b' || c in MIRROR) return true;
   if (c === 'H') return !s.reveal[i];
   if (c === 'L' || c === 'S' || c === 'R' || c === 'B') return s.solid[i] === 1;
   return false;
@@ -121,7 +132,16 @@ export function isSolid(s, x, y) {
 function isOpaque(s, x, y) {
   if (x < 0 || x >= s.w || y < 0 || y >= s.h) return true;
   const i = y * s.w + x, c = s.tiles[i];
-  return c === '#' || (c === 'H' && !s.reveal[i]);
+  return c === '#' || s.fog[i] === 1 || c in MIRROR || (c === 'H' && !s.reveal[i]);
+}
+
+// Lamps on rails slide back and forth (smoothly) with the clock.
+function moveLamps(s) {
+  for (const L of s.lamps) {
+    if (!L.move) continue;
+    const k = (1 - Math.cos(2 * Math.PI * (s.t / L.period + L.phase))) / 2;
+    L.x = L.x0 + L.move[0] * k; L.y = L.y0 + L.move[1] * k;
+  }
 }
 
 const tint = (col, glass) => (glass === 'r' ? (col & (COL.w | COL.r) ? COL.r : 0) : col & (COL.w | COL.b) ? COL.b : 0);
@@ -171,12 +191,43 @@ export function lightSources(s) {
     out.push({ kind: 'beam', x: o.x, y: o.y, dir: s.fl.aim, half: LIGHT.flashHalf, range: LIGHT.flashRange, col: s.fl.col, torch: true });
     out.push({ kind: 'radial', x: o.x, y: o.y, range: LIGHT.halo, col: s.fl.col, torch: true, halo: true });
   }
+  if (s.mirrors.length) reflect(s, out);
   return out;
+}
+
+// Mirrors: light reaching a mirror's centre leaves it as a narrow beam, turned 90°.
+// '/' sends rightward light up, '\' sends rightward light down. Up to 4 bounces.
+function reflect(s, out) {
+  let front = out.filter(src => src.kind !== 'zone' && !src.halo);
+  const seen = new Set();
+  for (let depth = 0; depth < 4 && front.length; depth++) {
+    const next = [];
+    for (const m of s.mirrors) {
+      const cx = m.x + 0.5, cy = m.y + 0.5;
+      for (const src of front) {
+        if (src.from === m) continue;
+        const col = reach(s, src, cx, cy);
+        if (!col) continue;
+        let dx = cx - src.x, dy = cy - src.y;
+        if (Math.abs(dx) >= Math.abs(dy)) { dx = Math.sign(dx); dy = 0; } else { dy = Math.sign(dy); dx = 0; }
+        const ox = m.state === 0 ? -dy : dy, oy = m.state === 0 ? -dx : dx;
+        const key = `${m.i}|${ox},${oy}|${col}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push({ kind: 'beam', x: cx, y: cy, dir: Math.atan2(oy, ox), half: 0.17, range: 16, col, from: m, mirror: true });
+      }
+    }
+    out.push(...next);
+    front = next;
+  }
 }
 
 export const torchOrigin = s => ({ x: s.p.x + s.p.w / 2, y: s.p.y + 0.35 });
 
+export const inFog = (s, x, y) => x >= 0 && y >= 0 && x < s.w && y < s.h && s.fog[Math.floor(y) * s.w + Math.floor(x)] === 1;
+
 function reach(s, src, px, py) {
+  if (!src.halo && inFog(s, px, py)) return 0;
   if (src.kind === 'zone') return px >= src.x && px <= src.x + src.w && py >= src.y && py <= src.y + src.h ? src.col : 0;
   const dx = px - src.x, dy = py - src.y, d = Math.hypot(dx, dy);
   if (d > src.range) return 0;
@@ -355,11 +406,18 @@ function interact(s) {
 
   for (const l of s.levers) {
     const t = touches(p, l.x, l.y, 0.2, 0, 0.8, 1);
-    if (t && !l.touch) {
+    if (t && !l.touch && !l.timer) {
       for (const g of l.g) s.groups[g] = !s.groups[g];
+      if (l.time) l.timer = l.time;
       s.events.push({ type: 'lever', x: l.x, y: l.y, on: s.groups[l.g[0]] });
     }
     l.touch = t;
+  }
+  for (const m of s.mirrors) {
+    if (!m.turn) continue;
+    const t = touches(p, m.x, m.y, -0.06, -0.06, 1.06, 1.06); // bump into it or stand on it
+    if (t && !m.touch) { m.state ^= 1; s.events.push({ type: 'mirror', x: m.x, y: m.y }); }
+    m.touch = t;
   }
   for (const l of s.lenses) {
     const t = touches(p, l.x, l.y, 0.15, 0, 0.85, 1);
@@ -397,6 +455,11 @@ export function step(s, inp, dt) {
     return;
   }
   s.t += dt;
+  moveLamps(s);
+  for (const l of s.levers) if (l.timer > 0) {
+    l.timer -= dt;
+    if (l.timer <= 0) { l.timer = 0; for (const g of l.g) s.groups[g] = !s.groups[g]; s.events.push({ type: 'leverBack', x: l.x, y: l.y }); }
+  }
   // torch
   const was = s.fl.on;
   if (inp.toggle) s.fl.on = !s.fl.on;

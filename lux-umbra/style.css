@@ -77,21 +77,32 @@ button.go.ghost { background: transparent; color: var(--accent); border: 1px sol
 #final .why .ok { color: var(--accent); }
 #final .new { color: #9fe8b0; font-size: 14px; }
 
-/* stage select */
+/* stage select: one chapter per page */
 #starTotal { color: var(--accent) !important; }
-#chapters { display: grid; gap: 8px; width: min(360px, 100%); }
-.chap { text-align: left; }
-.chap h2 { margin: 0 0 5px 4px; font-weight: 400; font-size: 14px; color: var(--muted); }
-.chap h2 b { color: var(--hud); font-weight: 400; margin-right: 6px; }
-.chap .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.stg { font: inherit; color: var(--hud); background: rgba(150, 170, 255, 0.08); border: 1px solid rgba(150, 170, 255, 0.18); border-radius: 12px; padding: 5px 4px 4px; display: grid; gap: 0; cursor: pointer; min-height: 62px; }
-.stg .id { font-size: 17px; }
-.stg .nm { font-size: 12px; color: #c9cfea; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stg .sr { font-size: 13px; color: #3f4668; letter-spacing: 1px; }
+#pStages { gap: 10px; }
+#chapNav { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 8px; width: min(360px, 100%); }
+.chArrow { width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255, 210, 122, 0.5); background: transparent; color: var(--accent); font: inherit; font-size: 18px; cursor: pointer; }
+.chArrow:disabled { opacity: 0.25; cursor: default; }
+.chArrow:focus-visible { outline: 3px solid var(--hud); outline-offset: 2px; }
+#chTitle { display: grid; gap: 1px; }
+#chTitle b { font-family: var(--title); font-size: 21px; color: #fff1cf; font-weight: 700; }
+#chTitle small { font-size: 13px; color: var(--muted); }
+#chDots { display: flex; gap: 6px; justify-content: center; }
+#chDots button { width: 22px; height: 22px; padding: 0; border: 0; background: transparent; cursor: pointer; display: grid; place-items: center; }
+#chDots button::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: rgba(150, 170, 255, 0.3); }
+#chDots button.done::before { background: rgba(255, 210, 122, 0.55); }
+#chDots button[aria-selected="true"]::before { width: 10px; height: 10px; background: var(--accent); box-shadow: 0 0 8px rgba(255, 210, 122, 0.8); }
+#stageGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(360px, 100%); touch-action: pan-y; }
+.stg { font: inherit; color: var(--hud); background: rgba(150, 170, 255, 0.08); border: 1px solid rgba(150, 170, 255, 0.18); border-radius: 12px; padding: 6px 10px; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 8px; align-items: center; text-align: left; cursor: pointer; min-height: 50px; }
+.stg .id { grid-row: 1 / 3; font-size: 15px; color: var(--muted); min-width: 30px; }
+.stg .nm { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stg .meta { display: flex; justify-content: space-between; gap: 4px; font-size: 12px; }
+.stg .sr { color: #3f4668; letter-spacing: 1px; }
 .stg .sr b { font-weight: 400; color: var(--accent); }
-.stg .bt { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stg .bt { color: var(--muted); font-variant-numeric: tabular-nums; }
 .stg.next { border-color: rgba(255, 210, 122, 0.8); background: rgba(255, 210, 122, 0.12); }
-.stg:disabled { opacity: 0.4; cursor: default; }
+.stg.next .id { color: var(--accent); }
+.stg:disabled { opacity: 0.38; cursor: default; }
 .stg:focus-visible { outline: 3px solid var(--hud); outline-offset: 2px; }
 
 /* corner buttons */
@@ -135,7 +146,12 @@ button.go.ghost { background: transparent; color: var(--accent); border: 1px sol
   #overlay h1 { font-size: 30px; }
   .panel { gap: 8px; }
   #pHelp h1, #pRank h1, #pStages h1, #pPause h1 { font-size: 22px; }
-  #chapters { width: min(560px, 100%); grid-template-columns: 1fr 1fr; }
+  #stageGrid { width: min(620px, 100%); grid-template-columns: repeat(5, 1fr); }
+  .stg { grid-template-columns: 1fr; text-align: center; padding: 4px 6px; min-height: 0; }
+  .stg .id { grid-row: auto; }
+  .stg .meta { justify-content: center; }
+  #chTitle b { font-size: 18px; }
+  #pStages { gap: 6px; }
 }
 @media (max-height: 640px) and (orientation: portrait) {
   #overlay h1 { font-size: 34px; }

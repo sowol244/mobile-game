@@ -61,31 +61,55 @@ function startDemo() {
   clearT = 0;
 }
 
-function buildStages() {
-  const wrap = $('chapters'); wrap.replaceChildren();
-  $('starTotal').textContent = `★ ${totalStars()} / ${LEVELS.length * 3}`;
+// Stage select: one chapter (10 stages) per page, ◀ ▶ / dots / swipe to change chapter.
+let page = null;
+function buildStages(ch) {
   const next = firstOpen();
-  CHAPTERS.forEach((C, ci) => {
-    const box = document.createElement('div'); box.className = 'chap';
-    const h = document.createElement('h2'); const b = document.createElement('b'); b.textContent = `${ci + 1}. ${C.name}`; h.append(b, C.sub); box.append(h);
-    const row = document.createElement('div'); row.className = 'row';
-    LEVELS.forEach((L, i) => {
-      if (L.ch !== ci) return;
-      const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'stg' + (i === next && !progress[L.id] ? ' next' : '');
-      const open = unlocked(i);
-      btn.disabled = !open;
-      const id = document.createElement('span'); id.className = 'id'; id.textContent = open ? L.id : '🔒';
-      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = open ? L.name : '잠김';
-      const sr = document.createElement('span'); sr.className = 'sr';
-      const got = progress[L.id] ? progress[L.id].s : [false, false, false];
-      got.forEach(g => { const e = document.createElement(g ? 'b' : 'span'); e.textContent = '★'; sr.append(e); });
-      const bt = document.createElement('span'); bt.className = 'bt'; bt.textContent = progress[L.id] ? fmt(progress[L.id].best) : ' ';
-      btn.append(id, nm, sr, bt);
-      btn.setAttribute('aria-label', `${L.id} ${L.name}${open ? '' : ' 잠김'}, 별 ${starCount(L.id)}개`);
-      btn.addEventListener('click', () => { unlock(); sfx.click(); startStage(i); });
-      row.append(btn);
-    });
-    box.append(row); wrap.append(box);
+  if (ch != null) page = ch;
+  else if (page == null || state === 'title') page = LEVELS[next].ch;
+  page = Math.max(0, Math.min(CHAPTERS.length - 1, page));
+  $('starTotal').textContent = `★ ${totalStars()} / ${LEVELS.length * 3}`;
+  const C = CHAPTERS[page], list = LEVELS.map((L, i) => [L, i]).filter(([L]) => L.ch === page);
+  const got = list.reduce((a, [L]) => a + starCount(L.id), 0);
+  $('chName').textContent = `${page + 1}. ${C.name}`;
+  $('chSub').textContent = `${C.sub} · ★ ${got}/${list.length * 3}`;
+  $('chPrev').disabled = page === 0; $('chNext').disabled = page === CHAPTERS.length - 1;
+  const dots = $('chDots'); dots.replaceChildren();
+  CHAPTERS.forEach((D, ci) => {
+    const d = document.createElement('button'); d.type = 'button'; d.setAttribute('role', 'tab');
+    d.setAttribute('aria-selected', String(ci === page)); d.setAttribute('aria-label', `${ci + 1}장 ${D.name}`);
+    if (LEVELS.filter(L => L.ch === ci).every(L => progress[L.id])) d.className = 'done';
+    d.addEventListener('click', () => { sfx.click(); buildStages(ci); });
+    dots.append(d);
+  });
+  const grid = $('stageGrid'); grid.replaceChildren();
+  for (const [L, i] of list) {
+    const open = unlocked(i);
+    const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'stg' + (i === next && !progress[L.id] ? ' next' : '');
+    btn.disabled = !open;
+    const id = document.createElement('span'); id.className = 'id'; id.textContent = open ? L.id : '🔒';
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = open ? L.name : '잠김';
+    const meta = document.createElement('span'); meta.className = 'meta';
+    const sr = document.createElement('span'); sr.className = 'sr';
+    (progress[L.id] ? progress[L.id].s : [false, false, false]).forEach(g => { const e = document.createElement(g ? 'b' : 'span'); e.textContent = '★'; sr.append(e); });
+    const bt = document.createElement('span'); bt.className = 'bt'; bt.textContent = progress[L.id] ? fmt(progress[L.id].best) : '';
+    meta.append(sr, bt);
+    btn.append(id, nm, meta);
+    btn.setAttribute('aria-label', `${L.id} ${L.name}${open ? '' : ' 잠김'}, 별 ${starCount(L.id)}개`);
+    btn.addEventListener('click', () => { unlock(); sfx.click(); startStage(i); });
+    grid.append(btn);
+  }
+}
+$('chPrev').addEventListener('click', () => { sfx.click(); buildStages(page - 1); });
+$('chNext').addEventListener('click', () => { sfx.click(); buildStages(page + 1); });
+{ // swipe sideways on the grid to turn the page
+  let sx = null, sy = 0;
+  const grid = $('stageGrid');
+  grid.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; });
+  grid.addEventListener('pointerup', e => {
+    if (sx == null) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy; sx = null;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) buildStages(page + (dx < 0 ? 1 : -1));
   });
 }
 
@@ -118,7 +142,7 @@ startBtn.addEventListener('click', () => {
 });
 $('resume').addEventListener('click', () => pause(false));
 $('restart').addEventListener('click', () => { sfx.click(); startStage(idx); });
-$('toStages').addEventListener('click', () => { sfx.click(); showTitle(); buildStages(); panel('stages'); });
+$('toStages').addEventListener('click', () => { sfx.click(); const c = LEVELS[idx].ch; showTitle(); buildStages(c); panel('stages'); });
 $('quit').addEventListener('click', () => { sfx.click(); showTitle(); });
 pauseBtn.addEventListener('click', () => pause(true));
 retryBtn.addEventListener('click', () => { if (state === 'play') retry(game); });
@@ -217,7 +241,8 @@ function events() {
     switch (e.type) {
       case 'torchOn': sfx.torchOn(); break;
       case 'torchOff': sfx.torchOff(); break;
-      case 'lever': sfx.lever(); break;
+      case 'lever': case 'leverBack': sfx.lever(); break;
+      case 'mirror': sfx.lens(); break;
       case 'lens': sfx.lens(); break;
       case 'jump': sfx.jump(); break;
       case 'land': sfx.land(); break;
@@ -287,7 +312,7 @@ function frame(now) {
 
 function resize() {
   const r = stage.getBoundingClientRect();
-  view.resize(r.width, r.height, Math.min(window.devicePixelRatio || 1, 2));
+  view.resize(r.width, r.height, Math.min(window.devicePixelRatio || 1, 1.5)); // 1.5× is sharp enough and keeps phones smooth
 }
 new ResizeObserver(resize).observe(stage);
 window.addEventListener('resize', resize);

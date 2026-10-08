@@ -48,7 +48,13 @@
       <div class="panel" id="pStages" hidden>
         <h1>스테이지</h1>
         <p id="starTotal"></p>
-        <div id="chapters"></div>
+        <div id="chapNav">
+          <button class="chArrow" id="chPrev" type="button" aria-label="이전 장">◀</button>
+          <div id="chTitle"><b id="chName"></b><small id="chSub"></small></div>
+          <button class="chArrow" id="chNext" type="button" aria-label="다음 장">▶</button>
+        </div>
+        <div id="chDots" role="tablist" aria-label="장"></div>
+        <div id="stageGrid"></div>
         <button class="go ghost back" type="button">돌아가기</button>
       </div>
       <div class="panel" id="pHelp" hidden>
@@ -61,6 +67,9 @@
           <li><span class="sw l"></span><b>빛 블록</b> 빛을 받으면 단단해져요</li>
           <li><span class="sw s"></span><b>그림자 블록</b> 어둠 속에서만 단단해요</li>
           <li><span class="sw r"></span><b>색 블록</b> 같은 색 빛에만 생겨요</li>
+          <li><b>상자</b> 밀어서 그림자를 만들어요</li>
+          <li><b>거울</b> 빛을 꺾어요. 도는 거울은 닿으면 돌아요</li>
+          <li><b>안개</b> 어떤 빛도 들어가지 못해요</li>
           <li><b>석상</b> 빛을 받으면 깨어나 다가와요</li>
           <li><b>별 3개</b> 클리어 · 빛 조각 · 기준 시간</li>
         </ul>
