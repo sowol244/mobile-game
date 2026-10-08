@@ -2,7 +2,7 @@
 // Walking around walls uses a distance field (BFS) from the goal tile, cached per tile since walls never move.
 
 import { BOT_LEVELS } from './config.js';
-import { tileAt, blocksWalk, lineOfSight, canFire, superReady, hitsWall, visibleTo, BLUE } from './game.js';
+import { tileAt, blocksWalk, lineOfSight, canFire, superReady, hitsWall, visibleTo, poisonInset, BLUE } from './game.js';
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
@@ -91,7 +91,8 @@ export function botControl(m, b, brain, dt) {
   for (const o of m.brawlers) {
     if (o.team === b.team || !visibleTo(m, b.team, o)) continue;
     const d = Math.hypot(o.x - b.x, o.y - b.y);
-    if (d > 11) continue;
+    // In survival bots mind their own area early on (boxes first), and pick fights only up close.
+    if (d > (m.mode === 'survival' ? (b.cubes < 2 && m.t < 45 ? 5 : 7.5) : 11)) continue;
     const blocked = !lobber && !lineOfSight(m.map, b.x, b.y, o.x, o.y);
     const score = d + (blocked ? 4 : 0) + (o.id === brain.target ? -1.5 : 0) + o.hp / o.maxHp * 2;
     if (score < best) { best = score; target = o; }
@@ -106,14 +107,18 @@ export function botControl(m, b, brain, dt) {
   if (target) brain.seen = { x: target.x, y: target.y, t: 1.5 };
   else if (brain.seen && (brain.seen.t -= dt) <= 0) brain.seen = null;
 
+  // Survival: stay clear of the poison's edge — this beats everything else about where to walk.
+  const inset = poisonInset(m), cx = m.map.w / 2, cy = m.map.h / 2;
+  const danger = inset > 0 && (b.x < inset + 1.5 || b.y < inset + 1.5 || b.x > m.map.w - inset - 1.5 || b.y > m.map.h - inset - 1.5);
+
   let dir = { x: 0, y: 0 };
   if (target) {
     const d = Math.hypot(target.x - b.x, target.y - b.y), los = lineOfSight(m.map, b.x, b.y, target.x, target.y);
     const low = b.hp < b.maxHp * 0.3;
     const ux = (target.x - b.x) / d, uy = (target.y - b.y) / d;
     if (low && d < R + 1.5) {
-      const home = m.map.spawns[b.team][b.slot % m.map.spawns[b.team].length];
-      dir = walkToward(m, b, home.x, home.y);
+      if (m.mode === 'survival') dir = walkToward(m, b, b.x - ux * 4, b.y - uy * 4); // back off, away from them
+      else { const home = m.map.spawns[b.team][b.slot % m.map.spawns[b.team].length]; dir = walkToward(m, b, home.x, home.y); }
     } else if (!los && !lobber) {
       dir = walkToward(m, b, target.x, target.y);
     } else {
@@ -151,6 +156,8 @@ export function botControl(m, b, brain, dt) {
       out.fire = { a: Math.atan2(p.y - b.y, p.x - b.x) + err(), d: Math.hypot(p.x - b.x, p.y - b.y) * (1 + err() * 0.5) };
       brain.react = brain.skill.reaction * (0.7 + m.rand() * 0.6);
     }
+  } else if (m.mode === 'survival' && !brain.seen) {
+    dir = survivalRoam(m, b, brain, out);
   } else if (brain.seen) {
     // Lost sight (they ducked into a bush): check where they were last seen.
     dir = Math.hypot(brain.seen.x - b.x, brain.seen.y - b.y) > 0.8 ? walkToward(m, b, brain.seen.x, brain.seen.y) : { x: 0, y: 0 };
@@ -168,6 +175,7 @@ export function botControl(m, b, brain, dt) {
     if (d < 1) brain.atGoal = true; else if (d > 2.5) brain.atGoal = false;
     if (!brain.atGoal) dir = walkToward(m, b, goalX, goalY);
   }
+  if (danger) dir = walkToward(m, b, cx, cy);
   out.mx = dir.x; out.my = dir.y;
 
   const wants = Math.hypot(out.mx, out.my) > 0.3, moved = Math.hypot(b.x - brain.lastX, b.y - brain.lastY);
@@ -175,4 +183,34 @@ export function botControl(m, b, brain, dt) {
   brain.lastX = b.x; brain.lastY = b.y;
   if (brain.stuckT > 0.5) { const a = m.rand() * Math.PI * 2; brain.unstick = { x: Math.cos(a), y: Math.sin(a), t: 0.35 }; brain.stuckT = 0; }
   return out;
+}
+
+// Survival with nobody in sight: grab nearby cubes, break power boxes, otherwise drift toward the middle.
+function survivalRoam(m, b, brain, out) {
+  let cube = null, cd = 7;
+  for (const it of m.items) { const d = Math.hypot(it.x - b.x, it.y - b.y); if (d < cd) { cd = d; cube = it; } }
+  if (cube) return walkToward(m, b, cube.x, cube.y);
+  let box = null, bd = 9;
+  for (const i of m.boxHp.keys()) {
+    const x = i % m.map.w + 0.5, y = Math.floor(i / m.map.w) + 0.5, d = Math.hypot(x - b.x, y - b.y);
+    if (d < bd) { bd = d; box = { x, y }; }
+  }
+  if (box) {
+    const R = b.def.attack.range, lobber = b.def.attack.type === 'lob';
+    // Line of sight to a box stops at the box itself, so test to a point just in front of it.
+    const ux = (box.x - b.x) / bd, uy = (box.y - b.y) / bd;
+    const los = lobber || lineOfSight(m.map, b.x, b.y, box.x - ux * 0.6, box.y - uy * 0.6);
+    if (bd < R * 0.8 && los) {
+      if (brain.react <= 0 && canFire(b)) { out.fire = { a: Math.atan2(box.y - b.y, box.x - b.x), d: bd }; brain.react = brain.skill.reaction; }
+      return { x: 0, y: 0 };
+    }
+    return walkToward(m, b, box.x - ux * 1.2, box.y - uy * 1.2);
+  }
+  // Nothing to do: roam around a home spot (between the start and the middle), then the middle once the poison comes.
+  const st = m.map.starts[b.slot % m.map.starts.length];
+  const k = poisonInset(m) > 0 ? 1 : 0.45;
+  const gx = st.x + (m.map.w / 2 - st.x) * k, gy = st.y + (m.map.h / 2 - st.y) * k;
+  const d = Math.hypot(gx - b.x, gy - b.y);
+  if (d < 1.5) brain.atGoal = true; else if (d > 3.5) brain.atGoal = false;
+  return brain.atGoal ? { x: 0, y: 0 } : walkToward(m, b, gx, gy);
 }

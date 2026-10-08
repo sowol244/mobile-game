@@ -1,6 +1,6 @@
 // Drawing only. Reads the match, never changes it.
 
-import { BLUE, tileAt, inBush, visibleTo, superReady } from './game.js';
+import { BLUE, tileAt, inBush, visibleTo, superReady, poisonInset } from './game.js';
 import { PAL, paintGround, drawRipples, drawObstacle, drawBush, drawPerson } from './art.js';
 import { stickLayout } from './input.js';
 
@@ -11,6 +11,9 @@ export function createRenderer(canvas) {
   const cam = { x: 0, y: 0, px: 40, ready: false };
   const walkPhase = new Map();
   let ground = null;
+  // Colour side of a team as seen by the viewer: 0 = friend (blue), 1 = foe (red).
+  let viewer = null;
+  const side = team => (viewer == null ? (team === BLUE ? 0 : 1) : team === viewer ? 0 : 1);
 
   function resize(w, h) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -23,14 +26,16 @@ export function createRenderer(canvas) {
     for (const e of m.events) {
       if (e.type === 'hit') {
         const b = m.brawlers[e.id];
-        fx.pops.push({ x: e.x + (Math.random() - 0.5) * 0.4, y: e.y - 1.15, t: 0.7, text: String(e.dmg), col: b.team === BLUE ? '#ffffff' : PAL.me });
+        fx.pops.push({ x: e.x + (Math.random() - 0.5) * 0.4, y: e.y - 1.15, t: 0.7, text: String(e.dmg), col: side(b.team) === 0 ? '#ffffff' : PAL.me });
         if (e.id === meId) fx.shake = Math.min(0.25, fx.shake + 0.08);
       } else if (e.type === 'spark') fx.sparks.push({ x: e.x, y: e.y, t: 0.18 });
       else if (e.type === 'splash') fx.rings.push({ x: e.x, y: e.y, r: e.r, t: 0.35, max: 0.35, col: e.isSuper ? '#ff7a2e' : '#ffd36b' });
       else if (e.type === 'storm') fx.rings.push({ x: e.x, y: e.y, r: 1.4, t: 0.3, max: 0.3, col: '#fff3b0' });
       else if (e.type === 'super') fx.rings.push({ x: e.x, y: e.y, r: 0.9, t: 0.3, max: 0.3, col: '#ffe14d' });
+      else if (e.type === 'boxbreak') { for (let i = 0; i < 12; i++) { const a = Math.random() * Math.PI * 2, v = 1 + Math.random() * 2; fx.sparks.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0.5, col: '#c98d4e' }); } }
+      else if (e.type === 'cube') fx.rings.push({ x: e.x, y: e.y, r: 0.7, t: 0.3, max: 0.3, col: '#7cf29a' });
       else if (e.type === 'kill') {
-        for (let i = 0; i < 10; i++) { const a = Math.random() * Math.PI * 2, v = 1 + Math.random() * 2.5; fx.sparks.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0.45, col: PAL.team[m.brawlers[e.id].team] }); }
+        for (let i = 0; i < 10; i++) { const a = Math.random() * Math.PI * 2, v = 1 + Math.random() * 2.5; fx.sparks.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0.45, col: PAL.team[side(m.brawlers[e.id].team)] }); }
       }
     }
     m.events.length = 0;
@@ -38,6 +43,7 @@ export function createRenderer(canvas) {
 
   function draw(m, opts, dt) {
     const { meId = null, aim = null, input = null, focus = null, viewTeam = null, marker = null } = opts;
+    viewer = viewTeam;
     absorb(m, meId);
     cam.px = Math.max(30, Math.min(64, W / (opts.tilesAcross || 10)));
     const T = cam.px;
@@ -72,7 +78,7 @@ export function createRenderer(canvas) {
     }
     drawRipples(ctx, m.map, m.t, sx, sy, T, x0, y0, x1, y1);
     // Spawn pads.
-    for (const team of [0, 1]) for (const s of m.map.spawns[team]) {
+    if (m.mode !== 'survival') for (const team of [0, 1]) for (const s of m.map.spawns[team]) {
       ctx.strokeStyle = team === BLUE ? 'rgba(63,182,255,0.55)' : 'rgba(255,82,103,0.55)'; ctx.lineWidth = 3;
       ctx.setLineDash([T * 0.12, T * 0.1]); ctx.beginPath(); ctx.ellipse(sx(s.x), sy(s.y), T * 0.5, T * 0.32, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
     }
@@ -100,6 +106,13 @@ export function createRenderer(canvas) {
       ctx.moveTo(sx(marker.x), ay + T * 0.3); ctx.lineTo(sx(marker.x) - T * 0.18, ay); ctx.lineTo(sx(marker.x) + T * 0.18, ay); ctx.fill();
     }
 
+    // Power cubes lying around (survival).
+    for (const it of m.items) {
+      const bob = Math.sin(m.t * 4 + it.x) * T * 0.06;
+      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(sx(it.x), sy(it.y) + T * 0.1, T * 0.18, T * 0.07, 0, 0, Math.PI * 2); ctx.fill();
+      drawCube(ctx, sx(it.x), sy(it.y) - T * 0.2 + bob, T * 0.2);
+    }
+
     // Aim guide under everything that moves.
     const me = meId != null ? m.brawlers[meId] : null;
     if (me && me.alive && aim) drawGuide(me, aim);
@@ -110,6 +123,7 @@ export function createRenderer(canvas) {
       if (tileAt(m.map, x, y) === '#') items.push({ y: y + 1, wall: [x, y] });
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++)
       if (tileAt(m.map, x, y) === '*') items.push({ y: y + 1, bush: [x, y] });
+      else if (tileAt(m.map, x, y) === 'X') items.push({ y: y + 1, box: [x, y] });
     for (const b of m.brawlers) {
       if (!b.alive || (viewTeam != null && !visibleTo(m, viewTeam, b))) continue;
       // Someone in a bush is drawn over it, see-through, so the bush doesn't swallow them.
@@ -120,10 +134,25 @@ export function createRenderer(canvas) {
     for (const it of items) {
       if (it.wall) drawObstacle(ctx, m.map, it.wall[0], it.wall[1], sx, sy, T);
       else if (it.bush) drawBush(ctx, m.map, it.bush[0], it.bush[1], sx, sy, T, m.t);
+      else if (it.box) drawPowerBox(ctx, it.box[0], it.box[1], sx, sy, T, (m.boxHp.get(it.box[1] * m.map.w + it.box[0]) || 0) / m.boxMax);
       else {
         if (it.hidden) ctx.globalAlpha = 0.6;
         drawBrawler(it.b, it.b.id === meId);
         ctx.globalAlpha = 1;
+      }
+    }
+    // Poison cloud: everything outside the safe square.
+    const pin = poisonInset(m);
+    if (pin > 0) {
+      const L = sx(pin), Tt = sy(pin), R = sx(m.map.w - pin), B = sy(m.map.h - pin);
+      ctx.fillStyle = 'rgba(60,170,70,0.5)';
+      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.rect(L, Tt, R - L, B - Tt); ctx.fill('evenodd');
+      ctx.strokeStyle = 'rgba(160,255,150,0.8)'; ctx.lineWidth = 3; ctx.setLineDash([10, 6]); ctx.strokeRect(L, Tt, R - L, B - Tt); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(120,230,120,0.35)';
+      for (let k = 0; k < 26; k++) {
+        const t = m.t * 0.3 + k * 1.7, px = ((k * 97) % 100) / 100 * W, py = ((k * 57 + t * 8) % 100) / 100 * H;
+        if (px > L && px < R && py > Tt && py < B) continue;
+        ctx.beginPath(); ctx.arc(px, py, T * (0.3 + (k % 3) * 0.15), 0, Math.PI * 2); ctx.fill();
       }
     }
     // Map edge.
@@ -138,11 +167,11 @@ export function createRenderer(canvas) {
         ctx.strokeStyle = '#6b4424'; ctx.lineWidth = Math.max(2, T * 0.05) * big;
         ctx.beginPath(); ctx.moveTo(-T * 0.4 * big, 0); ctx.lineTo(T * 0.12 * big, 0); ctx.stroke();
         ctx.fillStyle = '#dfe6f0'; ctx.beginPath(); ctx.moveTo(T * 0.25 * big, 0); ctx.lineTo(T * 0.1 * big, -T * 0.07 * big); ctx.lineTo(T * 0.1 * big, T * 0.07 * big); ctx.fill();
-        ctx.fillStyle = PAL.team[s.team]; ctx.fillRect(-T * 0.42 * big, -T * 0.06 * big, T * 0.1 * big, T * 0.12 * big);
+        ctx.fillStyle = PAL.team[side(s.team)]; ctx.fillRect(-T * 0.42 * big, -T * 0.06 * big, T * 0.1 * big, T * 0.12 * big);
       } else {
-        ctx.fillStyle = s.isSuper ? '#fff3b0' : s.team === BLUE ? '#bff0ff' : '#ffd0d5';
+        ctx.fillStyle = s.isSuper ? '#fff3b0' : side(s.team) === 0 ? '#bff0ff' : '#ffd0d5';
         ctx.fillRect(-T * 0.28, -T * 0.06, T * 0.36, T * 0.12);
-        ctx.fillStyle = s.isSuper ? '#ffb31a' : PAL.team[s.team];
+        ctx.fillStyle = s.isSuper ? '#ffb31a' : PAL.team[side(s.team)];
         ctx.fillRect(-T * 0.08, -T * 0.08, T * 0.16, T * 0.16);
       }
       ctx.restore();
@@ -192,18 +221,18 @@ export function createRenderer(canvas) {
       const w = walkPhase.get(b.id) || 0, speed = Math.hypot(b.vx, b.vy);
       walkPhase.set(b.id, speed > 0.3 ? w + dt * speed * 3.2 : 0);
       ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(x, y, r * 0.95, r * 0.38, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = isMe ? PAL.me : PAL.team[b.team]; ctx.lineWidth = isMe ? 3 : 2;
+      ctx.strokeStyle = isMe ? PAL.me : PAL.team[side(b.team)]; ctx.lineWidth = isMe ? 3 : 2;
       ctx.beginPath(); ctx.ellipse(x, y, r * 1.1, r * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
-      const top = drawPerson(ctx, b, x, y, T, walkPhase.get(b.id), b.hurtFlash > 0);
+      const top = drawPerson(ctx, { ...b, team: side(b.team) }, x, y, T, walkPhase.get(b.id), b.hurtFlash > 0);
       if (b.shieldT > 0) { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y - T * 0.35, T * 0.42, T * 0.5, 0, 0, Math.PI * 2); ctx.stroke(); }
       // Name, HP bar, ammo (mine only)
       const bw = T * 1.05, bh = Math.max(5, T * 0.13), by = top - T * 0.16;
       ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(x - bw / 2 - 1, by - 1, bw + 2, bh + 2);
-      ctx.fillStyle = isMe ? '#5ee08a' : b.team === BLUE ? PAL.team[0] : PAL.team[1];
+      ctx.fillStyle = isMe ? '#5ee08a' : PAL.team[side(b.team)];
       ctx.fillRect(x - bw / 2, by, bw * Math.max(0, b.hp / b.maxHp), bh);
       ctx.font = `${Math.round(T * 0.3)}px Jua, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-      const label = `${b.name} ${Math.ceil(b.hp)}`;
+      const label = `${b.name} ${Math.ceil(b.hp)}${b.cubes ? ` ◆${b.cubes}` : ''}`;
       ctx.strokeText(label, x, by - 2); ctx.fillStyle = '#fff'; ctx.fillText(label, x, by - 2);
       if (isMe) {
         const n = b.def.ammo, gap = 2, sw = (bw - gap * (n - 1)) / n, ay = by + bh + 3, ah = Math.max(4, T * 0.1);
@@ -213,6 +242,30 @@ export function createRenderer(canvas) {
           ctx.fillStyle = fill >= 1 ? '#ff9f1c' : '#a86a1a'; ctx.fillRect(x - bw / 2 + i * (sw + gap), ay, sw * fill, ah);
         }
       }
+    }
+  }
+
+  function drawCube(c, x, y, s) {
+    c.fillStyle = '#3fd36b'; c.beginPath(); c.moveTo(x, y - s); c.lineTo(x + s, y - s * 0.45); c.lineTo(x, y + s * 0.1); c.lineTo(x - s, y - s * 0.45); c.closePath(); c.fill();
+    c.fillStyle = '#25a14d'; c.beginPath(); c.moveTo(x - s, y - s * 0.45); c.lineTo(x, y + s * 0.1); c.lineTo(x, y + s); c.lineTo(x - s, y + s * 0.45); c.closePath(); c.fill();
+    c.fillStyle = '#1c7d3b'; c.beginPath(); c.moveTo(x + s, y - s * 0.45); c.lineTo(x, y + s * 0.1); c.lineTo(x, y + s); c.lineTo(x + s, y + s * 0.45); c.closePath(); c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.5)'; c.beginPath(); c.arc(x - s * 0.2, y - s * 0.55, s * 0.15, 0, Math.PI * 2); c.fill();
+  }
+
+  // Power box: a sturdy chest with a cube emblem, cracking as it takes damage.
+  function drawPowerBox(c, x, y, sx, sy, T, hpFrac) {
+    const px = sx(x), py = sy(y), L = T * 0.42, i = T * 0.06, s = T - i * 2;
+    c.fillStyle = 'rgba(0,0,0,0.2)'; c.fillRect(px + i, py + T - 2, s, T * 0.14);
+    c.fillStyle = '#6a4a8f'; c.fillRect(px + i, py + T - L - 2, s, L);
+    c.fillStyle = '#9a74c9'; c.fillRect(px + i, py - L + i, s, T - i * 2);
+    c.strokeStyle = '#f2c94c'; c.lineWidth = Math.max(2, T * 0.06);
+    c.strokeRect(px + i * 1.5, py - L + i * 1.5, s - i, T - i * 3);
+    drawCube(c, px + T / 2, py - L + T * 0.48, T * 0.17);
+    if (hpFrac < 0.7) {
+      c.strokeStyle = 'rgba(40,20,60,0.7)'; c.lineWidth = Math.max(1, T * 0.03);
+      c.beginPath(); c.moveTo(px + T * 0.2, py - L + T * 0.2); c.lineTo(px + T * 0.35, py - L + T * 0.45); c.lineTo(px + T * 0.28, py - L + T * 0.7);
+      if (hpFrac < 0.35) { c.moveTo(px + T * 0.8, py - L + T * 0.25); c.lineTo(px + T * 0.65, py - L + T * 0.5); c.lineTo(px + T * 0.75, py - L + T * 0.75); }
+      c.stroke();
     }
   }
 

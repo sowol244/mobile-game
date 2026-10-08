@@ -41,9 +41,23 @@ export const TEAM_MODE = {
   spawnShield: 1.5,
 };
 
+export const SURVIVAL = {
+  players: 6,
+  boxHp: 2600,          // power boxes: break them for a cube
+  cubeBonus: 0.1,       // each cube: +10% max HP and damage
+  poisonStart: 50,      // seconds before the poison cloud starts closing in
+  poisonStep: 5,        // it grows one tile inward every this many seconds
+  poisonSafe: 2.5,      // ... until the safe square is this many tiles from the centre
+  poisonDps: 900,
+};
+
+// Brawler level from the trophies won with that brawler. Each level above 1: +5% HP and damage.
+export const LEVELS = { at: [0, 30, 80, 150, 250], bonus: 0.05 };
+export const levelFor = trophies => LEVELS.at.filter(t => trophies >= t).length;
+
 export const HEAL = { delay: 3, rate: 0.13 }; // after 3 s without attacking or being hit, +13% max HP per second
 
-export const TROPHY = { win: 8, draw: 0, lose: -3, mvp: 2 };
+export const TROPHY = { win: 8, draw: 0, lose: -3, mvp: 2, survival: [10, 7, 4, 1, -2, -4] }; // survival: by place 1..6
 
 // Bot skill: index by difficulty level 0..3 (chosen from the player's trophies).
 export const BOT_LEVELS = [

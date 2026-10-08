@@ -1,9 +1,9 @@
 // Rule checks for 대난투 아레나. Run: node brawl-arena/game.test.mjs
 import assert from 'node:assert/strict';
 import { MAPS, parseMap } from './maps.js';
-import { createMatch, step, hurt, lineOfSight, tileAt, blocksWalk, visibleTo, teamRoster, BLUE, RED } from './game.js';
+import { createMatch, step, hurt, lineOfSight, tileAt, blocksWalk, visibleTo, teamRoster, inPoison, BLUE, RED } from './game.js';
 import { makeBrain, botControl } from './bot.js';
-import { TEAM_MODE, BRAWLERS } from './config.js';
+import { TEAM_MODE, BRAWLERS, SURVIVAL } from './config.js';
 
 let n = 0;
 const test = (name, fn) => { fn(); n++; console.log('ok -', name); };
@@ -149,6 +149,65 @@ test('piercing arrow goes through walls and several enemies', () => {
   for (let i = 0; i < 40; i++) { step(m, 1 / 60, c); c[0] = idle(m)[0]; }
   assert.ok(reds[0].hp < before[0] && reds[1].hp < before[1]);
   assert.equal(s.charge, 0);
+});
+
+const survMatch = (extra = {}) => createMatch({ mapDef: MAPS.survival, mode: 'survival', botsOnly: true, ...extra });
+
+test('survival map: 6 start spots, 10 power boxes, every open tile reachable', () => {
+  const m = survMatch();
+  assert.equal(m.map.starts.length, 6); assert.equal(m.boxHp.size, 10);
+  const s = m.map.starts[0], seen = new Set([`${Math.floor(s.x)},${Math.floor(s.y)}`]), q = [[Math.floor(s.x), Math.floor(s.y)]];
+  while (q.length) {
+    const [x, y] = q.pop();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const k = `${x + dx},${y + dy}`;
+      if (!seen.has(k) && !blocksWalk(tileAt(m.map, x + dx, y + dy))) { seen.add(k); q.push([x + dx, y + dy]); }
+    }
+  }
+  assert.equal(seen.size, m.map.tiles.filter(t => !blocksWalk(t)).length);
+});
+
+test('breaking a power box drops a cube; picking it up makes you stronger', () => {
+  const m = survMatch();
+  const [i] = m.boxHp.keys(), bx = i % m.map.w, by = Math.floor(i / m.map.w);
+  const b = m.brawlers[0];
+  // Boxes take damage from bullets and splashes; drive it with one huge bullet.
+  m.bullets.push({ x: bx - 0.7, y: by + 0.5, vx: 13, vy: 0, left: 3, dmg: 1e6, r: 0.12, team: b.team, owner: b.id });
+  for (let k = 0; k < 6; k++) step(m, 1 / 60, idle(m));
+  assert.equal(m.boxHp.has(i), false); assert.equal(tileAt(m.map, bx, by), '.');
+  assert.equal(m.items.length, 1);
+  const hp0 = b.maxHp, p0 = b.power;
+  b.x = m.items[0].x; b.y = m.items[0].y; step(m, 1 / 60, idle(m));
+  assert.equal(b.cubes, 1); assert.ok(b.maxHp > hp0 && b.power > p0); assert.equal(m.items.length, 0);
+});
+
+test('poison closes in after the start time and hurts whoever is outside', () => {
+  const m = survMatch();
+  const b = m.brawlers[0]; b.x = 1.5; b.y = 1.5; b.shieldT = 0;
+  assert.equal(inPoison(m, 1.5, 1.5), false);
+  m.t = SURVIVAL.poisonStart + SURVIVAL.poisonStep * 3;
+  assert.equal(inPoison(m, 1.5, 1.5), true); assert.equal(inPoison(m, 12.5, 12.5), false);
+  const hp = b.hp; for (let k = 0; k < 40; k++) step(m, 1 / 60, idle(m));
+  assert.ok(b.hp < hp);
+});
+
+test('survival: no respawn, places count down, last one standing is 1st', () => {
+  const m = survMatch();
+  const [a, ...rest] = m.brawlers;
+  rest.forEach((o, k) => hurt(m, o, 1e9, a));
+  assert.deepEqual(rest.map(o => o.place), [6, 5, 4, 3, 2]);
+  assert.equal(m.phase, 'over'); assert.equal(a.place, 1);
+  for (let k = 0; k < 600; k++) step(m, 1 / 60, idle(m));
+  assert.ok(rest.every(o => !o.alive));
+});
+
+test('bots-only survival games always finish', () => {
+  for (let s = 1; s <= 15; s++) {
+    const m = survMatch({ seed: s });
+    const brains = m.brawlers.map(() => makeBrain(1));
+    while (m.phase !== 'over' && m.t < 400) { step(m, 1 / 60, m.brawlers.map((b, i) => (b.alive ? botControl(m, b, brains[i], 1 / 60) : null))); m.events.length = 0; }
+    assert.equal(m.phase, 'over', `seed ${s}`);
+  }
 });
 
 console.log(`${n} tests passed`);

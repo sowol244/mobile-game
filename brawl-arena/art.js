@@ -74,7 +74,11 @@ export function paintGround(map, T, dpr) {
     g.beginPath(); g.ellipse(x, y, r, r * 0.7, hash(i, 5) * 3, 0, Math.PI * 2); g.fill();
   }
   // Worn dirt around each team's start.
+  for (const s of map.starts || []) {
+    g.fillStyle = 'rgba(201,168,106,0.5)'; g.beginPath(); g.ellipse(s.x * T, s.y * T, T * 1.4, T * 1.0, 0, 0, Math.PI * 2); g.fill();
+  }
   for (const team of map.spawns) {
+    if (!team.length) continue;
     const cx = team.reduce((a, s) => a + s.x, 0) / team.length, cy = team[0].y;
     g.fillStyle = 'rgba(201,168,106,0.55)';
     g.beginPath(); g.ellipse(cx * T, cy * T, T * 4.6, T * 1.3, 0, 0, Math.PI * 2); g.fill();

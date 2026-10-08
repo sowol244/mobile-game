@@ -70,7 +70,7 @@ button.go.ghost { background: transparent; color: var(--accent); border: 1px sol
 #rows li.me { background: rgba(255, 201, 60, 0.2); box-shadow: inset 0 0 0 1px rgba(255, 201, 60, 0.6); }
 .helplist li.now { background: rgba(255, 201, 60, 0.16); }
 
-#coach { position: absolute; top: 56px; left: 8px; right: 8px; z-index: 2; background: rgba(26, 18, 56, 0.9); border: 1px solid rgba(255, 201, 60, 0.6); border-radius: 14px; padding: 8px 12px 10px; text-align: left; pointer-events: auto; }
+#coach { flex: none; background: rgba(26, 18, 56, 0.9); border: 1px solid rgba(255, 201, 60, 0.6); border-radius: 14px; padding: 8px 12px 10px; text-align: left; pointer-events: auto; }
 #coach .ct { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--accent); }
 #cskip { font: inherit; font-size: 12px; color: var(--muted); background: transparent; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 999px; padding: 2px 10px; cursor: pointer; }
 #ctext { margin: 4px 0 0; font-size: 15px; line-height: 1.5; color: var(--hud); text-wrap: balance; }
@@ -92,3 +92,10 @@ button.go.ghost { background: transparent; color: var(--accent); border: 1px sol
 .card:focus-visible { outline: 3px solid var(--hud); outline-offset: 2px; }
 #pSelect .go { width: min(340px, 100%); height: 52px; }
 #pHelp .go.ghost { width: min(340px, 100%); height: 48px; }
+
+#mute { position: absolute; top: 8px; left: 8px; z-index: 1; width: 40px; height: 40px; border-radius: 12px; border: 0; background: rgba(0, 0, 0, 0.35); color: var(--hud); font-size: 18px; cursor: pointer; }
+#mute:focus-visible { outline: 3px solid var(--accent); }
+#abtns { display: flex; flex-direction: column; gap: 10px; width: min(340px, 100%); }
+#abtns button { width: 100%; height: 52px; }
+.card .lv { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px; font-size: 12px; color: #2a1600; background: var(--accent); vertical-align: 2px; }
+#alive { color: var(--accent); }

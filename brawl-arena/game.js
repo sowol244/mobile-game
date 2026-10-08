@@ -4,7 +4,7 @@
 //   fire, sup  null, or { a, d }: aim angle in radians (0 = right, π/2 = down) and
 //              distance in tiles (only lobbed attacks use d; null means full range)
 
-import { BRAWLERS, KINDS, TEAM_MODE, HEAL, BUSH } from './config.js';
+import { BRAWLERS, KINDS, TEAM_MODE, HEAL, BUSH, SURVIVAL, LEVELS } from './config.js';
 import { parseMap } from './maps.js';
 
 export const BLUE = 0, RED = 1;
@@ -22,8 +22,8 @@ export function rng(seed) {
 
 // ---------- map queries ----------
 export const tileAt = (map, tx, ty) => (tx < 0 || ty < 0 || tx >= map.w || ty >= map.h ? '#' : map.tiles[ty * map.w + tx]);
-export const blocksWalk = ch => ch === '#' || ch === '~';
-export const blocksShot = ch => ch === '#';
+export const blocksWalk = ch => ch === '#' || ch === '~' || ch === 'X';
+export const blocksShot = ch => ch === '#' || ch === 'X';
 export const inBush = (map, x, y) => tileAt(map, Math.floor(x), Math.floor(y)) === '*';
 
 export function hitsWall(map, x, y, r) {
@@ -67,16 +67,32 @@ export function teamRoster({ playerKind = 'gyo', botsOnly = false, rand = Math.r
   return roster;
 }
 
+// Survival: everyone for themselves. Each brawler is its own team (0 = the player).
+const SURV_NAMES = ['봇 하늘', '봇 바다', '봇 불꽃', '봇 번개', '봇 태풍'];
+export function survivalRoster({ playerKind = 'gyo', botsOnly = false, rand = Math.random } = {}) {
+  const roster = [];
+  for (let i = 0; i < SURVIVAL.players; i++) {
+    const isPlayer = !botsOnly && i === 0;
+    roster.push({ team: i, slot: i, isPlayer, kind: isPlayer ? playerKind : KINDS[Math.floor(rand() * KINDS.length)], name: isPlayer ? '나' : SURV_NAMES[(i + 4) % 5] });
+  }
+  return roster;
+}
+
+// mode: 'team' (3:3, respawns, first to 10) or 'survival' (6 alone, no respawn, poison cloud, power boxes).
 // endless: practice matches (the tutorial) never end and keep no time limit.
-export function createMatch({ mapDef, seed = 1, roster = null, playerKind = 'gyo', botsOnly = false, respawn = TEAM_MODE.respawn, endless = false } = {}) {
+// level: brawler level (1..5) for everyone, so bots match the player's strength.
+export function createMatch({ mapDef, mode = 'team', seed = 1, roster = null, playerKind = 'gyo', botsOnly = false, respawn = TEAM_MODE.respawn, endless = false, level = 1 } = {}) {
   const map = parseMap(mapDef.rows);
   const m = {
-    map, mapDef, rand: rng(seed), t: 0, tick: 0, respawn, endless,
+    map, mapDef, mode, rand: rng(seed), t: 0, tick: 0, respawn, endless, level,
+    items: [], boxHp: new Map(), poison: 0, poisonTick: 0, places: 0,
     phase: 'play', // play → sudden → over
     score: [0, 0], winner: null, // BLUE, RED, or 'draw'
     brawlers: [], bullets: [], lobs: [], zones: [], events: [],
   };
-  const list = roster || teamRoster({ playerKind, botsOnly, rand: m.rand });
+  const list = roster || (mode === 'survival' ? survivalRoster : teamRoster)({ playerKind, botsOnly, rand: m.rand });
+  map.tiles.forEach((t, i) => { if (t === 'X') m.boxHp.set(i, SURVIVAL.boxHp); });
+  m.boxMax = SURVIVAL.boxHp;
   for (const r of list) m.brawlers.push(newBrawler(m, m.brawlers.length, r));
   return m;
 }
@@ -88,7 +104,8 @@ function newBrawler(m, id, { team, slot = 0, kind = 'gyo', name = '', isPlayer =
     x: 0, y: 0, vx: 0, vy: 0, face: team === BLUE ? -Math.PI / 2 : Math.PI / 2,
     r: def.radius, maxHp: def.hp, hp: def.hp,
     ammo: def.ammo, reloadT: 0, fireCd: 0, burst: null, dash: null,
-    charge: 0, revealT: 0,
+    charge: 0, revealT: 0, cubes: 0, place: 0,
+    levelBonus: 1 + LEVELS.bonus * (m.level - 1), power: 1,
     alive: true, respawnT: 0, shieldT: 0, calm: 0, hurtFlash: 0,
     kills: 0, deaths: 0, damage: 0, lastTarget: null,
   };
@@ -97,7 +114,8 @@ function newBrawler(m, id, { team, slot = 0, kind = 'gyo', name = '', isPlayer =
 }
 
 function placeAtSpawn(m, b) {
-  const list = m.map.spawns[b.team], s = list[b.slot % list.length];
+  const list = m.mode === 'survival' ? m.map.starts : m.map.spawns[b.team], s = list[b.slot % list.length];
+  b.maxHp = Math.round(b.def.hp * b.levelBonus); b.power = b.levelBonus;
   b.x = s.x; b.y = s.y; b.vx = b.vy = 0;
   b.face = b.team === BLUE ? -Math.PI / 2 : Math.PI / 2;
   b.hp = b.maxHp; b.ammo = b.def.ammo; b.reloadT = 0; b.fireCd = 0; b.burst = null; b.dash = null;
@@ -142,6 +160,7 @@ export function step(m, dt, controls) {
     if (b.calm >= HEAL.delay && b.hp < b.maxHp) b.hp = Math.min(b.maxHp, b.hp + b.maxHp * HEAL.rate * dt);
   }
   separate(m);
+  if (m.mode === 'survival') { pickUp(m); poison(m, dt); }
   moveBullets(m, dt);
   moveLobs(m, dt);
   burnZones(m, dt);
@@ -235,7 +254,7 @@ function shoot(m, b, angle, spec, isSuper, fromCentre = false) {
   if (spec.type !== 'pierce' && blocksShot(tileAt(m.map, Math.floor(sx), Math.floor(sy)))) return;
   m.bullets.push({
     x: sx, y: sy, vx: Math.cos(a) * spec.speed, vy: Math.sin(a) * spec.speed, left: spec.range - off,
-    dmg: spec.damage, r: spec.radius, team: b.team, owner: b.id, kind: spec.type, isSuper,
+    dmg: Math.round(spec.damage * b.power), r: spec.radius, team: b.team, owner: b.id, kind: spec.type, isSuper,
     pierce: spec.type === 'pierce', hit: spec.type === 'pierce' ? new Set() : null,
   });
   m.events.push({ type: 'shot', id: b.id });
@@ -249,7 +268,12 @@ function moveBullets(m, dt) {
     for (let k = 0; k < n && !dead; k++) {
       s.x += s.vx * dt / n; s.y += s.vy * dt / n; s.left -= stepLen / n;
       if (s.left <= 0) { dead = true; break; }
-      if (!s.pierce && blocksShot(tileAt(m.map, Math.floor(s.x), Math.floor(s.y)))) { dead = true; m.events.push({ type: 'spark', x: s.x, y: s.y }); break; }
+      const tx = Math.floor(s.x), ty = Math.floor(s.y), tile = tileAt(m.map, tx, ty);
+      if (!s.pierce && blocksShot(tile)) {
+        dead = true; m.events.push({ type: 'spark', x: s.x, y: s.y });
+        if (tile === 'X') damageBox(m, ty * m.map.w + tx, s.dmg, m.brawlers[s.owner]);
+        break;
+      }
       for (const o of m.brawlers) {
         if (!o.alive || o.team === s.team || (s.hit && s.hit.has(o.id))) continue;
         if (Math.hypot(o.x - s.x, o.y - s.y) > o.r + s.r) continue;
@@ -268,7 +292,7 @@ function moveBullets(m, dt) {
 function lob(m, b, aim, spec, isSuper) {
   const d = Math.max(1, Math.min(spec.range, aim.d ?? spec.range));
   const tx = b.x + Math.cos(aim.a) * d, ty = b.y + Math.sin(aim.a) * d;
-  m.lobs.push({ sx: b.x, sy: b.y, tx, ty, t: 0, dur: spec.flight * (0.55 + 0.45 * d / spec.range), spec, isSuper, team: b.team, owner: b.id });
+  m.lobs.push({ sx: b.x, sy: b.y, tx, ty, t: 0, dur: spec.flight * (0.55 + 0.45 * d / spec.range), spec, isSuper, team: b.team, owner: b.id, power: b.power });
 }
 
 function moveLobs(m, dt) {
@@ -280,9 +304,13 @@ function moveLobs(m, dt) {
     m.events.push({ type: 'splash', x: l.tx, y: l.ty, r: l.spec.blast, isSuper: l.isSuper });
     for (const o of m.brawlers) {
       if (!o.alive || o.team === l.team || o.shieldT > 0) continue;
-      if (Math.hypot(o.x - l.tx, o.y - l.ty) <= l.spec.blast + o.r * 0.5) hurt(m, o, l.spec.damage, by, !l.isSuper);
+      if (Math.hypot(o.x - l.tx, o.y - l.ty) <= l.spec.blast + o.r * 0.5) hurt(m, o, Math.round(l.spec.damage * l.power), by, !l.isSuper);
     }
-    if (l.spec.burn) m.zones.push({ x: l.tx, y: l.ty, r: l.spec.burn.radius, t: l.spec.burn.time, dps: l.spec.burn.dps, tick: 0, team: l.team, owner: l.owner });
+    for (const i of [...m.boxHp.keys()]) {
+      const bx = i % m.map.w + 0.5, byy = Math.floor(i / m.map.w) + 0.5;
+      if (Math.hypot(bx - l.tx, byy - l.ty) <= l.spec.blast + 0.5) damageBox(m, i, l.spec.damage * l.power, by);
+    }
+    if (l.spec.burn) m.zones.push({ x: l.tx, y: l.ty, r: l.spec.burn.radius, t: l.spec.burn.time, dps: l.spec.burn.dps * l.power, tick: 0, team: l.team, owner: l.owner });
   }
   m.lobs = keep;
 }
@@ -300,6 +328,56 @@ function burnZones(m, dt) {
   m.zones = m.zones.filter(z => z.t > 0);
 }
 
+// ---------- survival: power boxes, cubes, poison ----------
+function damageBox(m, i, dmg, by) {
+  if (!m.boxHp.has(i)) return;
+  const hp = m.boxHp.get(i) - dmg;
+  m.events.push({ type: 'boxhit', i });
+  if (by && by.alive) by.charge = Math.min(1, by.charge + dmg * 0.5 / by.def.superCharge);
+  if (hp > 0) { m.boxHp.set(i, hp); return; }
+  m.boxHp.delete(i);
+  m.map.tiles[i] = '.'; m.map.fields = null; // the way is open now: forget cached paths
+  const x = i % m.map.w + 0.5, y = Math.floor(i / m.map.w) + 0.5;
+  dropCube(m, x, y);
+  m.events.push({ type: 'boxbreak', x, y });
+}
+
+function dropCube(m, x, y) {
+  // Keep cubes out of walls and water.
+  if (blocksWalk(tileAt(m.map, Math.floor(x), Math.floor(y)))) { x = Math.floor(x) + 0.5; y = Math.floor(y) + 0.5; }
+  m.items.push({ x, y, t: 0 });
+}
+
+function pickUp(m) {
+  for (const b of m.brawlers) {
+    if (!b.alive) continue;
+    for (let k = m.items.length - 1; k >= 0; k--) {
+      const it = m.items[k];
+      if (Math.hypot(it.x - b.x, it.y - b.y) > b.r + 0.3) continue;
+      m.items.splice(k, 1);
+      b.cubes++;
+      const bonus = b.def.hp * b.levelBonus * SURVIVAL.cubeBonus;
+      b.maxHp += bonus; b.hp += bonus; b.power = b.levelBonus + SURVIVAL.cubeBonus * b.cubes;
+      m.events.push({ type: 'cube', id: b.id, x: it.x, y: it.y });
+    }
+  }
+}
+
+// The safe square shrinks from the edges once the poison starts. Returns its inset in tiles.
+export function poisonInset(m) {
+  if (m.mode !== 'survival' || m.t < SURVIVAL.poisonStart) return 0;
+  const max = Math.min(m.map.w, m.map.h) / 2 - SURVIVAL.poisonSafe;
+  return Math.min(max, (m.t - SURVIVAL.poisonStart) / SURVIVAL.poisonStep);
+}
+export const inPoison = (m, x, y) => { const p = poisonInset(m); return p > 0 && (x < p || y < p || x > m.map.w - p || y > m.map.h - p); };
+
+function poison(m, dt) {
+  m.poisonTick -= dt;
+  if (m.poisonTick > 0) return;
+  m.poisonTick = 0.5;
+  for (const b of m.brawlers) if (b.alive && inPoison(m, b.x, b.y)) hurt(m, b, Math.round(SURVIVAL.poisonDps * 0.5), null, false);
+}
+
 // ---------- damage, score, clock ----------
 export function hurt(m, o, dmg, by, charges = true) {
   if (!o.alive) return;
@@ -311,7 +389,19 @@ export function hurt(m, o, dmg, by, charges = true) {
   m.events.push({ type: 'hit', id: o.id, by: by ? by.id : null, dmg, x: o.x, y: o.y });
   if (o.hp > 0) return;
   o.hp = 0; o.alive = false; o.respawnT = m.respawn; o.deaths++; o.burst = null; o.dash = null;
-  if (by) { by.kills++; m.score[by.team]++; }
+  if (by) { by.kills++; if (m.mode === 'team') m.score[by.team]++; }
+  if (m.mode === 'survival') {
+    // Out for good: remember the place, and spill the cubes for others to grab.
+    o.respawnT = Infinity;
+    const left = m.brawlers.filter(b => b.alive).length;
+    o.place = left + 1;
+    const drop = Math.max(1, o.cubes);
+    for (let k = 0; k < drop; k++) { const a = k / drop * Math.PI * 2 + 0.3; dropCube(m, o.x + Math.cos(a) * 0.5, o.y + Math.sin(a) * 0.5); }
+    for (const x of m.brawlers) if (x.lastTarget === o.id) x.lastTarget = null;
+    m.events.push({ type: 'kill', id: o.id, by: by ? by.id : null, x: o.x, y: o.y });
+    if (left <= 1 && !m.endless) { const w = m.brawlers.find(b => b.alive); if (w) w.place = 1; finish(m, w ? w.team : 'draw'); }
+    return;
+  }
   for (const x of m.brawlers) if (x.lastTarget === o.id) x.lastTarget = null;
   m.events.push({ type: 'kill', id: o.id, by: by ? by.id : null, x: o.x, y: o.y });
   if (m.endless) return;
@@ -320,7 +410,7 @@ export function hurt(m, o, dmg, by, charges = true) {
 }
 
 function clock(m) {
-  if (m.endless) return;
+  if (m.endless || m.mode !== 'team') return;
   if (m.phase === 'play' && m.t >= TEAM_MODE.time) {
     if (m.score[BLUE] !== m.score[RED]) finish(m, m.score[BLUE] > m.score[RED] ? BLUE : RED);
     else { m.phase = 'sudden'; m.events.push({ type: 'sudden' }); }
@@ -330,6 +420,7 @@ function clock(m) {
 function finish(m, winner) {
   if (m.phase === 'over') return;
   m.phase = 'over'; m.winner = winner; m.bullets = []; m.lobs = []; m.zones = [];
+  for (const b of m.brawlers) if (b.alive && !b.place) b.place = 1;
   m.events.push({ type: 'over', winner });
 }
 
