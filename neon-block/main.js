@@ -23,6 +23,7 @@ let parts = [], shake = null, flashes = [], popMap = new Map(), ret = null, show
 const rnd = (a, b) => a + Math.random() * (b - a);
 const lerp = (a, b, k) => a + (b - a) * k;
 const ease = k => 1 - (1 - k) ** 3;
+let wasAnimating = false, comboT = 0; // comboT: seconds the COMBO label stays up
 let st = newState(), tray = [], phase = 'title', drag = null, fx = [], pops = [], dirty = true, best = 0, bestAtStart = 0, last = 0;
 try { best = +localStorage.getItem('neonblock-best') || 0; } catch (e) {}
 bestEl.textContent = best;
@@ -229,7 +230,11 @@ function frame(t) {
     shown = Math.min(st.score, shown + Math.max(1, Math.ceil((st.score - shown) * Math.min(1, dt * 9))));
     scoreEl.textContent = shown;
   }
-  if (dirty || drag || fx.length || pops.length || parts.length || flashes.length || shake || ret || popMap.size || phase === 'tutorial') { render(); dirty = false; }
+  const animating = !!(drag || fx.length || pops.length || parts.length || flashes.length || shake || ret || popMap.size || phase === 'tutorial');
+  // One more frame after the last effect ends, so faded texts/particles are wiped instead of freezing on screen.
+  if (dirty || animating || wasAnimating) { render(); dirty = false; }
+  wasAnimating = animating;
+  if (comboT > 0 && (comboT -= dt) <= 0) comboEl.textContent = '';
   requestAnimationFrame(frame);
 }
 
@@ -237,6 +242,7 @@ function frame(t) {
 function hud() {
   if (st.score > best) { best = st.score; bestEl.textContent = best; }
   comboEl.textContent = st.combo >= 2 ? `COMBO x${st.combo}` : '';
+  comboT = st.combo >= 2 ? 1.6 : 0;
 }
 
 function resetFx() { drag = null; fx = []; pops = []; parts = []; flashes = []; shake = null; ret = null; popMap = new Map(); }
