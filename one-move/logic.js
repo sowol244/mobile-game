@@ -1,4 +1,4 @@
-// ONE MOVE pure rules. No DOM here, so node tests and the in-page hint share the same code.
+// Move On pure rules. No DOM here, so node tests and the in-page hint share the same code.
 //
 // A board is a flat Uint8Array of cell codes (row-major, n×n):
 //   0          empty
