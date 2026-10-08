@@ -8,7 +8,9 @@
   body { margin: 0; padding: 32px 16px; font-family: system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; background: #14111f; color: #fdf6e3; }
   main { max-width: 420px; margin: 0 auto; display: grid; gap: 12px; }
   h1 { font-size: 24px; margin: 0 0 8px; }
-  a { display: block; padding: 18px; border-radius: 14px; background: #241e3a; color: inherit; text-decoration: none; font-size: 18px; }
+  a { display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: center; padding: 14px; border-radius: 14px; background: #241e3a; color: inherit; text-decoration: none; font-size: 18px; }
+  a img { width: 64px; height: 64px; border-radius: 14px; display: block; }
+  a:focus-visible { outline: 3px solid #ffd23f; outline-offset: 2px; }
   .note { margin: 8px 0 0; color: #9a93b8; font-size: 14px; line-height: 1.5; text-align: center; }
   a small { display: block; margin-top: 4px; color: #9a93b8; font-size: 14px; }
 </style>
@@ -16,10 +18,10 @@
 <body>
 <main>
   <h1>모바일게임 작업실 (by 석)</h1>
-  <a href="brawl-arena/">대난투 아레나<small>교행이·짬뽕이·소월이로 즐기는 탑뷰 난투. 봇과 함께하는 3:3 팀전과 6명 생존전</small></a>
-  <a href="super-jump/">교행이의 모험<small>오르막과 언덕을 넘고 칼로 몬스터를 베며 GOAL까지 가는 3스테이지 플랫폼 게임</small></a>
-  <a href="neon-block/">네온 블록<small>블록을 끌어다 놓아 한 줄을 채우는 8×8 네온 퍼즐 게임</small></a>
-  <a href="meteor-dodge/">스타 슈터<small>조이스틱으로 날며 적을 쏘는 우주 슈팅 게임. 3개 스테이지, 스테이지마다 보스</small></a>
+  <a href="brawl-arena/"><img src="icons/brawl-arena.png" alt=""><span>대난투 아레나<small>봇과 총을 쏘며 겨루는 난투 게임</small></span></a>
+  <a href="super-jump/"><img src="icons/super-jump.png" alt=""><span>교행이의 모험<small>칼로 몬스터를 베며 달리는 모험 게임</small></span></a>
+  <a href="neon-block/"><img src="icons/neon-block.png" alt=""><span>네온 블록<small>블록을 채워 줄을 지우는 퍼즐 게임</small></span></a>
+  <a href="meteor-dodge/"><img src="icons/meteor-dodge.png" alt=""><span>스타 슈터<small>적을 쏘며 우주를 나는 슈팅 게임</small></span></a>
   <p class="note">이곳의 게임들은 예고 없이 추가되거나 삭제될 수 있습니다.</p>
 </main>
 </body>
