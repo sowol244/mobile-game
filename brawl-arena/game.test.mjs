@@ -1,6 +1,6 @@
 // Rule checks for 대난투 아레나. Run: node brawl-arena/game.test.mjs
 import assert from 'node:assert/strict';
-import { MAPS, parseMap } from './maps.js';
+import { MAPS, parseMap, stageMap } from './maps.js';
 import { createMatch, step, hurt, lineOfSight, tileAt, blocksWalk, visibleTo, teamRoster, inPoison, BLUE, RED } from './game.js';
 import { makeBrain, botControl } from './bot.js';
 import { TEAM_MODE, BRAWLERS, SURVIVAL } from './config.js';
@@ -149,6 +149,20 @@ test('piercing arrow goes through walls and several enemies', () => {
   for (let i = 0; i < 40; i++) { step(m, 1 / 60, c); c[0] = idle(m)[0]; }
   assert.ok(reds[0].hp < before[0] && reds[1].hp < before[1]);
   assert.equal(s.charge, 0);
+});
+
+test('stages 2-5 have their own playable maps and themes', () => {
+  for (const mode of ['team', 'survival']) {
+    const seen = new Set();
+    for (let st = 1; st <= 5; st++) {
+      const d = stageMap(mode, st), m = parseMap(d.rows);
+      assert.equal(d.theme, st - 1);
+      seen.add(d.rows.join(''));
+      if (mode === 'team') { assert.equal(m.spawns[0].length, 3); assert.equal(m.spawns[1].length, 3); }
+      else { assert.equal(m.starts.length, 6); assert.equal(m.tiles.filter(t => t === 'X').length, 10); }
+    }
+    assert.equal(seen.size, 5, `${mode}: every stage has a different layout`);
+  }
 });
 
 const survMatch = (extra = {}) => createMatch({ mapDef: MAPS.survival, mode: 'survival', botsOnly: true, ...extra });

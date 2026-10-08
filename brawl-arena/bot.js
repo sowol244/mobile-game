@@ -40,8 +40,20 @@ function clearPath(map, ax, ay, bx, by, r) {
 // corners smoothly instead of rubbing against them.
 export function walkToward(m, b, gx, gy) {
   const map = m.map, tx = Math.floor(b.x), ty = Math.floor(b.y);
-  const gtx = Math.min(map.w - 1, Math.max(0, Math.floor(gx))), gty = Math.min(map.h - 1, Math.max(0, Math.floor(gy)));
-  if (clearPath(map, b.x, b.y, gx, gy, b.r + 0.02) || blocksWalk(tileAt(map, gtx, gty))) return norm(gx - b.x, gy - b.y);
+  let gtx = Math.min(map.w - 1, Math.max(0, Math.floor(gx))), gty = Math.min(map.h - 1, Math.max(0, Math.floor(gy)));
+  // Goal inside a wall or water (e.g. next to a box): aim for the nearest open tile instead.
+  if (blocksWalk(tileAt(map, gtx, gty))) {
+    let best = null, bd = 1e9;
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const tx = gtx + dx, ty = gty + dy;
+      if (blocksWalk(tileAt(map, tx, ty))) continue;
+      const d = Math.hypot(tx + 0.5 - gx, ty + 0.5 - gy);
+      if (d < bd) { bd = d; best = [tx, ty]; }
+    }
+    if (!best) return norm(gx - b.x, gy - b.y);
+    [gtx, gty] = best; gx = gtx + 0.5; gy = gty + 0.5;
+  }
+  if (clearPath(map, b.x, b.y, gx, gy, b.r + 0.02)) return norm(gx - b.x, gy - b.y);
   const f = field(m, gtx, gty);
   const path = [];
   let cx = tx, cy = ty;
@@ -117,7 +129,11 @@ export function botControl(m, b, brain, dt) {
     const low = b.hp < b.maxHp * 0.3;
     const ux = (target.x - b.x) / d, uy = (target.y - b.y) / d;
     if (low && d < R + 1.5) {
-      if (m.mode === 'survival') dir = walkToward(m, b, b.x - ux * 4, b.y - uy * 4); // back off, away from them
+      if (m.mode === 'survival') {
+        // Back off away from them, but not into a corner of the map (that just pins the bot to the edge).
+        const rx = Math.max(1.5, Math.min(m.map.w - 1.5, b.x - ux * 4)), ry = Math.max(1.5, Math.min(m.map.h - 1.5, b.y - uy * 4));
+        dir = Math.hypot(rx - b.x, ry - b.y) > 1 ? walkToward(m, b, rx, ry) : { x: -uy * brain.strafe, y: ux * brain.strafe };
+      }
       else { const home = m.map.spawns[b.team][b.slot % m.map.spawns[b.team].length]; dir = walkToward(m, b, home.x, home.y); }
     } else if (!los && !lobber) {
       dir = walkToward(m, b, target.x, target.y);

@@ -84,6 +84,7 @@ export function survivalRoster({ playerKind = 'gyo', botsOnly = false, rand = Ma
 // botHp: health multiplier for bots (later stages make them sturdier).
 export function createMatch({ mapDef, mode = 'team', seed = 1, roster = null, playerKind = 'gyo', botsOnly = false, respawn = TEAM_MODE.respawn, endless = false, level = 1, botHp = 1 } = {}) {
   const map = parseMap(mapDef.rows);
+  map.theme = mapDef.theme || 0;
   const m = {
     map, mapDef, mode, rand: rng(seed), t: 0, tick: 0, respawn, endless, level, botHp,
     items: [], boxHp: new Map(), poison: 0, poisonTick: 0, places: 0,

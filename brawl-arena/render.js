@@ -1,7 +1,7 @@
 // Drawing only. Reads the match, never changes it.
 
 import { BLUE, tileAt, inBush, visibleTo, superReady, poisonInset } from './game.js';
-import { PAL, paintGround, drawRipples, drawObstacle, drawBush, drawPerson } from './art.js';
+import { PAL, themeOf, paintGround, drawRipples, drawObstacle, drawBush, drawPerson } from './art.js';
 import { stickLayout } from './input.js';
 
 export function createRenderer(canvas) {
@@ -61,7 +61,8 @@ export function createRenderer(canvas) {
     const sx = x => ox + x * T, sy = y => oy + y * T;
     const drawGuide = (b, aim) => drawGuideImpl(m, b, aim, sx, sy, T);
 
-    ctx.fillStyle = '#2f6b3a'; ctx.fillRect(0, 0, W, H);
+    const th = themeOf(m.map);
+    ctx.fillStyle = th.outside; ctx.fillRect(0, 0, W, H);
     const x0 = Math.max(0, Math.floor(-ox / T)), x1 = Math.min(m.map.w - 1, Math.ceil((W - ox) / T));
     const y0 = Math.max(0, Math.floor(-oy / T) - 1), y1 = Math.min(m.map.h - 1, Math.ceil((H - oy) / T) + 1);
     // The ground is painted once per map and zoom, then just copied each frame.
@@ -72,7 +73,7 @@ export function createRenderer(canvas) {
     for (let y = Math.floor(-oy / T) - 1; y <= Math.ceil((H - oy) / T); y++) for (let x = Math.floor(-ox / T) - 1; x <= Math.ceil((W - ox) / T); x++) {
       if (x >= 0 && y >= 0 && x < m.map.w && y < m.map.h) continue;
       const k = ((x * 7 + y * 13) % 5 + 5) % 5;
-      ctx.fillStyle = k < 2 ? '#2e7d3a' : k < 4 ? '#357f3f' : '#28703a';
+      ctx.fillStyle = th.tree[k < 2 ? 0 : k < 4 ? 1 : 2];
       ctx.beginPath(); ctx.arc(sx(x + 0.5), sy(y + 0.5), T * (0.68 + k * 0.04), 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.arc(sx(x + 0.38), sy(y + 0.36), T * 0.28, 0, Math.PI * 2); ctx.fill();
     }
@@ -213,6 +214,7 @@ export function createRenderer(canvas) {
     }
     ctx.globalAlpha = 1;
 
+    if (opts.minimap) drawMinimap(m, me, { x0: (0 - ox) / T, y0: (0 - oy) / T, x1: (W - ox) / T, y1: (H - oy) / T });
     if (input) drawSticks(input, me);
 
     function drawBrawler(b, isMe) {
@@ -266,6 +268,36 @@ export function createRenderer(canvas) {
       c.beginPath(); c.moveTo(px + T * 0.2, py - L + T * 0.2); c.lineTo(px + T * 0.35, py - L + T * 0.45); c.lineTo(px + T * 0.28, py - L + T * 0.7);
       if (hpFrac < 0.35) { c.moveTo(px + T * 0.8, py - L + T * 0.25); c.lineTo(px + T * 0.65, py - L + T * 0.5); c.lineTo(px + T * 0.75, py - L + T * 0.75); }
       c.stroke();
+    }
+  }
+
+  // Minimap (top right, under the pause button): obstacles, the poison square, and everyone this side can see.
+  function drawMinimap(m, me, view) {
+    const map = m.map, cell = Math.max(2.4, Math.min(4, 92 / Math.max(map.w, map.h * 0.75)));
+    const w = map.w * cell, h = map.h * cell, x = W - w - 8, y = 56;
+    ctx.fillStyle = 'rgba(10,8,24,0.55)'; ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+    ctx.fillStyle = 'rgba(120,200,120,0.25)'; ctx.fillRect(x, y, w, h);
+    for (let ty = 0; ty < map.h; ty++) for (let tx = 0; tx < map.w; tx++) {
+      const ch = map.tiles[ty * map.w + tx];
+      if (ch === '.') continue;
+      ctx.fillStyle = ch === '~' ? 'rgba(80,170,255,0.8)' : ch === '*' ? 'rgba(60,150,70,0.85)' : ch === 'X' ? '#b48be0' : 'rgba(30,26,40,0.85)';
+      ctx.fillRect(x + tx * cell, y + ty * cell, cell + 0.3, cell + 0.3);
+    }
+    const pin = poisonInset(m);
+    if (pin > 0) {
+      ctx.fillStyle = 'rgba(70,200,90,0.5)';
+      ctx.beginPath(); ctx.rect(x, y, w, h); ctx.rect(x + pin * cell, y + pin * cell, w - pin * 2 * cell, h - pin * 2 * cell); ctx.fill('evenodd');
+    }
+    // What the camera shows.
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1;
+    const vx0 = Math.max(0, view.x0), vy0 = Math.max(0, view.y0), vx1 = Math.min(map.w, view.x1), vy1 = Math.min(map.h, view.y1);
+    ctx.strokeRect(x + vx0 * cell, y + vy0 * cell, (vx1 - vx0) * cell, (vy1 - vy0) * cell);
+    for (const b of m.brawlers) {
+      if (!b.alive || (viewer != null && !visibleTo(m, viewer, b))) continue;
+      const isMe = me && b.id === me.id;
+      ctx.fillStyle = isMe ? PAL.me : PAL.team[side(b.team)];
+      ctx.beginPath(); ctx.arc(x + b.x * cell, y + b.y * cell, isMe ? 3.4 : 2.6, 0, Math.PI * 2); ctx.fill();
+      if (isMe) { ctx.strokeStyle = '#1a1238'; ctx.lineWidth = 1; ctx.stroke(); }
     }
   }
 

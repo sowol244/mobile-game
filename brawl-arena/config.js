@@ -50,7 +50,7 @@ export const SURVIVAL = {
   poisonSafe: 2.5,      // ... until the safe square is this many tiles from the centre
   poisonDps: 900,
   // Per-brawler adjustments used only in survival (open map, everyone alone): multipliers on the team-mode numbers.
-  // Measured with 400 bot-only games, two of each brawler per game: 1st place 30/37/30 %, top-3 50/48/51 %.
+  // Measured with 300 bot-only games, two of each brawler per game: 1st place 33/33/33 %, top-3 50/48/51 %.
   tune: {
     gyo: { hp: 1.3, damage: 0.97 },
     jjam: { hp: 1.3, damage: 1.1, range: 1.07 },

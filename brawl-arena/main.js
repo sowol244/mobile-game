@@ -1,7 +1,7 @@
 // 대난투 아레나 — entry point: menus, brawler select, tutorial, the frame loop, HUD, results and the local ranking.
 // Rules live in game.js, bots in bot.js, drawing in render.js/art.js, thumbsticks in input.js.
 
-import { MAPS } from './maps.js';
+import { MAPS, stageMap } from './maps.js';
 import { BRAWLERS, KINDS, TROPHY, LEVELS, SURVIVAL, STAGES, botLevelFor, levelFor } from './config.js';
 import { createMatch, step, lineOfSight, visibleTo, timeLeft, mvpOf, poisonInset, BLUE, RED } from './game.js';
 import { sfx, unlock, isMuted, setMuted } from './sound.js';
@@ -41,6 +41,7 @@ let trophyBy = load(KEY_BY, {}); // trophies per brawler → its level
 let match = null, brains = [], me = null, acc = 0, last = performance.now();
 let trophies = load(KEY_TROPHY, 0), lastEntry = null, pick = KINDS.includes(load(KEY_PICK, 'gyo')) ? load(KEY_PICK, 'gyo') : 'gyo';
 let bannerT = 0;
+let autoNext = 0; // seconds until the next stage starts by itself after a win
 let tut = null; // { i, autoHits, aimHits, supers, okT }
 let lastShotMode = null; // 'auto' | 'aim', for the tutorial's checks
 
@@ -62,6 +63,7 @@ function renderTop(highlight) {
 }
 
 function showTitle() {
+  autoNext = 0;
   state = 'title'; mode = 'team'; input.enabled = false; pauseBtn.hidden = true; coach.hidden = true; toast.textContent = '';
   bannerEl.classList.remove('on'); bannerT = 0;
   titleEl.textContent = '대난투 아레나';
@@ -156,14 +158,15 @@ function startMatch() {
   const survival = mode === 'survival';
   const st = stageOf(mode);
   match = createMatch({
-    mapDef: survival ? MAPS.survival : MAPS.team, mode, seed: (Math.random() * 1e9) | 0,
+    mapDef: stageMap(mode, st), mode, seed: (Math.random() * 1e9) | 0,
     playerKind: pick, level: levelFor(trophyBy[pick] || 0), botHp: STAGES.botHp[st - 1],
   });
   match.stage = st;
   const skill = botLevelFor(trophies);
   brains = match.brawlers.map(b => (b.isPlayer ? null : makeBrain(skill)));
   begin();
-  banner(`${MODE_NAME[mode]} ${st}탄!`, 1.4);
+  autoNext = 0;
+  banner(`${st}탄 · ${match.mapDef.name}`, 1.6);
 }
 
 function startTutorial() {
@@ -298,7 +301,7 @@ function finish() {
   const md = match.mode, st = match.stage || 1;
   let stageNote = '';
   if (won) {
-    if (st < STAGES.count) { stages[md] = st + 1; stageNote = `다음은 ${st + 1}탄! 봇들이 더 튼튼해져요.`; }
+    if (st < STAGES.count) { stages[md] = st + 1; stageNote = `다음은 ${st + 1}탄!`; autoNext = 3; }
     else { stages.cleared = { ...(stages.cleared || {}), [md]: true }; stageNote = `🏆 ${MODE_NAME[md]} ${STAGES.count}탄 클리어!`; }
     save(KEY_STAGE, stages);
   }
@@ -317,7 +320,7 @@ function finish() {
   line(`트로피 ${gain >= 0 ? '+' : ''}${gain}  (총 ${trophies})`, 'tr');
   if (lvUp) line(`🎉 ${me.def.name} Lv.${levelFor(trophyBy[me.kind])} 달성!`, 'tr');
   if (stageNote) line(stageNote);
-  finalEl.hidden = false; startBtn.textContent = won && st < STAGES.count ? `${st + 1}탄 하기` : '다시 하기';
+  finalEl.hidden = false; startBtn.textContent = autoNext ? `${st + 1}탄 시작 (${autoNext})` : '다시 하기';
   buttons(false); panel('main'); overlay.hidden = false;
   updateHud();
 }
@@ -362,6 +365,12 @@ function frame(now) {
     }
     if (acc > STEP * 5) acc = 0;
   }
+  // After a win the next stage starts by itself (the button starts it right away).
+  if (state === 'over' && autoNext > 0 && !panels.main.hidden) {
+    const before = Math.ceil(autoNext); autoNext -= dt;
+    if (autoNext <= 0) { autoNext = 0; startMatch(); }
+    else if (Math.ceil(autoNext) !== before) startBtn.textContent = `${match.stage + 1}탄 시작 (${Math.ceil(autoNext)})`;
+  }
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) bannerEl.classList.remove('on'); }
   if (state === 'play' && match.mode === 'survival' && match.t >= SURVIVAL.poisonStart && !match.warned) { match.warned = true; banner('독구름이 몰려와요!', 1.6); }
   if (state === 'play' && me && !me.alive && bannerT <= 0 && match.mode !== 'survival') { bannerEl.textContent = `부활까지 ${Math.ceil(me.respawnT)}`; bannerEl.classList.add('on'); }
@@ -377,6 +386,7 @@ function frame(now) {
     viewTeam: me ? BLUE : null,
     marker: tut && STEPS[tut.i] && STEPS[tut.i].marker ? match.mapDef.marker : null,
     tilesAcross: me ? 10 : 12,
+    minimap: !!me && mode !== 'tutorial',
   }, state === 'play' || state === 'title' ? dt : 0);
   if (me) updateHud(); else hud.trophy.textContent = trophies;
   requestAnimationFrame(frame);

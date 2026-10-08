@@ -15,6 +15,26 @@ export const PAL = {
   gun: '#33343f', gunWood: '#8a5a34', me: '#ffd23f',
 };
 
+// ---------- stage themes (each stage of a mode gets its own colours) ----------
+export const THEMES = [
+  { name: '초원', grass: '#58ad5c', tuft: '#3f8f47', flowers: ['#fff6d6', '#ffd84a'], dirt: '201,168,106', sand: '#e8d39a', water: '#3aa0e8', waterDeep: '#2b7fc4', waterHi: '#bfe6ff',
+    stoneTop: '#b9bccb', stoneFront: '#7d7f8f', moss: '#6fbf5b', crateTop: '#d09455', crateFront: '#8f5a2b', crateLine: '#6b3f1c', crateEdge: '#a86d35', rockBase: '#7a7468', rockTop: '#a39c8d',
+    bush: '#2f7d3b', bushHi: '#46a04f', tree: ['#2e7d3a', '#357f3f', '#28703a'], outside: '#2f6b3a' },
+  { name: '가을 숲', grass: '#b9a04e', tuft: '#8c722d', flowers: ['#ffe2c4', '#ff9a3c'], dirt: '150,104,58', sand: '#e6cf95', water: '#3a9fb0', waterDeep: '#2b7c8f', waterHi: '#c9f0ef',
+    stoneTop: '#c2b4a0', stoneFront: '#8a7a66', moss: '#d08a2e', crateTop: '#c47a3c', crateFront: '#7c4620', crateLine: '#5a3216', crateEdge: '#9c5a28', rockBase: '#7b6a5a', rockTop: '#a8927c',
+    bush: '#b5481f', bushHi: '#e0742f', tree: ['#c0542a', '#d7782e', '#a3401f'], outside: '#7a3f1d' },
+  { name: '눈 마을', grass: '#e6eef6', tuft: '#b4c4d6', flowers: ['#ffffff', '#cfe6ff'], dirt: '150,170,195', sand: '#f4f8fc', water: '#8fd0f2', waterDeep: '#6bb4e0', waterHi: '#ffffff',
+    stoneTop: '#d3dbe6', stoneFront: '#8794a8', moss: '#ffffff', crateTop: '#b98a5c', crateFront: '#7a5634', crateLine: '#563a22', crateEdge: '#94683f', rockBase: '#7d8899', rockTop: '#c4cfdd',
+    bush: '#2c5c50', bushHi: '#3f7a6a', tree: ['#2b5a4c', '#336a59', '#244c41'], outside: '#9fb3c8' },
+  { name: '사막 협곡', grass: '#e2bf78', tuft: '#c29650', flowers: ['#ff7aa8', '#ffd84a'], dirt: '190,120,70', sand: '#f4dfa8', water: '#35a7b8', waterDeep: '#257f92', waterHi: '#d4fbff',
+    stoneTop: '#e0b07a', stoneFront: '#a86a3a', moss: '#7fae4a', crateTop: '#cf9a5a', crateFront: '#8a5a2a', crateLine: '#5e3c18', crateEdge: '#a8743a', rockBase: '#a4583a', rockTop: '#cf7d52',
+    bush: '#5e8f3a', bushHi: '#7fb34e', tree: ['#c99a5a', '#b7874a', '#d6aa6a'], outside: '#b8844a' },
+  { name: '용암 섬', grass: '#4d4148', tuft: '#352c32', flowers: ['#ffb36b', '#ff6a3c'], dirt: '30,20,24', sand: '#2b2226', water: '#ff6a2a', waterDeep: '#ffb02a', waterHi: '#fff1a8',
+    stoneTop: '#6c626e', stoneFront: '#3f3842', moss: '#ff8a3c', crateTop: '#7a5a4a', crateFront: '#4a3328', crateLine: '#2e1f18', crateEdge: '#5e4234', rockBase: '#2f2a30', rockTop: '#57505a',
+    bush: '#5a2f4a', bushHi: '#7c3f63', tree: ['#2b2328', '#352a31', '#231c20'], outside: '#1d1619' },
+];
+export const themeOf = map => THEMES[(map && map.theme) || 0];
+
 // ---------- obstacle styles ----------
 // Walls that touch form one obstacle; each obstacle gets a look from its shape:
 //   long rows → stone wall, pairs → wooden crates, single tiles or columns → boulders.
@@ -65,7 +85,8 @@ export function paintGround(map, T, dpr) {
   c.width = Math.ceil(map.w * T * dpr); c.height = Math.ceil(map.h * T * dpr);
   const g = c.getContext('2d');
   g.scale(dpr, dpr);
-  g.fillStyle = PAL.grass; g.fillRect(0, 0, map.w * T, map.h * T);
+  const th = themeOf(map);
+  g.fillStyle = th.grass; g.fillRect(0, 0, map.w * T, map.h * T);
 
   // Soft light/dark patches instead of a checkerboard.
   for (let i = 0; i < map.w * map.h / 3; i++) {
@@ -75,14 +96,14 @@ export function paintGround(map, T, dpr) {
   }
   // Worn dirt around each team's start.
   for (const s of map.starts || []) {
-    g.fillStyle = 'rgba(201,168,106,0.5)'; g.beginPath(); g.ellipse(s.x * T, s.y * T, T * 1.4, T * 1.0, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = `rgba(${th.dirt},0.5)`; g.beginPath(); g.ellipse(s.x * T, s.y * T, T * 1.4, T * 1.0, 0, 0, Math.PI * 2); g.fill();
   }
   for (const team of map.spawns) {
     if (!team.length) continue;
     const cx = team.reduce((a, s) => a + s.x, 0) / team.length, cy = team[0].y;
-    g.fillStyle = 'rgba(201,168,106,0.55)';
+    g.fillStyle = `rgba(${th.dirt},0.55)`;
     g.beginPath(); g.ellipse(cx * T, cy * T, T * 4.6, T * 1.3, 0, 0, Math.PI * 2); g.fill();
-    g.fillStyle = 'rgba(201,168,106,0.35)';
+    g.fillStyle = `rgba(${th.dirt},0.35)`;
     g.beginPath(); g.ellipse(cx * T, cy * T, T * 5.6, T * 1.8, 0, 0, Math.PI * 2); g.fill();
   }
   // Grass tufts, flowers and pebbles.
@@ -91,13 +112,13 @@ export function paintGround(map, T, dpr) {
     const h = hash(x, y);
     if (h < 0.45) {
       const tx = (x + 0.2 + hash(x, y, 1) * 0.6) * T, ty = (y + 0.3 + hash(x, y, 2) * 0.5) * T;
-      g.strokeStyle = PAL.grassDark; g.lineWidth = Math.max(1.2, T * 0.04); g.lineCap = 'round';
+      g.strokeStyle = th.tuft; g.lineWidth = Math.max(1.2, T * 0.04); g.lineCap = 'round';
       g.beginPath();
       for (const k of [-1, 0, 1]) { g.moveTo(tx + k * T * 0.06, ty); g.lineTo(tx + k * T * 0.1, ty - T * (0.14 + (k === 0 ? 0.05 : 0))); }
       g.stroke();
     } else if (h < 0.52) {
       const fx = (x + 0.3 + hash(x, y, 3) * 0.4) * T, fy = (y + 0.3 + hash(x, y, 4) * 0.4) * T;
-      g.fillStyle = hash(x, y, 5) < 0.5 ? '#fff6d6' : '#ffd84a';
+      g.fillStyle = th.flowers[hash(x, y, 5) < 0.5 ? 0 : 1];
       for (let p = 0; p < 4; p++) { g.beginPath(); g.arc(fx + Math.cos(p * 1.57) * T * 0.05, fy + Math.sin(p * 1.57) * T * 0.05, T * 0.04, 0, Math.PI * 2); g.fill(); }
       g.fillStyle = '#e9902a'; g.beginPath(); g.arc(fx, fy, T * 0.03, 0, Math.PI * 2); g.fill();
     } else if (h < 0.56) {
@@ -115,7 +136,7 @@ export function paintGround(map, T, dpr) {
       if (pass === 'deep') blobTile(g, x * T, y * T, T, same(x, y), T * 0.3, -T * 0.24, true);
       else blobTile(g, x * T, y * T, T, same(x, y), T * 0.45, pass === 'sand' ? T * 0.1 : -T * 0.02, true);
     }
-    g.fillStyle = pass === 'sand' ? PAL.sand : pass === 'water' ? PAL.water : PAL.waterDeep;
+    g.fillStyle = pass === 'sand' ? th.sand : pass === 'water' ? th.water : th.waterDeep;
     g.globalAlpha = pass === 'deep' ? 0.5 : 1; g.fill(); g.globalAlpha = 1;
   }
   return c;
@@ -123,7 +144,7 @@ export function paintGround(map, T, dpr) {
 
 // Small moving ripples on the water, drawn every frame on top of the painted ground.
 export function drawRipples(ctx, map, t, sx, sy, T, x0, y0, x1, y1) {
-  ctx.strokeStyle = PAL.waterHi; ctx.lineWidth = Math.max(1.5, T * 0.05); ctx.lineCap = 'round';
+  ctx.strokeStyle = themeOf(map).waterHi; ctx.lineWidth = Math.max(1.5, T * 0.05); ctx.lineCap = 'round';
   ctx.globalAlpha = 0.7;
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     if (!isWater(map, x, y)) continue;
@@ -137,7 +158,7 @@ export function drawRipples(ctx, map, t, sx, sy, T, x0, y0, x1, y1) {
 export const WALL_LIFT = 0.42; // how tall obstacles look, in tiles
 
 export function drawObstacle(ctx, map, x, y, sx, sy, T) {
-  const style = obstacleStyles(map)[y * map.w + x], px = sx(x), py = sy(y), L = T * WALL_LIFT;
+  const style = obstacleStyles(map)[y * map.w + x], px = sx(x), py = sy(y), L = T * WALL_LIFT, th = themeOf(map);
   const same = (dx, dy) => isWall(map, x + dx, y + dy) && obstacleStyles(map)[(y + dy) * map.w + x + dx] === style;
 
   if (style === 'stone') {
@@ -147,7 +168,7 @@ export function drawObstacle(ctx, map, x, y, sx, sy, T) {
     // Front face with a brick pattern.
     if (front) {
       const fl = !same(-1, 0), fr = !same(1, 0), r = T * 0.22, fy0 = py + T - L, fy1 = py + T;
-      ctx.fillStyle = '#7d7f8f';
+      ctx.fillStyle = th.stoneFront;
       ctx.beginPath(); ctx.moveTo(px, fy0); ctx.lineTo(px + T, fy0);
       fr ? (ctx.lineTo(px + T, fy1 - r), ctx.quadraticCurveTo(px + T, fy1, px + T - r, fy1)) : ctx.lineTo(px + T, fy1);
       fl ? (ctx.lineTo(px + r, fy1), ctx.quadraticCurveTo(px, fy1, px, fy1 - r)) : ctx.lineTo(px, fy1);
@@ -160,18 +181,18 @@ export function drawObstacle(ctx, map, x, y, sx, sy, T) {
       ctx.stroke();
     }
     // Top face.
-    ctx.fillStyle = '#b9bccb'; blobTile(ctx, px, py - L, T, same, T * 0.22); ctx.fill();
+    ctx.fillStyle = th.stoneTop; blobTile(ctx, px, py - L, T, same, T * 0.22); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.18)';
     for (let k = 0; k < 2; k++) { const h = hash(x, y, 10 + k); ctx.beginPath(); ctx.ellipse(px + T * (0.25 + h * 0.5), py - L + T * (0.25 + hash(x, y, 20 + k) * 0.5), T * 0.12, T * 0.07, 0, 0, Math.PI * 2); ctx.fill(); }
-    if (!same(0, -1)) { ctx.fillStyle = '#6fbf5b'; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(px + T * (0.15 + k * 0.35 + hash(x, y, k) * 0.1), py - L + T * 0.06, T * (0.07 + hash(x, y, k + 5) * 0.05), 0, Math.PI * 2); ctx.fill(); } }
+    if (!same(0, -1)) { ctx.fillStyle = th.moss; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(px + T * (0.15 + k * 0.35 + hash(x, y, k) * 0.1), py - L + T * 0.06, T * (0.07 + hash(x, y, k + 5) * 0.05), 0, Math.PI * 2); ctx.fill(); } }
   } else if (style === 'crate') {
     const i = T * 0.05, s = T - i * 2;
     ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(px + i, py + T - 2, s, T * 0.14);
-    ctx.fillStyle = '#8f5a2b'; ctx.fillRect(px + i, py + T - L - 2, s, L);              // front
-    ctx.strokeStyle = '#6b3f1c'; ctx.lineWidth = Math.max(1.5, T * 0.05);
+    ctx.fillStyle = th.crateFront; ctx.fillRect(px + i, py + T - L - 2, s, L);              // front
+    ctx.strokeStyle = th.crateLine; ctx.lineWidth = Math.max(1.5, T * 0.05);
     ctx.beginPath(); ctx.moveTo(px + i, py + T - L - 2); ctx.lineTo(px + i + s, py + T - 2); ctx.moveTo(px + i + s, py + T - L - 2); ctx.lineTo(px + i, py + T - 2); ctx.stroke();
-    ctx.fillStyle = '#d09455'; ctx.fillRect(px + i, py - L + i, s, T - i * 2);            // top
-    ctx.strokeStyle = '#a86d35'; ctx.lineWidth = Math.max(1, T * 0.035);
+    ctx.fillStyle = th.crateTop; ctx.fillRect(px + i, py - L + i, s, T - i * 2);            // top
+    ctx.strokeStyle = th.crateEdge; ctx.lineWidth = Math.max(1, T * 0.035);
     ctx.strokeRect(px + i * 2, py - L + i * 2, s - i * 2, T - i * 4);
     ctx.beginPath(); for (const k of [0.36, 0.64]) { ctx.moveTo(px + i * 2, py - L + T * k); ctx.lineTo(px + i + s - i, py - L + T * k); } ctx.stroke();
   } else {
@@ -180,8 +201,8 @@ export function drawObstacle(ctx, map, x, y, sx, sy, T) {
     ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(cx, py + T * 0.95, R * 0.95, R * 0.35, 0, 0, Math.PI * 2); ctx.fill();
     const pts = [];
     for (let k = 0; k < 9; k++) { const a = k / 9 * Math.PI * 2, rr = R * (0.82 + hash(x, y, k) * 0.22); pts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * (a > 0 && a < Math.PI ? 1.05 : 0.85)]); }
-    ctx.fillStyle = '#7a7468'; ctx.beginPath(); pts.forEach(([a, b], k) => (k ? ctx.lineTo(a, b) : ctx.moveTo(a, b))); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#a39c8d'; ctx.beginPath(); pts.forEach(([a, b], k) => { const yy = b - (b - (cy - R)) * 0.18 - T * 0.1; k ? ctx.lineTo(a, yy) : ctx.moveTo(a, yy); }); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = th.rockBase; ctx.beginPath(); pts.forEach(([a, b], k) => (k ? ctx.lineTo(a, b) : ctx.moveTo(a, b))); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = th.rockTop; ctx.beginPath(); pts.forEach(([a, b], k) => { const yy = b - (b - (cy - R)) * 0.18 - T * 0.1; k ? ctx.lineTo(a, yy) : ctx.moveTo(a, yy); }); ctx.closePath(); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.beginPath(); ctx.ellipse(cx - R * 0.3, cy - R * 0.45, R * 0.28, R * 0.14, -0.4, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = 'rgba(60,55,45,0.45)'; ctx.lineWidth = Math.max(1, T * 0.03);
     ctx.beginPath(); ctx.moveTo(cx + R * 0.1, cy - R * 0.2); ctx.lineTo(cx + R * 0.3, cy + R * 0.1); ctx.lineTo(cx + R * 0.2, cy + R * 0.35); ctx.stroke();
@@ -192,9 +213,10 @@ export function drawObstacle(ctx, map, x, y, sx, sy, T) {
 export function drawBush(ctx, map, x, y, sx, sy, T, t) {
   const px = sx(x), py = sy(y), sway = Math.sin(t * 1.5 + x * 0.7 + y) * T * 0.015;
   const blobs = [[0.2, 0.72, 0.36], [0.55, 0.78, 0.4], [0.85, 0.7, 0.34], [0.35, 0.35, 0.36], [0.72, 0.38, 0.36], [0.52, 0.08, 0.3]];
-  ctx.fillStyle = '#2f7d3b';
+  const th = themeOf(map);
+  ctx.fillStyle = th.bush;
   for (const [bx, by, br] of blobs) { ctx.beginPath(); ctx.arc(px + bx * T + sway, py + by * T - T * 0.12, br * T, 0, Math.PI * 2); ctx.fill(); }
-  ctx.fillStyle = '#46a04f';
+  ctx.fillStyle = th.bushHi;
   for (const [bx, by, br] of blobs) { ctx.beginPath(); ctx.arc(px + bx * T + sway - br * T * 0.2, py + by * T - T * 0.12 - br * T * 0.22, br * T * 0.62, 0, Math.PI * 2); ctx.fill(); }
   ctx.fillStyle = 'rgba(255,255,255,0.14)';
   ctx.beginPath(); ctx.arc(px + T * (0.3 + hash(x, y, 9) * 0.4) + sway, py + T * 0.2, T * 0.1, 0, Math.PI * 2); ctx.fill();
