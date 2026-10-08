@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a1238">
+<title>난투 아레나</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div><small>트로피</small><span id="trophy">0</span></div>
+    <div><small>생존</small><span id="alive">-</span></div>
+    <div><small>시간</small><span id="clock">3:00</span></div>
+  </div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="overlay">
+      <div class="panel" id="pMain">
+        <h1 id="title">난투 아레나</h1>
+        <p id="msg">봇 5명과 싸워 마지막까지 살아남으세요!</p>
+        <p id="toast" role="status" aria-live="polite"></p>
+        <div id="btns">
+          <div id="prim"><button class="go" id="start" type="button">시작</button></div>
+          <div id="sec">
+            <button class="sub" id="helpBtn" type="button">게임 설명</button>
+            <button class="sub" id="rankBtn" type="button">순위 보기</button>
+            <a class="sub" id="toMenu" href="../">게임 선택</a>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="pHelp" hidden>
+        <h1>게임 설명</h1>
+        <ul class="helplist">
+          <li><b>목표</b> 6명이 싸우는 생존전이에요. 마지막까지 살아남으면 1등!</li>
+          <li><b>이동</b> 화면 왼쪽 아래를 누르면 조이스틱이 생겨요. (PC: WASD)</li>
+          <li><b>공격</b> 오른쪽 조이스틱을 <b>톡</b> 치면 가까운 적에게 자동 조준, <b>끌었다 놓으면</b> 그 방향으로 쏴요. 탄약은 3칸, 시간이 지나면 다시 차요.</li>
+          <li><b>필살기</b> 적을 맞히면 게이지가 차요. 가득 차면 ★ 버튼으로 강한 공격!</li>
+          <li><b>수풀·상자</b> 수풀에 숨으면 적에게 안 보여요. 상자를 부수면 <b>파워 큐브</b>가 나와 강해져요.</li>
+          <li><b>독구름</b> 1분이 지나면 바깥부터 독구름이 좁혀 와요. 안쪽으로 피하세요.</li>
+          <li><b>트로피</b> 등수에 따라 트로피를 얻거나 잃어요. 트로피를 모으면 새 브롤러가 열려요.</li>
+        </ul>
+        <button class="go back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pRank" hidden>
+        <h1>내 기록 순위</h1>
+        <ol id="rows"></ol>
+        <p id="rankNote"></p>
+        <button class="go back" type="button">돌아가기</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="module" src="main.js"></script>
+</body>
+</html>
