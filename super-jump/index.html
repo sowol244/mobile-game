@@ -118,12 +118,12 @@
         <h1>게임 설명</h1>
         <ul class="helplist">
           <li><b>이동·점프</b> ◀ ▶로 달리고, 점프를 오래 누르면 더 높이 뛰어요. (PC: 방향키·스페이스)</li>
-          <li><b>칼</b> 칼 버튼으로 앞을 베면 몬스터가 쓰러지고 <b>코인</b>이 나와요. (PC: Z / X)</li>
-          <li><b>몬스터</b> 한두 번 베어야 쓰러져요. 밟아도 소용없고 닿으면 체력이 줄어요.</li>
+          <li><b>칼</b> 몬스터를 베요. 밟아도 소용없고 닿으면 체력이 줄어요. (PC: Z / X)</li>
           <li><b>장애물</b> 가시·톱날·돌벽·구덩이는 점프로 넘어요. 구덩이에 빠지면 하트가 줄어요.</li>
-          <li><b>갈림길</b> 위는 발판 점프와 코인, 아래는 몬스터. 곧 다시 만나요.</li>
-          <li><b>상점</b> 중간 상점에 닿으면 코인으로 보호막·검기·하트를 사요.</li>
-          <li><b>보스</b> GOAL 앞 보스를 쓰러뜨려야 문이 열려요. <b>!</b> 신호를 보고 피하세요.</li>
+          <li><b>탐험</b> 금 간 벽은 칼로 부숴요. 숨은 방·보물상자·열쇠를 찾고, 덩굴은 점프를 누르고 있으면 올라가요.</li>
+          <li><b>갈림길</b> 위는 발판과 코인, 아래는 몬스터와 동굴. 곧 다시 만나요.</li>
+          <li><b>상점</b> 상점 문 앞에서 점프나 칼 버튼을 누르면 들어가요.</li>
+          <li><b>보스</b> GOAL 앞 보스를 쓰러뜨려야 길이 열려요. <b>!</b> 신호를 보고 피하세요.</li>
           <li><b>목표</b> 하트를 모두 잃으면 게임 오버. 스테이지를 깨면 하트 1개 회복, 모두 3스테이지.</li>
         </ul>
         <button class="go back" type="button">돌아가기</button>
@@ -171,6 +171,7 @@
   let COLS = 150, GOALX = 140 * T, theme, stageIdx = 0;
   let grid, enemies, coinsList, drops, saws, bumps, pops, p, camX, state, deadT = 0, goalT = 0, tAnim = 0, lastSafe, banner = null, godMode = false;
   let shop, boss, shots, slashes, shakeT = 0;
+  let chests, keyItems, crackList, movers, props, keyCount = 0, doorHintT = 0, miniDirty = true, miniCv = null;
   // shield = hits it will still soak up; waveT = seconds of 검기 left (the clock starts with the first swing after buying)
   let score = 0, coinCount = 0, hp = MAX_HP, shield = 0, waveT = 0, waveOn = false;
   const input = { left: false, right: false, jump: false, attack: false };
@@ -183,192 +184,247 @@
   ];
   // Each stage is a list of segments laid out left to right (so nothing can overlap).
   //   ['flat', n] ['spikes', n<=2] ['pit', n<=3] ['saw', n] ['wall', height, width] ['up', steps, stepHeight] ['down', steps, stepHeight]
-  //   ['split', n]  a fork: the ground is the lower route (monsters), its plats are the upper route (each plat gets a row of coins)
-  //   ['shop', n]   flat ground with the shop stand in the middle      ['boss', n, { boss }]  gated arena; the GOAL stays shut until the boss falls
-  // up/down are stair-like slopes (2 tiles wide per step). Extras (offsets are tiles from the segment start):
-  //   mons [kind, offset, rowsAboveGround for bats]   coins [offset, tilesAboveGround, count]   bricks/plats [offset, tilesAboveGround, count]   goal offset
+  //   ['split', n]  a fork: the ground is the lower route (monsters), its plats are the upper route (ledges carry coins)
+  //   ['cave', n, h, { left, right, shaft, after }]  a mesa h tiles high with a tunnel through its foot (rows 11-13): the tunnel is a lower route,
+  //       the top an upper one. Mouths: 'open' | 'closed' | 'crack' (sword breaks it: a secret room) | 'door' (needs a key). shaft = a hole
+  //       with a vine from the tunnel up to the top. mons/coins inside a cave sit in the tunnel; tmons/tcoins sit on top.
+  //   ['shop', n]   flat ground with the shop house      ['boss', n, { boss }]  walled arena; the way to the GOAL opens when the boss falls
+  // up/down are stair-like slopes (2 tiles wide per step). Extras (offsets are tiles from the segment start, dy = tiles above the ground, 1 = on it):
+  //   mons [kind, offset, rowsAboveGround for bats]   coins [offset, dy, count]   bricks/plats [offset, dy, count]   vines [offset, topDy]
+  //   movers [offset, dy, width, tilesRight, tilesUp, seconds]   chests [offset, content, dy|'in']   keys [offset, dy|'in']   sign   goal offset
   // Spikes stay 1-2 tiles and pits at most 3 so a plain running jump always clears them (compile() enforces it).
   const LAYOUTS = [
     [ // stage 1: grassland
-      ['flat', 14, { mons: [['slime', 10]], coins: [[3, 2, 3]] }], ['spikes', 1],
-      ['flat', 9, { mons: [['slime', 5]], coins: [[2, 3, 4]] }], ['up', 2],
-      ['flat', 10, { mons: [['beetle', 6]], coins: [[1, 2, 6]] }], ['down', 2],
-      ['flat', 8, { mons: [['slime', 4]], coins: [[2, 3, 4]] }], ['pit', 2],
-      ['flat', 6, { coins: [[2, 2, 3]] }],
-      ['split', 24, { plats: [[1, 2, 3], [6, 4, 4], [12, 4, 4], [18, 4, 4]], mons: [['slime', 9], ['beetle', 15], ['bat', 13, 7]], coins: [[22, 2, 2]] }],
-      ['flat', 8, { mons: [['slime', 5]] }], ['wall', 2, 2],
-      ['flat', 10, { mons: [['beetle', 4]], bricks: [[4, 3, 4]], coins: [[4, 6, 4]] }], ['spikes', 2],
-      ['flat', 9, { mons: [['slime', 5]] }], ['up', 3],
-      ['flat', 10, { mons: [['slime', 4], ['bat', 7, 4]], coins: [[1, 2, 7]] }], ['down', 1],
-      ['shop', 12],
-      ['flat', 6], ['down', 2],
-      ['flat', 9, { mons: [['beetle', 4]], coins: [[2, 3, 4]] }], ['pit', 3],
-      ['flat', 10, { mons: [['slime', 4], ['bat', 7, 4]], coins: [[1, 3, 5]] }], ['wall', 3, 2],
-      ['flat', 9, { mons: [['slime', 5]], coins: [[2, 2, 4]] }], ['spikes', 1],
+      ['flat', 12, { mons: [['slime', 9]], coins: [[3, 2, 2]] }],
+      ['flat', 10, { vines: [[3, 7]], plats: [[4, 6, 3]], chests: [[5, 'coins6', 7]] }],
+      ['spikes', 1],
+      ['flat', 9, { mons: [['slime', 5]], coins: [[3, 3, 3]] }], ['up', 2],
+      ['flat', 10, { mons: [['beetle', 6]], coins: [[2, 2, 3]] }], ['down', 2],
+      ['flat', 7, { plats: [[4, 2, 3]], sign: 1 }],
+      ['cave', 16, 4, { shaft: 10, mons: [['slime', 5], ['beetle', 13]], coins: [[3, 1, 1]], tcoins: [[1, 1, 4], [7, 1, 2], [13, 1, 2]], tmons: [['bat', 7, 4]] }],
+      ['flat', 7, { mons: [['slime', 4]], coins: [[2, 2, 2]] }], ['pit', 2],
+      ['flat', 8, { mons: [['beetle', 4]] }], ['wall', 2, 2],
+      ['flat', 8, { mons: [['slime', 5]], coins: [[2, 3, 2]] }], ['spikes', 2],
+      ['flat', 5], ['up', 2, 2],
+      ['cave', 10, 4, { left: 'closed', right: 'crack', after: 0, chests: [[5, 'key', 'in']], coins: [[2, 1, 2]], tcoins: [[3, 1, 3]], tmons: [['slime', 6]] }],
+      ['flat', 8, { mons: [['slime', 5]] }], ['up', 1],
+      ['shop', 14],
+      ['flat', 6], ['down', 1],
+      ['flat', 9, { mons: [['beetle', 4]], coins: [[2, 3, 3]] }], ['pit', 3],
+      ['flat', 10, { mons: [['slime', 4], ['bat', 7, 4]], coins: [[1, 3, 2]] }], ['wall', 3, 2],
+      ['flat', 12, { mons: [['slime', 9]], movers: [[2, 2, 3, 0, 4, 4]], plats: [[6, 6, 4]], coins: [[6, 7, 4]] }], ['spikes', 1],
       ['flat', 3], ['spikes', 1],
-      ['flat', 9, { mons: [['beetle', 5]], coins: [[1, 3, 4]] }], ['up', 2],
+      ['flat', 9, { mons: [['beetle', 5]], coins: [[1, 3, 3]] }], ['up', 2],
       ['flat', 4],
-      ['split', 26, { plats: [[1, 2, 3], [6, 4, 3], [11, 5, 3], [16, 4, 3], [21, 4, 3]], mons: [['slime', 7], ['beetle', 13], ['slime', 19], ['bat', 13, 7]], coins: [[24, 2, 2]] }],
+      ['split', 26, { plats: [[1, 2, 3], [6, 4, 3], [11, 5, 3], [16, 4, 3], [21, 4, 3]], mons: [['slime', 7], ['beetle', 13], ['slime', 19], ['bat', 13, 7]] }],
       ['down', 2],
-      ['flat', 8, { mons: [['slime', 4]], coins: [[2, 3, 4]] }], ['pit', 2],
-      ['flat', 10, { mons: [['beetle', 5]], bricks: [[3, 3, 4]], coins: [[3, 6, 4]] }], ['up', 1],
-      ['flat', 8, { mons: [['slime', 4]], coins: [[2, 3, 3]] }], ['wall', 2, 2],
-      ['flat', 16, { mons: [['slime', 5], ['bat', 9, 4], ['slime', 12]], coins: [[2, 2, 5], [11, 3, 3]] }],
+      ['flat', 7, { plats: [[4, 2, 3]], coins: [[1, 2, 2]] }],
+      ['cave', 9, 4, { left: 'door', right: 'closed', chests: [[4, 'shield', 'in']], coins: [[2, 1, 1], [6, 1, 1]], tcoins: [[2, 1, 3]] }],
+      ['flat', 8, { mons: [['slime', 4]], coins: [[2, 3, 2]] }], ['pit', 2],
+      ['flat', 10, { mons: [['beetle', 5]], bricks: [[3, 3, 4]], coins: [[3, 6, 3]] }], ['up', 1],
+      ['flat', 8, { mons: [['slime', 4]] }], ['wall', 2, 2],
+      ['flat', 14, { mons: [['slime', 5], ['bat', 9, 4], ['slime', 11]], coins: [[2, 2, 3]] }],
       ['boss', 17, { boss: 'slime' }],
       ['flat', 14, { goal: 5 }],
     ],
     [ // stage 2: cave
-      ['flat', 14, { mons: [['slime', 10]], coins: [[3, 2, 3]] }], ['up', 2],
-      ['flat', 9, { mons: [['beetle', 5]], coins: [[1, 2, 6]] }], ['spikes', 2],
-      ['flat', 8, { mons: [['bat', 4, 4], ['slime', 6]], coins: [[2, 3, 4]] }], ['down', 2],
-      ['flat', 9, { mons: [['boar', 6]], coins: [[2, 3, 4]] }], ['pit', 3],
-      ['flat', 9, { mons: [['beetle', 5]], bricks: [[3, 3, 4]], coins: [[3, 6, 4]] }], ['saw', 6],
-      ['flat', 8, { mons: [['slime', 4]] }],
-      ['split', 26, { plats: [[1, 2, 3], [6, 4, 4], [12, 4, 3], [17, 5, 3], [22, 4, 3]], mons: [['boar', 10], ['beetle', 18], ['bat', 14, 7]], coins: [[24, 2, 2]] }],
+      ['flat', 12, { mons: [['slime', 9]], coins: [[3, 2, 2]] }], ['up', 2],
+      ['flat', 9, { mons: [['beetle', 5]], coins: [[1, 2, 3]] }], ['spikes', 2],
+      ['flat', 8, { mons: [['bat', 4, 4], ['slime', 6]], coins: [[2, 3, 2]] }], ['down', 2],
+      ['flat', 9, { mons: [['boar', 6]] }], ['pit', 3],
+      ['flat', 9, { mons: [['beetle', 5]], bricks: [[3, 3, 4]], coins: [[3, 6, 3]] }], ['saw', 6],
+      ['flat', 7, { plats: [[4, 2, 3]], sign: 1 }],
+      ['cave', 20, 5, { shaft: 13, mons: [['boar', 7], ['bat', 11, 2], ['beetle', 16]], coins: [[3, 1, 1]], tcoins: [[1, 1, 4], [8, 1, 3]], tmons: [['bat', 6, 4]], chests: [[17, 'wave', 1]] }],
       ['flat', 6], ['up', 3],
-      ['flat', 8, { mons: [['bat', 3, 4], ['beetle', 5]], coins: [[1, 2, 6]] }], ['wall', 2, 2],
-      ['flat', 8, { mons: [['boar', 4]], coins: [[1, 3, 4]] }], ['down', 3],
-      ['flat', 9, { mons: [['slime', 4]], coins: [[2, 3, 4]] }], ['pit', 2],
-      ['flat', 9, { mons: [['bat', 4, 4], ['beetle', 6]], bricks: [[3, 3, 3]], coins: [[3, 6, 3]] }], ['spikes', 1],
-      ['flat', 6, { coins: [[1, 2, 3]] }], ['up', 1],
-      ['shop', 12],
+      ['flat', 8, { mons: [['bat', 3, 4], ['beetle', 5]], coins: [[1, 2, 3]] }], ['wall', 2, 2],
+      ['flat', 8, { mons: [['boar', 4]], coins: [[1, 3, 2]] }], ['down', 3],
+      ['flat', 12, { mons: [['slime', 9]], movers: [[2, 2, 3, 0, 4, 4]], plats: [[6, 6, 3]], keys: [[7, 7]] }], ['pit', 2],
+      ['flat', 9, { mons: [['bat', 4, 4], ['beetle', 6]], coins: [[3, 2, 2]] }], ['spikes', 1],
+      ['flat', 6, { coins: [[1, 2, 2]] }], ['up', 1],
+      ['shop', 14],
       ['flat', 6], ['down', 1],
-      ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['up', 4],
-      ['flat', 9, { mons: [['bat', 4, 4], ['beetle', 6]], coins: [[1, 2, 7]] }], ['down', 4],
+      ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 2]] }], ['up', 4],
+      ['flat', 9, { mons: [['bat', 4, 4], ['beetle', 6]], coins: [[1, 2, 3]] }], ['down', 4],
       ['flat', 8, { mons: [['slime', 4]] }], ['saw', 6],
-      ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['pit', 3],
+      ['flat', 9, { mons: [['boar', 5]] }], ['pit', 3],
       ['flat', 4],
-      ['split', 28, { plats: [[1, 2, 3], [6, 4, 3], [11, 4, 3], [16, 5, 3], [21, 4, 3], [25, 3, 2]], mons: [['beetle', 8], ['boar', 15], ['slime', 22], ['bat', 12, 7], ['bat', 20, 7]], coins: [[9, 2, 2]] }],
-      ['flat', 8, { mons: [['slime', 5]], coins: [[2, 3, 3]] }], ['spikes', 2],
-      ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['pit', 2],
-      ['flat', 8, { mons: [['bat', 4, 4], ['slime', 6]], coins: [[1, 2, 5]] }], ['spikes', 1],
-      ['flat', 8, { mons: [['beetle', 4]] }], ['saw', 5],
-      ['flat', 9, { mons: [['bat', 4, 4], ['beetle', 6]], coins: [[1, 2, 5]] }], ['wall', 3, 2],
+      ['split', 28, { plats: [[1, 2, 3], [6, 4, 3], [16, 5, 3], [21, 4, 3], [25, 3, 2]], movers: [[10, 4, 2, 3, 0, 3]], mons: [['beetle', 8], ['boar', 15], ['slime', 22], ['bat', 12, 7], ['bat', 20, 7]], coins: [[11, 5, 3]] }],
+      ['flat', 8, { mons: [['slime', 5]], coins: [[2, 3, 2]] }], ['spikes', 2],
+      ['flat', 7, { plats: [[4, 2, 3]] }],
+      ['cave', 9, 4, { left: 'door', right: 'closed', chests: [[4, 'shield', 'in']], coins: [[2, 1, 1], [6, 1, 1]], tcoins: [[2, 1, 3]] }],
+      ['flat', 9, { mons: [['bat', 4, 4], ['beetle', 6]], coins: [[1, 2, 2]] }], ['wall', 3, 2],
       ['flat', 8, { mons: [['boar', 5]] }], ['saw', 5],
-      ['flat', 8, { mons: [['beetle', 5]], coins: [[1, 3, 4]] }], ['up', 2, 2],
-      ['flat', 10, { mons: [['bat', 4, 4], ['slime', 7]], coins: [[2, 2, 5]] }], ['down', 1],
-      ['flat', 10, { coins: [[3, 2, 4]] }],
+      ['flat', 6], ['up', 2, 2],
+      ['cave', 10, 4, { left: 'closed', right: 'crack', after: 0, chests: [[5, 'coins8', 'in']], tcoins: [[3, 1, 3]], tmons: [['beetle', 6]] }],
+      ['flat', 10, { mons: [['bat', 4, 4], ['slime', 7]], coins: [[2, 2, 2]] }], ['up', 1],
+      ['flat', 10, { mons: [['beetle', 5]], coins: [[2, 3, 2]] }],
       ['boss', 17, { boss: 'beetle' }],
       ['flat', 14, { goal: 5 }],
     ],
     [ // stage 3: volcano
-      ['flat', 14, { mons: [['slime', 10]], coins: [[3, 2, 3]] }], ['up', 3],
-      ['flat', 8, { mons: [['beetle', 4], ['bat', 6, 4]], coins: [[1, 2, 6]] }], ['spikes', 2],
-      ['flat', 8, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['down', 3],
-      ['flat', 8, { mons: [['slime', 4]] }], ['saw', 6],
-      ['flat', 8, { mons: [['bat', 4, 4]] }], ['pit', 3],
-      ['flat', 9, { mons: [['beetle', 5]], bricks: [[3, 3, 4]], coins: [[3, 6, 4]] }], ['up', 2, 2],
-      ['flat', 8, { mons: [['boar', 4]], coins: [[1, 2, 6]] }], ['wall', 2, 2],
+      ['flat', 12, { mons: [['slime', 9]], coins: [[3, 2, 2]] }], ['up', 3],
+      ['flat', 8, { mons: [['beetle', 4], ['bat', 6, 4]], coins: [[1, 2, 3]] }], ['spikes', 2],
+      ['flat', 8, { mons: [['boar', 5]] }], ['down', 3],
+      ['flat', 8, { mons: [['slime', 4]], coins: [[2, 3, 2]] }], ['saw', 6],
+      ['flat', 10, { vines: [[4, 7]], plats: [[5, 6, 3]], chests: [[6, 'coins6', 7]], mons: [['bat', 2, 4]] }], ['pit', 3],
+      ['flat', 9, { mons: [['beetle', 5]], bricks: [[3, 3, 4]], coins: [[3, 6, 3]] }], ['up', 2, 2],
+      ['flat', 8, { mons: [['boar', 4]], coins: [[1, 2, 3]] }], ['wall', 2, 2],
       ['flat', 5], ['down', 2],
-      ['split', 28, { plats: [[1, 2, 3], [6, 4, 3], [11, 5, 3], [16, 4, 2], [20, 5, 3], [25, 3, 2]], mons: [['boar', 8], ['beetle', 15], ['boar', 21], ['bat', 11, 7], ['bat', 19, 7]], coins: [[9, 2, 2]] }],
-      ['flat', 8, { mons: [['slime', 4]], coins: [[1, 2, 6]] }], ['up', 1, 1],
-      ['flat', 8, { mons: [['bat', 3, 4], ['beetle', 5]] }], ['spikes', 1],
-      ['flat', 8, { mons: [['slime', 4]], coins: [[1, 2, 6]] }], ['down', 1],
-      ['flat', 8, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['pit', 3],
-      ['flat', 9, { mons: [['beetle', 4], ['bat', 7, 4]], coins: [[2, 3, 4]] }], ['spikes', 2],
+      ['split', 28, { plats: [[1, 2, 3], [6, 4, 3], [11, 5, 3], [16, 4, 2], [20, 5, 3], [25, 3, 2]], mons: [['boar', 8], ['beetle', 15], ['boar', 21], ['bat', 11, 7], ['bat', 19, 7]], keys: [[21, 6]] }],
+      ['down', 2],
+      ['flat', 8, { mons: [['slime', 4]], coins: [[1, 2, 2]], plats: [[5, 2, 3]], sign: 4 }],
+      ['cave', 18, 4, { shaft: 12, mons: [['boar', 6], ['beetle', 14]], coins: [[3, 1, 1]], tcoins: [[1, 1, 4], [8, 1, 3]], tmons: [['bat', 9, 4]] }],
+      ['flat', 8, { mons: [['boar', 5]], coins: [[2, 3, 2]] }], ['pit', 3],
+      ['flat', 9, { mons: [['beetle', 4], ['bat', 7, 4]] }], ['spikes', 2],
       ['flat', 8, { mons: [['slime', 4]] }], ['saw', 6],
-      ['flat', 6, { coins: [[1, 2, 3]] }], ['up', 1],
-      ['shop', 12],
+      ['flat', 6, { coins: [[1, 2, 2]] }], ['up', 1],
+      ['shop', 14],
       ['flat', 6], ['down', 1],
       ['flat', 8, { mons: [['boar', 5]] }], ['up', 3],
-      ['flat', 8, { mons: [['bat', 4, 4], ['beetle', 6]], coins: [[1, 2, 6]] }], ['down', 3],
+      ['flat', 8, { mons: [['bat', 4, 4], ['beetle', 6]], coins: [[1, 2, 3]] }], ['down', 3],
+      ['flat', 7, { plats: [[4, 2, 3]] }],
+      ['cave', 9, 4, { left: 'door', right: 'closed', chests: [[4, 'shield', 'in']], coins: [[2, 1, 1], [6, 1, 1]], tcoins: [[2, 1, 3]] }],
       ['flat', 8, { mons: [['slime', 4]] }], ['pit', 3],
-      ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['wall', 3, 2],
-      ['flat', 8, { mons: [['beetle', 5]], bricks: [[3, 3, 3]], coins: [[3, 6, 3]] }], ['saw', 6],
+      ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 2]] }], ['wall', 3, 2],
+      ['flat', 8, { mons: [['beetle', 5]], bricks: [[3, 3, 3]], coins: [[3, 6, 2]] }], ['saw', 6],
       ['flat', 6], ['up', 1],
-      ['split', 30, { plats: [[1, 2, 3], [6, 4, 3], [11, 5, 2], [15, 4, 3], [20, 5, 3], [25, 4, 3]], mons: [['boar', 7], ['beetle', 13], ['boar', 19], ['slime', 25], ['bat', 10, 7], ['bat', 18, 7], ['bat', 24, 7]], coins: [[9, 2, 2]] }],
+      ['split', 30, { plats: [[1, 2, 3], [6, 4, 3], [11, 5, 2], [15, 4, 3], [20, 5, 3], [25, 4, 3]], mons: [['boar', 7], ['beetle', 13], ['boar', 19], ['slime', 25], ['bat', 10, 7], ['bat', 18, 7], ['bat', 24, 7]] }],
       ['down', 1],
-      ['flat', 8, { mons: [['bat', 4, 4], ['beetle', 6]], coins: [[1, 2, 5]] }], ['spikes', 2],
-      ['flat', 8, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['up', 1, 2],
-      ['flat', 8, { mons: [['slime', 4]], coins: [[1, 2, 6]] }], ['pit', 2],
-      ['flat', 9, { mons: [['beetle', 4], ['bat', 7, 4]] }], ['down', 1, 2],
-      ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['spikes', 1],
-      ['flat', 8, { mons: [['bat', 4, 4], ['slime', 6]], coins: [[1, 2, 5]] }], ['pit', 2],
-      ['flat', 8, { mons: [['boar', 5]], coins: [[2, 3, 4]] }], ['saw', 5],
-      ['flat', 14, { mons: [['slime', 4], ['beetle', 7], ['bat', 11, 4]], coins: [[1, 2, 5]] }],
+      ['flat', 8, { mons: [['bat', 4, 4], ['beetle', 6]], coins: [[1, 2, 2]] }], ['spikes', 2],
+      ['flat', 8, { mons: [['boar', 5]] }], ['up', 2, 2],
+      ['cave', 10, 4, { left: 'closed', right: 'crack', after: 0, chests: [[5, 'coins8', 'in']], tcoins: [[3, 1, 3]], tmons: [['slime', 6]] }],
+      ['flat', 9, { mons: [['beetle', 4], ['bat', 7, 4]] }], ['pit', 2],
+      ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 2]] }], ['spikes', 1],
+      ['flat', 8, { mons: [['bat', 4, 4], ['slime', 6]], coins: [[1, 2, 2]] }], ['pit', 2],
+      ['flat', 8, { mons: [['boar', 5]] }], ['saw', 5],
+      ['flat', 14, { mons: [['slime', 4], ['beetle', 7], ['bat', 11, 4]], coins: [[1, 2, 3]] }],
       ['boss', 17, { boss: 'bat' }],
       ['flat', 14, { goal: 5 }],
     ],
   ];
 
+  // Tiles: 1 ground, 2 brick, 5 ledge, 6 stone wall, 7 spikes, 9 arena gate, 10 cracked stone (sword breaks it), 11 locked door, 12 vine (climbable, not solid)
   function compile(layout) {
-    const H = [], pits = new Set(), spikes = [], walls = [], saws = [], mons = [], coins = [], bricks = [], plats = [], signs = [], segs = [];
+    const H = [], pits = new Set(), put = [], spikes = [], saws = [], mons = [], coins = [], signs = [], chests = [], keys = [], movers = [], cracks = [], caves = [], later = [], segs = [];
     let x = 0, h = 0, goal = null, shop = null, boss = null;
     const fill = n => { for (let i = 0; i < n; i++) H[x + i] = h; x += n; };
+    const surf = c => 13 - H[c];
+    const mouth = (m, c) => {
+      if (m === 'closed') for (let r = 11; r <= 13; r++) put.push([c, r, 1]);
+      else if (m === 'crack') { for (let r = 11; r <= 13; r++) put.push([c, r, 10]); cracks.push([c, 11, 3]); }
+      else if (m === 'door') put.push([c, 11, 1], [c, 12, 11], [c, 13, 11]);
+    };
     for (const seg of layout) {
       const kind = seg[0], ex = seg.find((v, i) => i > 0 && v && typeof v === 'object') || {}, x0 = x;
+      const cave = kind === 'cave';
       if (kind === 'flat' || kind === 'split') fill(seg[1]);
-      else if (kind === 'spikes') { if (seg[1] > 2) throw new Error('spike run over 2 tiles near column ' + x); fill(seg[1]); for (let i = 0; i < seg[1]; i++) spikes.push(x0 + i); }
+      else if (kind === 'spikes') {
+        if (seg[1] > 2) throw new Error('spike run over 2 tiles near column ' + x);
+        fill(seg[1]); for (let i = 0; i < seg[1]; i++) { spikes.push(x0 + i); put.push([x0 + i, 12 - h, 7]); }
+      }
       else if (kind === 'pit') { if (seg[1] > 3) throw new Error('pit over 3 tiles near column ' + x); for (let i = 0; i < seg[1]; i++) pits.add(x0 + i); fill(seg[1]); }
-      else if (kind === 'saw') { fill(seg[1]); saws.push([x0, x0 + seg[1] - 1, h]); }
-      else if (kind === 'wall') { fill(seg[2]); walls.push([x0, seg[1], seg[2]]); }
+      else if (kind === 'saw') { fill(seg[1]); saws.push([x0, x0 + seg[1] - 1, 13 - h]); }
+      else if (kind === 'wall') { fill(seg[2]); for (let dx = 0; dx < seg[2]; dx++) for (let k = 0; k < seg[1]; k++) put.push([x0 + dx, 12 - h - k, 6]); }
       else if (kind === 'up' || kind === 'down') { const sh = seg[2] || 1; for (let k = 0; k < seg[1]; k++) { h += kind === 'up' ? sh : -sh; fill(2); } }
-      else if (kind === 'shop') { fill(seg[1]); shop = { x: x0 + Math.floor(seg[1] / 2) - 1, h }; }
+      else if (kind === 'shop') { fill(seg[1]); shop = { x: x0 + 3, h }; }
       else if (kind === 'boss') { fill(seg[1]); boss = { kind: ex.boss, x0, x1: x - 1, h }; }
+      else if (cave) {
+        const n = seg[1], before = h, x1 = x0 + n - 1; h = seg[2]; fill(n); h = ex.after ?? before;
+        if (h > 1 && (ex.right || 'open') !== 'closed') throw new Error('cave mouth buried near column ' + x);
+        later.push(() => {
+          if ((ex.left || 'open') !== 'closed' && H[x0 - 1] > 1) throw new Error('cave mouth buried near column ' + x0);
+          for (let c = x0; c <= x1; c++) for (let r = 11; r <= 13; r++) put.push([c, r, 0]);
+          mouth(ex.left || 'open', x0); mouth(ex.right || 'open', x1);
+          if (ex.shaft != null) { const c = x0 + ex.shaft; for (let r = surf(c); r <= 10; r++) put.push([c, r, 0], [c + 1, r, 0]); for (let r = surf(c) - 1; r <= 13; r++) put.push([c, r, 12]); }
+        });
+        caves.push([x0, x1]);
+      }
       else throw new Error('unknown segment ' + kind);
       if (h < 0 || h > 5) throw new Error('terrain height out of range near column ' + x);
-      (ex.mons || []).forEach(([k, off, up]) => mons.push([k, x0 + off, up]));
-      (ex.coins || []).forEach(([off, dy, n]) => coins.push([x0 + off, dy, n]));
-      (ex.bricks || []).forEach(([off, dy, n]) => bricks.push([x0 + off, dy, n]));
-      // the upper route pays: one coin on every ledge tile, right where the hero walks
-      (ex.plats || []).forEach(([off, dy, n]) => { plats.push([x0 + off, dy, n]); if (kind === 'split') coins.push([x0 + off, dy + 1, n]); });
+      // positions resolve once every column has its height: dy counts rows above the ground (1 = standing on it), 'in' = inside the tunnel
+      const rowAt = (c, dy, inside) => dy === 'in' || inside ? 14 - (dy === 'in' ? 1 : dy) : surf(c) - dy;
+      later.push(() => {
+        (ex.mons || []).forEach(([k, off, up]) => { const c = x0 + off, floor = cave ? 14 : surf(c); mons.push([k, c, k === 'bat' ? floor - up : floor]); });
+        (ex.tmons || []).forEach(([k, off, up]) => { const c = x0 + off; mons.push([k, c, k === 'bat' ? surf(c) - up : surf(c)]); });
+        (ex.coins || []).forEach(([off, dy, n]) => { for (let k = 0; k < n; k++) coins.push([x0 + off + k, rowAt(x0 + off + k, dy, cave)]); });
+        (ex.tcoins || []).forEach(([off, dy, n]) => { for (let k = 0; k < n; k++) coins.push([x0 + off + k, rowAt(x0 + off + k, dy)]); });
+        (ex.bricks || []).forEach(([off, dy, n]) => { for (let k = 0; k < n; k++) put.push([x0 + off + k, rowAt(x0 + off + k, dy), 2]); });
+        // the upper route pays: coins along every ledge but the first step
+        (ex.plats || []).forEach(([off, dy, n]) => {
+          for (let k = 0; k < n; k++) put.push([x0 + off + k, rowAt(x0 + off + k, dy), 5]);
+          if (kind === 'split' && dy > 2) for (let k = 0; k < n - 1; k++) coins.push([x0 + off + k, rowAt(x0 + off + k, dy + 1)]);
+        });
+        (ex.vines || []).forEach(([off, top]) => { const c = x0 + off; for (let dy = 1; dy <= top; dy++) put.push([c, surf(c) - dy, 12]); });
+        (ex.movers || []).forEach(([off, dy, w, right, up, sec]) => movers.push([x0 + off, rowAt(x0 + off, dy), w, right, up, sec]));
+        (ex.chests || []).forEach(([off, what, dy]) => chests.push([x0 + off, rowAt(x0 + off, dy), what]));
+        (ex.keys || []).forEach(([off, dy]) => keys.push([x0 + off, rowAt(x0 + off, dy)]));
+      });
       if (kind === 'split') signs.push(x0);
+      if (ex.sign != null) signs.push(x0 + (ex.sign === true ? 0 : ex.sign));
       if (ex.goal != null) goal = x0 + ex.goal;
       segs.push({ kind, x0, w: x - x0, h });
     }
     fill(4);
-    return { cols: x, goal, H, pits, spikes, walls, saws, mons, coins, bricks, plats, signs, shop, boss, segs };
+    later.forEach(f => f());
+    return { cols: x, goal, H, pits, put, spikes, saws, mons, coins, signs, chests, keys, movers, cracks, caves, shop, boss, segs };
   }
   const STAGES = LAYOUTS.map(compile);
-  // hp = swings needed. pts = score, coins = how many drop.
+  // hp = swings needed. pts = score, coins = how many drop (only the tougher ones pay).
   const MON = {
-    slime:  { w: 16, h: 14, hp: 1, spd: 28, pts: 100, coins: 1 },
-    beetle: { w: 16, h: 14, hp: 2, spd: 22, pts: 250, coins: 2 },
+    slime:  { w: 16, h: 14, hp: 1, spd: 28, pts: 100, coins: 0 },
+    beetle: { w: 16, h: 14, hp: 2, spd: 22, pts: 250, coins: 1 },
     bat:    { w: 14, h: 10, hp: 1, spd: 40, pts: 150, coins: 1, fly: true },
-    boar:   { w: 18, h: 14, hp: 2, spd: 20, pts: 300, coins: 2, charge: true },
+    boar:   { w: 18, h: 14, hp: 2, spd: 20, pts: 300, coins: 1, charge: true },
   };
 
-  // one boss per stage, waiting in the arena right before the GOAL
+  // one boss per stage, in a themed arena right before the GOAL
   const BOSS = {
-    slime:  { name: '킹 슬라임', w: 36, h: 28, hp: 10 },
-    beetle: { name: '강철 딱정벌레 왕', w: 36, h: 24, hp: 14 },
-    bat:    { name: '박쥐 여왕', w: 34, h: 22, hp: 12 },
+    slime:  { name: '킹 슬라임', place: '숲의 옛 신전', w: 36, h: 28, hp: 10 },
+    beetle: { name: '강철 딱정벌레 왕', place: '수정 동굴 깊은 곳', w: 36, h: 24, hp: 14 },
+    bat:    { name: '박쥐 여왕', place: '불꽃 성채', w: 34, h: 22, hp: 12 },
   };
-  // coins carry over between stages, so later shops charge more (base + 10 per stage)
+  // coins carry over between stages, so later shops charge more (base + PRICE_STEP per stage). Tuned so a player on the
+  // lower route reaches the stage-1 shop with about 10 coins (one item) and on the upper route with about 18 (two items).
+  const PRICE_STEP = 16;
   const ITEMS = [
-    { id: 'shield', name: '보호막', obj: '보호막을', price: 20, desc: '하트가 줄 때 한 번 대신 막아 줘요. (최대 2개)' },
-    { id: 'wave', name: '검기', obj: '검기를', price: 30, desc: '첫 칼질부터 10초 동안 칼을 휘두르면 검기가 날아가요.' },
-    { id: 'heart', name: '하트', obj: '하트를', price: 20, desc: '체력 한 칸을 회복해요.' },
+    { id: 'shield', name: '보호막', obj: '보호막을', price: 8, desc: '하트가 줄 때 한 번 대신 막아 줘요. (최대 2개)' },
+    { id: 'wave', name: '검기', obj: '검기를', price: 10, desc: '첫 칼질부터 10초 동안 칼을 휘두르면 검기가 날아가요.' },
+    { id: 'heart', name: '하트', obj: '하트를', price: 8, desc: '체력 한 칸을 회복해요.' },
   ];
+  const CHEST_TXT = { shield: '보호막!', wave: '검기 10초!', key: '열쇠!' };
 
   function makeMon(kind, x, ty) {
     const d = MON[kind], y = d.fly ? (ty ?? 7) * T : (ty ?? 13) * T - d.h;
     return { kind, x: x * T, y, y0: y, homeX: x * T + d.w / 2, w: d.w, h: d.h, vx: -d.spd, vy: 0, hp: d.hp, maxHp: d.hp, active: false, dead: false, flashT: 0, knockT: 0, t: rnd(0, 6), mode: 'walk', cd: 0, swingHit: -1 };
   }
 
+  const GATE_H = 6;   // arena walls are 6 tiles tall: higher than any jump
   function buildLevel(i) {
     const S = STAGES[i];
     theme = THEMES[i]; COLS = S.cols; GOALX = S.goal * T;
     grid = Array.from({ length: ROWS }, () => new Uint8Array(COLS));
     const set = (x, y, t) => { if (x >= 0 && x < COLS && y >= 0 && y < ROWS) grid[y][x] = t; };
     for (let x = 0; x < COLS; x++) { if (S.pits.has(x)) continue; for (let r = 13 - S.H[x]; r <= 14; r++) set(x, r, 1); }   // ground column up to its own height
-    for (const x of S.spikes) set(x, 12 - S.H[x], 7);
-    for (const [x, h, w] of S.walls) for (let dx = 0; dx < w; dx++) for (let k = 0; k < h; k++) set(x + dx, 12 - S.H[x + dx] - k, 6);
-    for (const [x, dy, n] of S.bricks) for (let k = 0; k < n; k++) set(x + k, 13 - S.H[x + k] - dy, 2);
-    for (const [x, dy, n] of S.plats) for (let k = 0; k < n; k++) set(x + k, 13 - S.H[x + k] - dy, 5);
-    enemies = S.mons.map(([k, x, up]) => makeMon(k, x, k === 'bat' ? 13 - S.H[x] - up : 13 - S.H[x]));
-    saws = S.saws.map(([x0, x1, h]) => ({ x: x0 * T + 8, y: (13 - h) * T - 8, x0: x0 * T + 8, x1: x1 * T + 8, vx: 55, r: 8, rot: 0 }));
-    coinsList = [];
-    for (const [x, dy, n] of S.coins) for (let k = 0; k < n; k++) coinsList.push({ x: (x + k) * T + 3, y: (13 - S.H[x + k] - dy) * T + 1, got: false });
-    drops = []; bumps = []; pops = []; shots = []; slashes = [];
-    shop = S.shop && { x: S.shop.x * T, y: (13 - S.shop.h) * T, arm: true };
+    for (const [x, r, t] of S.put) set(x, r, t);
+    enemies = S.mons.map(([k, x, ty]) => makeMon(k, x, ty));
+    saws = S.saws.map(([x0, x1, row]) => ({ x: x0 * T + 8, y: row * T - 8, x0: x0 * T + 8, x1: x1 * T + 8, vx: 55, r: 8, rot: 0 }));
+    coinsList = S.coins.map(([x, r]) => ({ x: x * T + 3, y: r * T + 1, got: false }));
+    chests = S.chests.map(([x, r, what]) => ({ x: x * T + 1, y: r * T + 2, w: 14, h: 14, what, open: false, t: 0 }));
+    keyItems = S.keys.map(([x, r]) => ({ x: x * T + 2, y: r * T + 1, got: false }));
+    crackList = S.cracks.map(([x, r, n]) => ({ x, r, n, hp: 2, broken: false }));
+    movers = S.movers.map(([x, r, w, right, up, sec]) => ({ x0: x * T, y0: r * T, ddx: right * T, ddy: -up * T, w: w * T, h: 6, per: sec, t: 0, x: x * T, y: r * T, dx: 0, dy: 0 }));
+    drops = []; bumps = []; pops = []; shots = []; slashes = []; keyCount = 0; doorHintT = 0;
+    shop = S.shop && { x: S.shop.x * T, y: (13 - S.shop.h) * T };
     boss = null;
-    if (S.boss) { // the right gate is shut from the start; the left one drops behind the hero when the fight begins
+    if (S.boss) { // the exit wall stands from the start; the entrance wall rises behind the hero when the fight begins
       const B = S.boss, d = BOSS[B.kind], gy = (13 - B.h) * T;
-      boss = { kind: B.kind, name: d.name, x0: B.x0, x1: B.x1, gy, lo: (B.x0 + 2) * T, hi: B.x1 * T, w: d.w, h: d.h, x: (B.x1 - 5) * T, y: B.kind === 'bat' ? gy - 96 : gy - d.h, hy: gy - 96,
-        vx: 0, vy: 0, hp: d.hp, maxHp: d.hp, face: -1, mode: B.kind === 'beetle' ? 'walk' : (B.kind === 'bat' ? 'hover' : 'idle'), mt: 0, t: 0, flashT: 0, clinkT: 0, swingHit: -1, on: false, dead: false, deadT: 0, cyc: 0 };
-      gate(B.x1, B.h, true);
+      boss = { kind: B.kind, name: d.name, place: d.place, x0: B.x0, x1: B.x1, gy, lo: (B.x0 + 2) * T, hi: B.x1 * T, w: d.w, h: d.h, x: (B.x1 - 5) * T, y: B.kind === 'bat' ? gy - 96 : gy - d.h, hy: gy - 96,
+        vx: 0, vy: 0, hp: d.hp, maxHp: d.hp, face: -1, mode: B.kind === 'beetle' ? 'walk' : (B.kind === 'bat' ? 'hover' : 'idle'), mt: 0, t: 0, flashT: 0, clinkT: 0, swingHit: -1, on: false, dead: false, deadT: 0, cyc: 0, intro: 0,
+        gates: [{ col: B.x0 + 1, k: 0, to: 0 }, { col: B.x1, k: 1, to: 1 }] };
+      gateTiles(boss.gates[1], true);
     }
+    props = makeProps(S);
+    miniDirty = true; $('jump').textContent = '점프'; $('atk').textContent = '칼';
   }
 
   const newPlayer = () => ({ x: 3 * T, y: 12 * T, w: 12, h: 16, vx: 0, vy: 0, onGround: true, face: 1, coyote: 0, jumpBuf: 0, walk: 0, inv: 0, hurtT: 0, swing: 0, cd: 0, atkBuf: 0, swingId: 0, stepUp: true });
@@ -380,10 +436,15 @@
     updateHud();
   }
   function newGame() { score = 0; coinCount = 0; hp = MAX_HP; shield = 0; waveT = 0; waveOn = false; startStage(0); }
-  function gate(col, h, shut) { for (let r = 0; r <= 12 - h; r++) grid[r][col] = shut ? 9 : 0; }
+  function gateTiles(g, shut) { const top = 12 - STAGES[stageIdx].boss.h; for (let r = top - GATE_H + 1; r <= top; r++) grid[r][g.col] = shut ? 9 : 0; miniDirty = true; }
 
   /* ---------- physics ---------- */
-  const solid = (tx, ty) => tx < 0 || tx >= COLS ? true : (ty < 0 || ty >= ROWS ? false : (grid[ty][tx] > 0 && grid[ty][tx] !== 7)); // spikes are hazards, not walls
+  // spikes are hazards and vines are climbable scenery: neither is a wall
+  const solid = (tx, ty) => tx < 0 || tx >= COLS ? true : (ty < 0 || ty >= ROWS ? false : (grid[ty][tx] > 0 && grid[ty][tx] !== 7 && grid[ty][tx] !== 12));
+  const touches = (e, t) => { // does the box overlap a tile of type t?
+    for (let ty = Math.floor(e.y / T); ty <= Math.floor((e.y + e.h - 0.001) / T); ty++) for (let tx = Math.floor(e.x / T); tx <= Math.floor((e.x + e.w - 0.001) / T); tx++) if (grid[ty]?.[tx] === t) return [tx, ty];
+    return null;
+  };
 
   const blocked = (x, y, w, h) => {
     const x0 = Math.floor(x / T), x1 = Math.floor((x + w - 0.001) / T), y0 = Math.floor(y / T), y1 = Math.floor((y + h - 0.001) / T);
@@ -482,9 +543,17 @@
       if (!input.jump && p.vy < -170 && p.hurtT <= 0) p.vy = -170;
       if (p.swing > 0) { p.swing = Math.max(0, p.swing - dt); if (p.swing === 0) p.cd = SWING_CD; }
       if (input.attack || p.atkBuf > 0) { if (tryAttack()) p.atkBuf = 0; }
+      // vines: holding jump climbs, letting go slides down slowly; walk off sideways to get off
+      p.climb = !!touches(p, 12) && p.hurtT <= 0;
+      if (p.climb && input.jump) p.vy = -80 - GRAV * dt;
+      else if (p.climb && p.vy > 55) p.vy = 55;
     }
     p.vy = Math.min(p.vy + GRAV * dt, 600);
+    const feet = p.y + p.h;
     if (moveBox(p, dt) && state === 'play') p.vx = 0;
+    // moving platforms only hold you from above, so you can jump up through them
+    p.plat = null;
+    if (p.vy >= 0) for (const m of movers) if (p.x + p.w > m.x + 1 && p.x < m.x + m.w - 1 && feet <= m.y + 2 && p.y + p.h >= m.y) { p.y = m.y - p.h; p.vy = 0; p.onGround = true; p.plat = m; }
     if (state === 'play') {
       if (Math.abs(p.vx) > 5 && p.onGround) p.walk += Math.abs(p.vx) * dt / 9;
       if (p.bump) hitBlock(p.bump[0], p.bump[1]);
@@ -509,6 +578,25 @@
     for (const e of enemies) {
       if (!e.dead && e.x + e.w > tx * T && e.x < (tx + 1) * T && Math.abs(e.y + e.h - ty * T) < 5) damageMon(e, 1);
     }
+  }
+
+  /* ---------- exploring: shop door, chests, cracked walls ---------- */
+  // the door is the middle tile of the 5-tile shop house
+  const atDoor = () => !!shop && state === 'play' && p.onGround && Math.abs(p.x + p.w / 2 - (shop.x + 2.5 * T)) < 9;
+  function openChest(c) {
+    c.open = true; c.t = 0; sfx('chest');
+    let txt = CHEST_TXT[c.what];
+    if (c.what.startsWith('coins')) { const n = +c.what.slice(5); spawnCoins(c.x + 7, c.y, n); txt = '코인 ' + n + '개!'; }
+    else if (c.what === 'shield') { if (shield < 2) shield++; else { spawnCoins(c.x + 7, c.y, 6); txt = '코인 6개!'; } }
+    else if (c.what === 'wave') waveT += 10;
+    else if (c.what === 'key') keyCount++;
+    pops.push({ x: c.x + 7, y: c.y - 10, t: 0, text: txt }); updateHud();
+  }
+  function hitCrack(g) { // cracked stone takes two hits, then the whole stack crumbles
+    g.hp--; bumps.push({ tx: g.x, ty: g.r + g.n - 1, t: 0 }); sfx('hit');
+    if (g.hp > 0) return;
+    g.broken = true; miniDirty = true; sfx('crumble');
+    for (let k = 0; k < g.n; k++) { grid[g.r + k][g.x] = 0; for (let j = 0; j < 3; j++) pops.push({ x: g.x * T + rnd(2, 14), y: (g.r + k) * T + rnd(2, 14), t: 0, chunk: true, vx: rnd(-60, 60), vy: rnd(-160, -40) }); }
   }
 
   /* ---------- monsters ---------- */
@@ -580,19 +668,29 @@
       e.active = true; e.minion = true; e.vx = d * 60; e.vy = -260; e.knockT = 0.4; enemies.push(e);
     }
   }
-  function startBoss() {
-    const b = boss; b.on = true; b.mt = 0;
-    gate(b.x0 + 1, STAGES[stageIdx].boss.h, true);
-    banner = { txt: 'BOSS!', sub: b.name, t: 2.0, dur: 2.0, color: '#ff5d7a' }; sfx('boss');
+  function startBoss() { // the entrance wall rises behind the hero, the camera settles on the arena and the title card plays
+    const b = boss; b.on = true; b.mt = 0; b.intro = 2.2;
+    b.gates[0].to = 1; gateTiles(b.gates[0], true);
+    ['left', 'right', 'jump', 'attack'].forEach(k => press(k, false));
+    banner = null; sfx('boss');
+  }
+  function stepGates(dt) { // walls slide at about one tile height per 0.1 s; an opening wall stops blocking once it is mostly down
+    for (const g of boss.gates) {
+      if (g.k === g.to) continue;
+      g.k = g.to > g.k ? Math.min(g.to, g.k + dt * 1.6) : Math.max(g.to, g.k - dt * 0.9);
+      if (g.to === 0 && g.k < 0.2 && grid[12 - STAGES[stageIdx].boss.h][g.col] === 9) gateTiles(g, false);
+      if (Math.random() < dt * 30) pops.push({ x: g.col * T + rnd(0, 16), y: boss.gy - 4, t: 0, dust: true });
+      shakeT = Math.max(shakeT, 0.05);
+    }
   }
   function defeatBoss() {
-    const b = boss, B = STAGES[stageIdx].boss;
+    const b = boss;
     b.dead = true; b.deadT = 0; b.vy = -260; b.vx = 0;
     score += 2000 * (stageIdx + 1); spawnCoins(b.x + b.w / 2, b.y + b.h / 2, 6);
     for (const e of enemies) if (e.minion && !e.dead) { e.dead = true; e.vy = -200; e.vx = 0; }
     shots = [];
-    gate(B.x0 + 1, B.h, false); gate(B.x1, B.h, false);
-    banner = { txt: 'BOSS CLEAR!', sub: '문이 열렸어요! GOAL로 가세요', t: 2.4, dur: 2.4, color: '#7dff9a' }; sfx('gate');
+    b.gates.forEach(g => { g.to = 0; });
+    banner = { txt: 'BOSS CLEAR!', sub: '길이 열렸어요! GOAL로 가세요', t: 2.4, dur: 2.4, color: '#7dff9a' }; sfx('gate');
   }
   function stepBoss(dt) {
     const b = boss, gy = b.gy, px = p.x + p.w / 2, bx = b.x + b.w / 2, half = b.hp <= b.maxHp / 2;
@@ -671,8 +769,8 @@
     tAnim += dt;
     for (const b of bumps) b.t += dt;
     bumps = bumps.filter(b => b.t < 0.15);
-    for (const c of pops) c.t += dt;
-    pops = pops.filter(c => c.t < 0.5);
+    for (const c of pops) { c.t += dt; if (c.chunk) { c.vy += GRAV * 0.6 * dt; c.x += c.vx * dt; c.y += c.vy * dt; } }
+    pops = pops.filter(c => c.t < (c.text ? 1.3 : c.chunk ? 0.9 : 0.5));
     if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
     const viewW = W / sc;
 
@@ -690,6 +788,21 @@
       return;
     }
 
+    if (boss) stepGates(dt);
+    if (boss && boss.intro > 0) { // title card: everything waits while the camera settles on the arena
+      boss.intro -= dt;
+      const a0 = (boss.x0 + 1) * T, a1 = (boss.x1 + 1) * T, tgt = clamp((a0 + a1 - viewW) / 2, 0, COLS * T - viewW);
+      camX += (tgt - camX) * (1 - Math.exp(-dt * 4));
+      return;
+    }
+    // moving platforms carry whoever stands on them
+    for (const m of movers) {
+      m.t += dt;
+      const k = (1 - Math.cos(m.t / m.per * Math.PI * 2)) / 2, nx = m.x0 + m.ddx * k, ny = m.y0 + m.ddy * k;
+      m.dx = nx - m.x; m.dy = ny - m.y; m.x = nx; m.y = ny;
+    }
+    if (p.plat) { const m = p.plat; if (!blocked(p.x + m.dx, p.y, p.w, p.h)) p.x += m.dx; if (!blocked(p.x, m.y - p.h, p.w, p.h)) p.y = m.y - p.h; }
+
     stepPlayer(dt);
     if (state !== 'play') return;
 
@@ -701,12 +814,14 @@
         if (b.x < e.x + e.w && b.x + b.w > e.x && b.y < e.y + e.h && b.y + b.h > e.y) { e.swingHit = p.swingId; damageMon(e, 1); }
       }
       if (boss && boss.on && !boss.dead && boss.swingHit !== p.swingId && hitRect(b, boss)) { boss.swingHit = p.swingId; hitBoss(1, p.x + p.w / 2); }
+      if (p.crackHit !== p.swingId) for (const g of crackList) if (!g.broken && hitRect(b, { x: g.x * T, y: g.r * T, w: T, h: g.n * T })) { p.crackHit = p.swingId; hitCrack(g); break; }
     }
     // 검기 waves fly until they hit something (a monster, the boss or a wall)
     if (waveOn) { waveT -= dt; if (waveT <= 0) { waveT = 0; waveOn = false; } }
     for (const w of slashes) {
       w.t += dt; w.x += w.vx * dt;
-      if (w.t > 0.55 || solid(Math.floor((w.x + w.w / 2) / T), Math.floor((w.y + w.h / 2) / T))) { w.done = true; continue; }
+      const wc = Math.floor((w.x + w.w / 2) / T), wr = Math.floor((w.y + w.h / 2) / T);
+      if (w.t > 0.55 || solid(wc, wr)) { if (grid[wr]?.[wc] === 10) { const g = crackList.find(g => !g.broken && g.x === wc && wr >= g.r && wr < g.r + g.n); if (g) hitCrack(g); } w.done = true; continue; }
       for (const e of enemies) if (!w.done && !e.dead && e.active && e.swingHit !== w.id && hitRect(w, e)) { e.swingHit = w.id; damageMon(e, 1); w.done = true; }
       if (!w.done && boss && boss.on && !boss.dead && boss.swingHit !== w.id && hitRect(w, boss)) { boss.swingHit = w.id; hitBoss(1, w.x + w.w / 2 - w.vx); w.done = true; }
     }
@@ -731,11 +846,19 @@
     camX += (target - camX) * (1 - Math.exp(-dt * 9));
     shakeT = Math.max(0, shakeT - dt);
 
-    // walking into the shop stand opens it once; step away and it opens again next time
-    if (shop) {
-      const near = p.onGround && p.x + p.w > shop.x + 8 && p.x < shop.x + 40;
-      if (near && shop.arm) { shop.arm = false; openShop(); return; }
-      if (!near) shop.arm = true;
+    // the shop opens only from its door (jump or sword there, see press()); the buttons say so while the hero stands at it
+    const door = atDoor();
+    if (shop && door !== shop.near) { shop.near = door; $('jump').textContent = door ? '입장' : '점프'; $('atk').textContent = door ? '입장' : '칼'; }
+    // chests, keys and locked doors
+    for (const c of chests) if (!c.open && hitRect(p, c)) openChest(c);
+    for (const k of keyItems) if (!k.got && hitRect(p, { x: k.x, y: k.y, w: 12, h: 14 })) { k.got = true; keyCount++; sfx('key'); pops.push({ x: k.x + 6, y: k.y - 4, t: 0, text: '열쇠!' }); }
+    doorHintT = Math.max(0, doorHintT - dt);
+    {
+      const lock = touches({ x: p.x - 2, y: p.y + 2, w: p.w + 4, h: p.h - 4 }, 11);
+      if (lock && keyCount > 0) {
+        keyCount--; for (let r = 0; r < ROWS; r++) if (grid[r][lock[0]] === 11) grid[r][lock[0]] = 0;
+        miniDirty = true; sfx('door'); pops.push({ x: lock[0] * T + 8, y: lock[1] * T - 12, t: 0, text: '철컥!' });
+      } else if (lock && doorHintT <= 0) { doorHintT = 1.5; pops.push({ x: lock[0] * T + 8, y: lock[1] * T - 12, t: 0, text: '열쇠가 필요해요' }); }
     }
     if (boss) {
       if (!boss.on && !boss.dead && p.x > (boss.x0 + 4) * T) startBoss();
@@ -807,6 +930,10 @@
     else if (n === 'charge') tone(120, 260, 0.3, 'sawtooth', 0.06);
     else if (n === 'screech') tone(1400, 700, 0.3, 'sawtooth', 0.035);
     else if (n === 'gate') [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.14, 'square', 0.05, i * 0.1));
+    else if (n === 'chest') [523, 784, 1047, 1568].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.06, i * 0.07));
+    else if (n === 'key') [1047, 1319, 1568].forEach((f, i) => tone(f, f, 0.1, 'square', 0.045, i * 0.06));
+    else if (n === 'door') { tone(200, 120, 0.12, 'square', 0.07); tone(600, 900, 0.18, 'triangle', 0.05, 0.12); }
+    else if (n === 'crumble') { tone(160, 50, 0.3, 'sawtooth', 0.08); tone(90, 40, 0.3, 'square', 0.06, 0.05); }
     else if (n === 'win') [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, f, 0.16, 'square', 0.05, i * 0.13));
   }
 
@@ -868,7 +995,7 @@
     li.append(ic, txt, btn); shopList.append(li);
     return { it, btn };
   });
-  const priceOf = it => it.price + 10 * stageIdx;
+  const priceOf = it => it.price + PRICE_STEP * stageIdx;
   function why(it) { // the reason an item cannot be bought right now, or ''
     if (it.id === 'heart' && hp >= MAX_HP) return '체력 가득';
     if (it.id === 'shield' && shield >= 2) return '최대 2개';
@@ -920,7 +1047,7 @@
   const HEART = ['.##.##.', '#######', '#######', '.#####.', '..###..', '...#...'];
   function pixelHeart(x, y, px, c) { ctx.fillStyle = c; HEART.forEach((row, r) => [...row].forEach((ch, k) => { if (ch === '#') ctx.fillRect(x + k * px, y + r * px, px, px); })); }
 
-  function drawTile(t, x, y, top) {
+  function drawTile(t, x, y, top, tx, ty) {
     if (t === 1) {
       R(x, y, T, T, theme.ground);
       if (top) { R(x, y, T, 4, theme.top); R(x, y + 4, T, 1, theme.topLine); }
@@ -938,16 +1065,34 @@
       R(x, y, T, T, '#6a5230'); R(x + 1, y + 1, T - 2, T - 2, '#9a7c4c'); R(x + 3, y + 3, 2, 2, '#6a5230'); R(x + 11, y + 3, 2, 2, '#6a5230'); R(x + 3, y + 11, 2, 2, '#6a5230'); R(x + 11, y + 11, 2, 2, '#6a5230');
     } else if (t === 6) {
       R(x, y, T, T, '#7a6a52'); R(x + 1, y + 1, T - 2, T - 2, '#c2ad88'); R(x + T - 3, y + 2, 2, T - 3, '#8f7d5f'); R(x + 2, y + T - 3, T - 3, 2, '#8f7d5f');
-    } else if (t === 7) { // spikes
-      ctx.fillStyle = '#cfd6e6';
-      for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(x + k * 4, y + T); ctx.lineTo(x + k * 4 + 2, y + 3); ctx.lineTo(x + k * 4 + 4, y + T); ctx.fill(); }
-      R(x, y + T - 2, T, 2, '#6b7390'); ctx.fillStyle = '#ffffff'; for (let k = 0; k < 4; k++) ctx.fillRect(x + k * 4 + 1.5, y + 6, 1, 4);
+    } else if (t === 7) { // spikes: bright steel with a dark outline over a red warning glow, so they read on any ground
+      ctx.fillStyle = `rgba(255,50,60,${0.3 + 0.12 * Math.sin(tAnim * 5)})`; ctx.fillRect(x - 1, y + 7, T + 2, T - 7);
+      for (let k = 0; k < 3; k++) {
+        const bx = x + 0.5 + k * 5;
+        ctx.fillStyle = '#120c16'; ctx.beginPath(); ctx.moveTo(bx - 0.5, y + T); ctx.lineTo(bx + 2.5, y + 0.5); ctx.lineTo(bx + 5.5, y + T); ctx.fill();
+        ctx.fillStyle = '#f4f7ff'; ctx.beginPath(); ctx.moveTo(bx + 0.8, y + T - 1); ctx.lineTo(bx + 2.5, y + 3); ctx.lineTo(bx + 2.5, y + T - 1); ctx.fill();
+        ctx.fillStyle = '#9aa6c8'; ctx.beginPath(); ctx.moveTo(bx + 2.5, y + 3); ctx.lineTo(bx + 4.2, y + T - 1); ctx.lineTo(bx + 2.5, y + T - 1); ctx.fill();
+      }
+      R(x, y + T - 3, T, 3, '#120c16'); R(x, y + T - 2, T, 1, '#ff4d5a');
+    } else if (t === 10) { // cracked stone: the sword breaks it
+      R(x, y, T, T, '#5e5648'); R(x + 1, y + 1, T - 2, T - 2, '#a89c82'); R(x + 1, y + 1, T - 2, 2, '#c8bea4');
+      ctx.strokeStyle = '#3a3228'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x + 3, y + 2); ctx.lineTo(x + 7, y + 7); ctx.lineTo(x + 5, y + 10); ctx.lineTo(x + 9, y + 14); ctx.moveTo(x + 7, y + 7); ctx.lineTo(x + 12, y + 5); ctx.stroke();
+    } else if (t === 11) { // locked wooden door with iron bands; the keyhole is on the lower half
+      const lower = grid[ty + 1]?.[tx] !== 11;
+      R(x, y, T, T, '#3a2008'); R(x + 1, y, T - 2, T, '#8a5a2a'); R(x + 5, y, 1, T, '#5a3010'); R(x + 10, y, 1, T, '#5a3010');
+      R(x, y + (lower ? 3 : 10), T, 2, '#3a3a48');
+      if (lower) { R(x + 5, y + 6, 6, 7, '#ffd23f'); R(x + 7, y + 7, 2, 3, '#1a1008'); R(x + 7.5, y + 9, 1, 3, '#1a1008'); }
+    } else if (t === 12) { // vine (rope ladder in the volcano)
+      const tip = grid[ty - 1]?.[tx] !== 12;
+      if (theme.deco === 'volcano') { R(x + 3, y, 2, T, '#a87a3a'); R(x + 11, y, 2, T, '#a87a3a'); R(x + 3, y + 4, 10, 2, '#d8a86a'); R(x + 3, y + 12, 10, 2, '#d8a86a'); }
+      else {
+        const g = theme.deco === 'cave' ? ['#2f8a7a', '#5fd8c0'] : ['#2f7a24', '#5fc84f'];
+        R(x + 7, y, 2, T, g[0]); R(x + 3, y + 3, 4, 3, g[1]); R(x + 9, y + 10, 4, 3, g[1]);
+        if (tip) { ctx.fillStyle = g[1]; ctx.beginPath(); ctx.arc(x + 8, y + 2, 4, 0, 7); ctx.fill(); }
+      }
     } else if (t === 5) { // floating ledge of the upper route
       R(x, y, T, T, theme.dark); R(x + 1, y + 1, T - 2, T - 3, theme.ground); R(x, y, T, 4, theme.top); R(x, y + 4, T, 1, theme.topLine);
       R(x + 5, y + 8, 2, 2, theme.speck); R(x + 10, y + 10, 2, 2, theme.speck);
-    } else if (t === 9) { // boss gate (iron portcullis)
-      R(x, y, T, T, '#262433'); for (let k = 0; k < 3; k++) R(x + 2 + k * 5, y, 2, T, '#9a98b0');
-      R(x, y + 7, T, 2, '#6c6a82'); R(x + 2, y, 1, T, '#cfcde0');
     }
   }
 
@@ -956,6 +1101,7 @@
   function drawIcon(c, id) {
     if (id === 'heart') { const o = HEART; c.fillStyle = '#ff5d7a'; o.forEach((row, r) => [...row].forEach((ch, k) => { if (ch === '#') c.fillRect(1 + k * 2.5, 3 + r * 2.5, 2.5, 2.5); })); }
     else if (id === 'shield') SHIELD.forEach((row, r) => [...row].forEach((ch, k) => { if (ch !== '.') { c.fillStyle = ch === '#' ? '#5cc8ff' : '#e8f8ff'; c.fillRect(2 + k * 2, 2 + r * 2, 2, 2); } }));
+    else if (id === 'key') { c.strokeStyle = '#ffd23f'; c.lineWidth = 2.5; c.beginPath(); c.arc(6, 10, 3.5, 0, 7); c.stroke(); c.fillStyle = '#ffd23f'; c.fillRect(9, 9, 9, 2.5); c.fillRect(15, 11, 2, 4); c.fillRect(12, 11, 2, 3); }
     else { // a crescent wave in front of a small blade
       c.strokeStyle = '#7df9ff'; c.lineWidth = 3; c.beginPath(); c.arc(6, 10, 9, -1.1, 1.1); c.stroke();
       c.strokeStyle = '#ffffff'; c.lineWidth = 1.2; c.beginPath(); c.arc(6, 10, 9, -0.9, 0.9); c.stroke();
@@ -963,19 +1109,173 @@
     }
   }
 
-  function drawShop(cx) { // a little market stall with a striped awning and the merchant behind the counter
-    const x = shop.x - cx, gy = shop.y, bob = Math.sin(tAnim * 3) * 1.5;
-    R(x + 3, gy - 38, 3, 38, '#6a4228'); R(x + 42, gy - 38, 3, 38, '#6a4228');
-    R(x + 18, gy - 27, 12, 8, '#7a3fc0'); R(x + 16, gy - 28, 16, 3, '#5a2a96');   // merchant: hat, face, robe
-    R(x + 19, gy - 22, 10, 7, '#ffcf9e'); R(x + 21, gy - 20, 2, 2, '#222'); R(x + 25, gy - 20, 2, 2, '#222'); R(x + 22, gy - 17, 4, 1, '#a0522d');
-    R(x + 17, gy - 15, 14, 4, '#3f9a6e');
-    R(x, gy - 14, 48, 14, '#a9744e'); R(x, gy - 14, 48, 3, '#c99466'); R(x, gy - 2, 48, 2, '#6a4228');
-    ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.ellipse(x + 9, gy - 17, 3, 3, 0, 0, 7); ctx.fill(); R(x + 37, gy - 19, 6, 5, '#ff5d7a');   // goods on the counter
-    for (let k = 0; k < 6; k++) R(x - 3 + k * 9, gy - 46, 9, 9, k % 2 ? '#fff' : '#e8413c');
-    ctx.fillStyle = '#e8413c'; for (let k = 0; k < 6; k += 2) { ctx.beginPath(); ctx.arc(x + 1.5 + k * 9, gy - 37, 4.5, 0, Math.PI); ctx.fill(); }
-    ctx.fillStyle = '#fff'; for (let k = 1; k < 6; k += 2) { ctx.beginPath(); ctx.arc(x + 1.5 + k * 9, gy - 37, 4.5, 0, Math.PI); ctx.fill(); }
-    R(x + 8, gy - 60 + bob, 32, 13, '#2a1a10'); R(x + 9, gy - 59 + bob, 30, 11, '#ffd23f');
-    ctx.fillStyle = '#231a00'; ctx.font = '9px Jua, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('상점', x + 24, gy - 53 + bob);
+  // scenery props stand on plain open ground every few tiles; which ones depends on the stage
+  function makeProps(S) {
+    const out = [], kinds = [['tree', 'bush', 'flower', 'tree', 'flower'], ['crystal', 'mush', 'stalag', 'crystal', 'mush'], ['rock', 'vent', 'deadtree', 'vent', 'rock']][stageIdx];
+    const busy = x => (S.shop && x >= S.shop.x - 2 && x <= S.shop.x + 7) || (S.boss && x >= S.boss.x0 - 1) || S.signs.some(c => Math.abs(c - x) < 2);
+    for (let x = 5; x < S.cols - 4; x += 4 + ((x * 7) % 5)) {
+      const r = 13 - S.H[x];
+      if (S.pits.has(x) || S.pits.has(x - 1) || S.pits.has(x + 1) || busy(x) || S.H[x - 1] !== S.H[x] || S.H[x + 1] !== S.H[x]) continue;
+      if (grid[r][x] !== 1 || [1, 2, 3].some(k => grid[r - k]?.[x - 1] || grid[r - k]?.[x] || grid[r - k]?.[x + 1])) continue;
+      out.push({ x: x * T + 8, y: r * T, kind: kinds[(x * 13) % kinds.length], s: 0.8 + ((x * 31) % 5) / 10 });
+    }
+    return out;
+  }
+  function drawProp(o) {
+    const x = o.x, y = o.y, k = o.s;
+    if (o.kind === 'tree') { R(x - 2, y - 26 * k, 4, 26 * k, '#7a4a1a'); ctx.fillStyle = '#3f9a3a'; ctx.beginPath(); ctx.arc(x, y - 30 * k, 12 * k, 0, 7); ctx.arc(x - 8 * k, y - 24 * k, 8 * k, 0, 7); ctx.arc(x + 8 * k, y - 24 * k, 8 * k, 0, 7); ctx.fill(); ctx.fillStyle = '#5fc84f'; ctx.beginPath(); ctx.arc(x - 3, y - 33 * k, 5 * k, 0, 7); ctx.fill(); }
+    else if (o.kind === 'bush') { ctx.fillStyle = '#3f9a3a'; ctx.beginPath(); ctx.arc(x - 5, y - 4, 6, 0, 7); ctx.arc(x + 4, y - 5, 7, 0, 7); ctx.fill(); R(x - 1, y - 9, 2, 2, '#ff5d7a'); }
+    else if (o.kind === 'flower') { for (let i = -1; i <= 1; i++) { R(x + i * 5, y - 7, 1, 7, '#2f7a24'); R(x + i * 5 - 1, y - 9, 3, 3, ['#ffd23f', '#ff8ad0', '#fff'][i + 1]); } }
+    else if (o.kind === 'crystal') { const g = 0.6 + 0.3 * Math.sin(tAnim * 2 + x); ctx.globalAlpha = g; ctx.fillStyle = '#7df9ff'; ctx.beginPath(); ctx.moveTo(x - 6, y); ctx.lineTo(x - 3, y - 16 * k); ctx.lineTo(x, y); ctx.moveTo(x - 1, y); ctx.lineTo(x + 3, y - 11 * k); ctx.lineTo(x + 6, y); ctx.fill(); ctx.globalAlpha = 1; R(x - 3, y - 12 * k, 1, 6, '#e8ffff'); }
+    else if (o.kind === 'mush') { R(x - 1, y - 6, 3, 6, '#d8d0c0'); ctx.fillStyle = '#b06bff'; ctx.beginPath(); ctx.ellipse(x, y - 6, 6, 4, 0, Math.PI, 0); ctx.fill(); R(x - 3, y - 9, 2, 2, '#f0d8ff'); }
+    else if (o.kind === 'stalag') { ctx.fillStyle = '#4a4960'; ctx.beginPath(); ctx.moveTo(x - 6, y); ctx.lineTo(x - 1, y - 20 * k); ctx.lineTo(x + 6, y); ctx.fill(); }
+    else if (o.kind === 'rock') { ctx.fillStyle = '#1a0d0a'; ctx.beginPath(); ctx.moveTo(x - 8, y); ctx.lineTo(x - 4, y - 10 * k); ctx.lineTo(x + 3, y - 14 * k); ctx.lineTo(x + 8, y); ctx.fill(); R(x - 1, y - 8, 2, 6, '#ff6a2a'); }
+    else if (o.kind === 'vent') { const f = Math.sin(tAnim * 9 + x) * 2; R(x - 5, y - 3, 10, 3, '#3a1f19'); ctx.fillStyle = 'rgba(255,140,40,0.7)'; ctx.beginPath(); ctx.moveTo(x - 3, y - 3); ctx.lineTo(x, y - 12 - f); ctx.lineTo(x + 3, y - 3); ctx.fill(); }
+    else { R(x - 1, y - 20 * k, 3, 20 * k, '#2a1612'); R(x - 7, y - 16 * k, 7, 2, '#2a1612'); R(x + 1, y - 12 * k, 6, 2, '#2a1612'); }
+  }
+  function drawChest(c) {
+    const x = Math.round(c.x), y = Math.round(c.y);
+    if (!c.open) {
+      R(x, y + 4, 14, 10, '#8a4a1a'); R(x, y + 2, 14, 4, '#a9622a'); R(x, y + 6, 14, 1, '#ffd23f'); R(x + 6, y + 6, 3, 4, '#ffd23f'); R(x, y + 13, 14, 1, '#4a2208');
+      R(x, y + 2, 1, 12, '#ffd23f'); R(x + 13, y + 2, 1, 12, '#ffd23f');
+      const g = (tAnim * 1.5 + c.x) % 3; if (g < 0.4) { ctx.fillStyle = '#fff'; ctx.fillRect(x + 2 + g * 20, y + 3, 2, 2); }   // a glint so chests catch the eye
+    } else {
+      R(x, y + 6, 14, 8, '#8a4a1a'); R(x + 1, y + 6, 12, 3, '#2a1406'); R(x, y - 1, 14, 4, '#a9622a'); R(x, y + 6, 14, 1, '#ffd23f');
+    }
+  }
+  function drawKey(k) {
+    const x = k.x, y = k.y + Math.sin(tAnim * 4 + k.x) * 2;
+    ctx.fillStyle = 'rgba(255,230,120,0.25)'; ctx.beginPath(); ctx.arc(x + 6, y + 7, 10, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x + 4, y + 5, 3.2, 0, 7); ctx.stroke();
+    R(x + 6, y + 4, 8, 2.5, '#ffd23f'); R(x + 11, y + 6, 2, 3, '#ffd23f'); R(x + 8, y + 6, 2, 2, '#ffd23f');
+  }
+  function drawMover(m) {
+    const x = Math.round(m.x), y = Math.round(m.y);
+    if (m.ddy) { ctx.strokeStyle = 'rgba(40,30,20,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + 3, y); ctx.lineTo(x + 3, m.y0 + m.ddy - 40); ctx.moveTo(x + m.w - 3, y); ctx.lineTo(x + m.w - 3, m.y0 + m.ddy - 40); ctx.stroke(); }
+    R(x, y, m.w, 6, '#7a4a1a'); R(x, y, m.w, 2, '#d8a86a'); R(x, y + 5, m.w, 1, '#3a2008');
+    for (let k = 4; k < m.w; k += 12) R(x + k, y + 2, 2, 2, '#3a2008');
+  }
+
+  function drawShop(cx) { // a little house with a tiled roof, two windows (the merchant waves from one) and a door in the middle
+    const x = shop.x - cx, gy = shop.y, dx = x + 2.5 * T;
+    R(x + 2, gy - 40, 76, 40, '#f3e2c3'); R(x + 2, gy - 40, 76, 3, '#7a4a1a'); R(x + 2, gy - 3, 76, 3, '#7a4a1a');
+    for (const bx of [2, 26, 52, 75]) R(x + bx, gy - 40, 3, 40, '#7a4a1a');
+    ctx.fillStyle = '#c8413c'; ctx.beginPath(); ctx.moveTo(x - 6, gy - 38); ctx.lineTo(x + 40, gy - 66); ctx.lineTo(x + 86, gy - 38); ctx.fill();
+    ctx.strokeStyle = '#8a2420'; ctx.lineWidth = 1; for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo(x - 6 + k * 8, gy - 38 - k * 2); ctx.lineTo(x + 86 - k * 8, gy - 38 - k * 2); ctx.stroke(); }
+    R(x + 58, gy - 64, 7, 14, '#8a5a3a'); ctx.fillStyle = 'rgba(220,220,220,0.5)'; ctx.beginPath(); ctx.arc(x + 62 + Math.sin(tAnim * 2) * 2, gy - 70 - (tAnim * 8) % 10, 3, 0, 7); ctx.fill();
+    // left window: the merchant
+    R(x + 8, gy - 32, 16, 14, '#3a2a40'); R(x + 11, gy - 30, 10, 3, '#7a3fc0'); R(x + 12, gy - 27, 8, 6, '#ffcf9e'); R(x + 13, gy - 25, 2, 2, '#222'); R(x + 17, gy - 25, 2, 2, '#222');
+    R(x + 8, gy - 33, 16, 2, '#7a4a1a'); R(x + 8, gy - 19, 16, 2, '#7a4a1a');
+    // right window: goods
+    R(x + 56, gy - 32, 16, 14, '#3a2a40'); R(x + 58, gy - 26, 4, 7, '#ff5d7a'); R(x + 64, gy - 27, 4, 8, '#5cc8ff'); R(x + 69, gy - 24, 2, 5, '#ffd23f');
+    R(x + 56, gy - 33, 16, 2, '#7a4a1a'); R(x + 56, gy - 19, 16, 2, '#7a4a1a');
+    // door + sign
+    const lit = shop.near ? 0.35 + 0.25 * Math.sin(tAnim * 6) : 0;
+    ctx.fillStyle = '#5a3010'; ctx.beginPath(); ctx.moveTo(dx - 8, gy); ctx.lineTo(dx - 8, gy - 20); ctx.arc(dx, gy - 20, 8, Math.PI, 0); ctx.lineTo(dx + 8, gy); ctx.fill();
+    R(dx - 6, gy - 20, 12, 20, '#8a5a2a'); R(dx - 1, gy - 20, 1, 20, '#5a3010'); R(dx + 3, gy - 11, 2, 2, '#ffd23f');
+    if (lit) { ctx.fillStyle = `rgba(255,230,140,${lit})`; ctx.fillRect(dx - 6, gy - 20, 12, 20); }
+    R(dx - 13, gy - 39, 26, 11, '#2a1a10'); R(dx - 12, gy - 38, 24, 9, '#ffd23f');
+    ctx.fillStyle = '#231a00'; ctx.font = '8px Jua, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('상점', dx, gy - 33);
+    if (shop.near && state === 'play') { // "press to enter" bubble over the door
+      const by = gy - 76 + Math.sin(tAnim * 5) * 2;
+      ctx.font = '10px Jua, sans-serif'; const tw = ctx.measureText('↑ 들어가기').width + 10;
+      R(dx - tw / 2, by, tw, 15, 'rgba(20,17,31,0.85)'); ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(dx - 4, by + 15); ctx.lineTo(dx + 4, by + 15); ctx.lineTo(dx, by + 20); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.fillText('↑ 들어가기', dx, by + 8);
+    }
+  }
+
+  // boss arenas: a themed backdrop plus a wall at each end that slides up or crumbles when the fight starts and ends
+  function drawArena() {
+    const b = boss, a0 = (b.x0 + 1) * T, a1 = (b.x1 + 1) * T, gy = b.gy, top = gy - GATE_H * T;
+    ctx.save();
+    if (stageIdx === 0) { // ruined forest temple
+      ctx.fillStyle = 'rgba(110,120,100,0.45)'; ctx.fillRect(a0, top + 8, a1 - a0, gy - top - 8);
+      ctx.strokeStyle = 'rgba(60,70,55,0.5)'; ctx.lineWidth = 1;
+      for (let r = 0; r < 5; r++) for (let c = 0; c < (a1 - a0) / 24; c++) ctx.strokeRect(a0 + c * 24 + (r % 2) * 12, top + 8 + r * 16, 24, 16);
+      for (const px of [a0 + 3 * T, a1 - 4 * T]) { R(px, top + 22, 14, gy - top - 22, '#b9b6a2'); R(px - 3, top + 18, 20, 6, '#d6d2bd'); R(px + 3, top + 22, 2, gy - top - 22, '#9b9784'); R(px + 9, top + 22, 2, gy - top - 22, '#9b9784'); }
+      R(a0 + 8 * T - 4, gy - 30, 16, 30, '#b9b6a2'); R(a0 + 8 * T - 6, gy - 34, 20, 5, '#d6d2bd');   // broken column
+      ctx.fillStyle = '#ffd23f'; ctx.globalAlpha = 0.5; ctx.beginPath(); const ex = (a0 + a1) / 2, ey = top + 20; ctx.moveTo(ex - 14, ey + 8); ctx.lineTo(ex - 14, ey - 6); ctx.lineTo(ex - 6, ey + 1); ctx.lineTo(ex, ey - 10); ctx.lineTo(ex + 6, ey + 1); ctx.lineTo(ex + 14, ey - 6); ctx.lineTo(ex + 14, ey + 8); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#3f9a3a'; ctx.lineWidth = 2; for (let k = 0; k < 6; k++) { const vx = a0 + 20 + k * 40; ctx.beginPath(); ctx.moveTo(vx, top + 8); ctx.quadraticCurveTo(vx + 6, top + 30, vx - 2, top + 44 + (k % 3) * 12); ctx.stroke(); }
+    } else if (stageIdx === 1) { // deep crystal chamber with a low rock ceiling
+      ctx.fillStyle = 'rgba(8,10,24,0.55)'; ctx.fillRect(a0 - 16, top - 30, a1 - a0 + 32, gy - top + 30);
+      ctx.fillStyle = '#2a2940'; ctx.fillRect(a0 - 16, top - 34, a1 - a0 + 32, 14);
+      for (let k = 0; k < (a1 - a0) / 18; k++) { const sx = a0 + k * 18 + 6, sh = 10 + (k * 7) % 16; ctx.beginPath(); ctx.moveTo(sx - 6, top - 20); ctx.lineTo(sx, top - 20 + sh); ctx.lineTo(sx + 6, top - 20); ctx.fill(); }
+      for (let k = 0; k < 7; k++) { const cx2 = a0 + 18 + k * 36, cy = top + 24 + (k * 23) % 50, g = 0.4 + 0.3 * Math.sin(tAnim * 2 + k); ctx.globalAlpha = g; ctx.fillStyle = '#7df9ff'; ctx.beginPath(); ctx.moveTo(cx2, cy - 9); ctx.lineTo(cx2 + 4, cy); ctx.lineTo(cx2, cy + 9); ctx.lineTo(cx2 - 4, cy); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    } else { // castle courtyard: back wall, battlements, banners and torches
+      ctx.fillStyle = '#3a1a16'; ctx.fillRect(a0, top + 6, a1 - a0, gy - top - 6);
+      ctx.strokeStyle = '#26100d'; ctx.lineWidth = 1; for (let r = 0; r < 6; r++) for (let c = 0; c < (a1 - a0) / 16; c++) ctx.strokeRect(a0 + c * 16 + (r % 2) * 8, top + 6 + r * 15, 16, 15);
+      for (let c = 0; c < (a1 - a0) / 16; c += 2) R(a0 + c * 16, top - 4, 10, 10, '#3a1a16');
+      for (const bx of [a0 + 4 * T, a1 - 5 * T]) { R(bx, top + 14, 18, 30, '#a8201a'); ctx.fillStyle = '#a8201a'; ctx.beginPath(); ctx.moveTo(bx, top + 44); ctx.lineTo(bx + 9, top + 38); ctx.lineTo(bx + 18, top + 44); ctx.fill(); ctx.fillStyle = '#ffb347'; ctx.beginPath(); ctx.moveTo(bx + 9, top + 20); ctx.lineTo(bx + 13, top + 32); ctx.lineTo(bx + 5, top + 32); ctx.fill(); }
+      for (const tx of [a0 + 7 * T, a1 - 8 * T]) { R(tx, top + 50, 3, 10, '#5a3a2a'); const f = Math.sin(tAnim * 12 + tx) * 1.5; ctx.fillStyle = '#ffb347'; ctx.beginPath(); ctx.ellipse(tx + 1.5, top + 46, 3 + f * 0.3, 6 + f, 0, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(255,170,60,0.18)'; ctx.beginPath(); ctx.arc(tx + 1.5, top + 46, 16, 0, 7); ctx.fill(); }
+    }
+    ctx.restore();
+  }
+  function drawGate(g) {
+    const b = boss, gy = b.gy, top = gy - GATE_H * T, x = g.col * T, hgt = GATE_H * T, k = g.k;
+    ctx.save();
+    if (stageIdx === 0) { // temple doorway: two pillars, a lintel, and a stone slab that rises out of the ground
+      ctx.save(); ctx.beginPath(); ctx.rect(x - 4, top, T + 8, hgt); ctx.clip();
+      const sy = top + (1 - k) * hgt;
+      R(x - 3, sy, T + 6, hgt, '#8d8873'); R(x - 3, sy, T + 6, 3, '#b4ae94'); for (let r = 1; r < 6; r++) R(x - 3, sy + r * 16, T + 6, 1, '#6c6856');
+      ctx.fillStyle = '#5ad08a'; ctx.globalAlpha = 0.7; ctx.beginPath(); ctx.arc(x + 8, sy + 40, 4, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.restore();
+      for (const px of [x - 12, x + T + 4]) { R(px, top - 6, 8, hgt + 6, '#c9c5ae'); R(px + 2, top - 6, 2, hgt + 6, '#a29e88'); R(px - 2, gy - 6, 12, 6, '#a29e88'); }
+      R(x - 16, top - 16, T + 32, 10, '#d6d2bd'); R(x - 16, top - 8, T + 32, 2, '#a29e88');
+      ctx.fillStyle = '#d6d2bd'; ctx.beginPath(); ctx.moveTo(x - 16, top - 16); ctx.lineTo(x + 8, top - 28); ctx.lineTo(x + T + 16, top - 16); ctx.fill();
+    } else if (stageIdx === 1) { // a rock arch filled by a heap of boulders that piles up or tumbles away
+      ctx.fillStyle = '#2a2940'; ctx.beginPath(); ctx.moveTo(x - 18, gy); ctx.lineTo(x - 12, top - 10); ctx.lineTo(x + 8, top - 30); ctx.lineTo(x + T + 12, top - 10); ctx.lineTo(x + T + 18, gy); ctx.lineTo(x + T + 6, gy); ctx.lineTo(x + T + 4, top + 6); ctx.lineTo(x - 4, top + 6); ctx.lineTo(x - 6, gy); ctx.fill();
+      const n = Math.round(k * 7);
+      for (let i = 0; i < n; i++) { const by = gy - 8 - i * 13, bx = x + 8 + ((i * 5) % 3 - 1) * 2; ctx.fillStyle = '#5b5a6e'; ctx.beginPath(); ctx.arc(bx, by, 9, 0, 7); ctx.fill(); ctx.fillStyle = '#7d7c92'; ctx.beginPath(); ctx.arc(bx - 3, by - 3, 3, 0, 7); ctx.fill(); }
+    } else { // castle gate tower with a portcullis that winds up into it
+      R(x - 14, top - 18, T + 28, hgt + 18, '#4a221c');
+      ctx.strokeStyle = '#2a120e'; ctx.lineWidth = 1; for (let r = 0; r < 7; r++) for (let c = 0; c < 3; c++) ctx.strokeRect(x - 14 + c * 15 + (r % 2) * 7, top - 18 + r * 16, 15, 16);
+      for (let c = 0; c < 3; c++) R(x - 14 + c * 16, top - 26, 9, 8, '#4a221c');
+      R(x - 2, top + 8, T + 4, hgt - 8, '#140806');
+      ctx.save(); ctx.beginPath(); ctx.rect(x - 2, top + 8, T + 4, hgt - 8); ctx.clip();
+      const py = top + 8 - (1 - k) * (hgt - 8);
+      for (let c = 0; c < 4; c++) R(x - 1 + c * 5, py, 2, hgt - 8, '#8a8a9a');
+      for (let r = 0; r < 6; r++) R(x - 2, py + 6 + r * 14, T + 4, 2, '#6a6a7a');
+      for (let c = 0; c < 4; c++) { ctx.fillStyle = '#8a8a9a'; ctx.beginPath(); ctx.moveTo(x - 1 + c * 5, py + hgt - 8); ctx.lineTo(x + c * 5, py + hgt - 3); ctx.lineTo(x + 1 + c * 5, py + hgt - 8); ctx.fill(); }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  function drawTitleCard() { // boss intro: letterbox bars, the place and the name
+    const b = boss, t = 2.2 - b.intro, a = Math.max(0, Math.min(1, t / 0.3, b.intro / 0.3)), bar = H * 0.13 * a;
+    R(0, 0, W, bar, '#000'); R(0, H - bar, W, bar, '#000');
+    ctx.save(); ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffd23f'; ctx.font = '16px Jua, sans-serif'; ctx.fillText(b.place, W / 2, H * 0.36);
+    ctx.shadowColor = '#ff3050'; ctx.shadowBlur = 16; ctx.fillStyle = '#fff'; ctx.font = '34px Jua, sans-serif'; ctx.fillText(b.name, W / 2 + (1 - Math.min(1, t / 0.4)) * 40, H * 0.36 + 34);
+    ctx.shadowBlur = 0; ctx.fillStyle = '#ff5d7a'; ctx.font = '10px "Press Start 2P", monospace'; ctx.fillText('BOSS', W / 2, H * 0.36 + 64);
+    ctx.restore();
+  }
+  // minimap: the whole stage squeezed into a slim strip at the top of the play area
+  const MINI_H = 22;
+  function drawMinimap() {
+    if (miniDirty || !miniCv) {
+      miniCv = miniCv || document.createElement('canvas'); miniCv.width = COLS; miniCv.height = ROWS;
+      const m = miniCv.getContext('2d'); m.clearRect(0, 0, COLS, ROWS);
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        const t = grid[r][c]; if (!t) continue;
+        m.fillStyle = t === 7 ? '#ff5d5d' : t === 12 ? '#5fc84f' : t === 10 ? '#d8c8a0' : t === 11 ? '#c8822a' : t === 5 || t === 2 ? '#c9b08a' : '#8f86a8';
+        m.fillRect(c, r, 1, 1);
+      }
+      miniDirty = false;
+    }
+    const x = 8, y = 6, w = W - 16, h = MINI_H, fx = px => x + 2 + px / (COLS * T) * (w - 4), fy = py => y + 2 + py / (ROWS * T) * (h - 4);
+    R(x, y, w, h, 'rgba(20,17,31,0.6)');
+    ctx.imageSmoothingEnabled = false; ctx.drawImage(miniCv, x + 2, y + 2, w - 4, h - 4); ctx.imageSmoothingEnabled = true;
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1; ctx.strokeRect(fx(camX) + 0.5, y + 1.5, Math.max(4, fx(camX + W / sc) - fx(camX)), h - 3);
+    for (const c of chests) if (!c.open) R(fx(c.x) - 1, fy(c.y) - 1, 3, 3, '#ffd23f');
+    for (const k of keyItems) if (!k.got) R(fx(k.x) - 1, fy(k.y) - 1, 3, 3, '#7df9ff');
+    for (const e of enemies) if (!e.dead && Math.abs(e.x - p.x) < 30 * T) R(fx(e.x) - 1, fy(e.y) - 1, 2, 2, '#ff4d6a');
+    if (shop) { const sx = fx(shop.x + 2.5 * T), sy = fy(shop.y); ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(sx - 4, sy - 4); ctx.lineTo(sx, sy - 8); ctx.lineTo(sx + 4, sy - 4); ctx.fill(); R(sx - 3, sy - 4, 6, 4, '#ffd23f'); }
+    if (boss && !boss.dead) { const bx = fx(boss.x + boss.w / 2), by = fy(boss.gy) - 4; ctx.fillStyle = '#ff3050'; ctx.beginPath(); ctx.arc(bx, by, 3.5, 0, 7); ctx.fill(); R(bx - 3, by - 7, 6, 3, '#ffd23f'); }
+    { const gx = fx(GOALX + 8), gyy = fy((13 - STAGES[stageIdx].H[STAGES[stageIdx].goal]) * T); R(gx, gyy - 9, 1, 9, '#fff'); R(gx + 1, gyy - 9, 5, 4, '#7dff9a'); }
+    const hx = fx(p.x + p.w / 2), hy = fy(p.y + p.h / 2);
+    R(hx - 2.5, hy - 2.5, 5, 5, '#231a00'); R(hx - 1.5, hy - 1.5, 3, 3, '#fff');
+    return y + h + 4;
   }
 
   function drawSplitSign(col, cx) { // fork marker: up for the ledges, right for the ground
@@ -1069,9 +1369,9 @@
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(-6, 0, 11, -0.9, 0.9); ctx.stroke();
     ctx.restore();
   }
-  function drawStatus() { // screen space: boss HP bar on top, then shield / 검기 chips on the left
-    let y = 8;
-    if (boss && boss.on && !(boss.dead && boss.deadT > 1.2)) {
+  function drawStatus() { // screen space: minimap strip, boss HP bar, then shield / 검기 / key chips on the left
+    let y = drawMinimap();
+    if (boss && boss.on && boss.intro <= 0 && !(boss.dead && boss.deadT > 1.2)) {
       const bw = Math.min(W - 40, 280), x = (W - bw) / 2, k = Math.max(0, boss.hp) / boss.maxHp;
       ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.font = '15px Jua, sans-serif';
       ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(boss.name, W / 2 + 1, y + 1); ctx.fillStyle = '#fff'; ctx.fillText(boss.name, W / 2, y);
@@ -1086,6 +1386,7 @@
     };
     if (shield > 0) chip('shield', '보호막 x' + shield);
     if (waveT > 0) chip('wave', waveOn ? '검기 ' + Math.ceil(waveT) + '초' : '검기 준비');
+    if (keyCount > 0) chip('key', '열쇠 x' + keyCount);
   }
 
   function drawPlayer() {
@@ -1158,7 +1459,7 @@
   }
 
   function drawSign(cx) { // GOAL signboard
-    const x = GOALX - cx, base = 13 * T;
+    const x = GOALX - cx, base = (13 - STAGES[stageIdx].H[STAGES[stageIdx].goal]) * T;
     R(x + 7, base - 34, 3, 34, '#7a4a1a'); R(x + 1, base - 40, 30, 16, '#a9744e'); R(x + 1, base - 40, 30, 2, '#c99466'); R(x + 1, base - 26, 30, 2, '#6a4228');
     ctx.fillStyle = '#fff'; ctx.font = '8px "Press Start 2P", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('GOAL', x + 16, base - 32);
     ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(x + 34, base - 32); ctx.lineTo(x + 28, base - 37); ctx.lineTo(x + 28, base - 27); ctx.fill();
@@ -1210,16 +1511,26 @@
     ctx.setTransform(s, 0, 0, s, 0, oy * s);
     const cx = Math.floor(camX) + (shakeT > 0 ? Math.round(Math.sin(tAnim * 70) * 2) : 0);
     drawBackdrop(cx, viewW, oy);
+    const S = STAGES[stageIdx], tx0 = Math.max(0, Math.floor(cx / T)), tx1 = Math.floor((cx + viewW) / T) + 1;
+    // underground air (tunnels, shafts, secret rooms) gets a dark rock wall behind it
+    const bg = [['#4a2c14', '#3a200c'], ['#1c1b2b', '#131220'], ['#2c120d', '#1e0a07']][stageIdx];
+    for (let tx = tx0; tx <= tx1 && tx < COLS; tx++) {
+      if (S.pits.has(tx)) continue;
+      for (let ty = 13 - S.H[tx]; ty < ROWS; ty++) { const t = grid[ty][tx]; if (t && t !== 12 && t !== 11 && t !== 10) continue; R(tx * T - cx, ty * T, T, T, bg[0]); R(tx * T - cx + ((ty % 2) * 8), ty * T + 7, 8, 1, bg[1]); R(tx * T - cx, ty * T + 15, T, 1, bg[1]); }
+    }
+    ctx.save(); ctx.translate(-cx, 0);
+    for (const o of props) if (o.x - cx > -30 && o.x - cx < viewW + 30) drawProp(o);
+    if (boss && (boss.x0 + 1) * T - cx < viewW + 40 && (boss.x1 + 1) * T - cx > -40) drawArena();
+    ctx.restore();
     if (GOALX - cx > -60 && GOALX - cx < viewW + 20) drawSign(cx);
-    if (shop && shop.x - cx > -60 && shop.x - cx < viewW + 20) drawShop(cx);
-    for (const col of STAGES[stageIdx].signs) if (col * T - cx > -30 && col * T - cx < viewW + 10) drawSplitSign(col, cx);
+    if (shop && shop.x - cx > -100 && shop.x - cx < viewW + 20) drawShop(cx);
+    for (const col of S.signs) if (col * T - cx > -30 && col * T - cx < viewW + 10) drawSplitSign(col, cx);
 
-    const tx0 = Math.floor(cx / T), tx1 = Math.floor((cx + viewW) / T) + 1;
     for (let ty = 0; ty < ROWS; ty++) for (let tx = tx0; tx <= tx1 && tx < COLS; tx++) {
-      const t = grid[ty][tx]; if (!t) continue;
+      const t = grid[ty][tx]; if (!t || t === 9) continue;
       let off = 0;
       for (const b of bumps) if (b.tx === tx && b.ty === ty) off = -Math.sin(b.t / 0.15 * Math.PI) * 5;
-      drawTile(t, tx * T - cx, ty * T + Math.round(off), t === 1 && (ty === 0 || !solid(tx, ty - 1)));
+      drawTile(t, tx * T - cx, ty * T + Math.round(off), t === 1 && (ty === 0 || !solid(tx, ty - 1)), tx, ty);
     }
 
     const coinAt = (x, y, w0) => {
@@ -1233,6 +1544,11 @@
     for (const c of drops) coinAt(c.x - cx + 4, c.y + 4, Math.abs(Math.cos(tAnim * 8 + c.x)) * 3.5 + 1.5);
     for (const c of pops) {
       if (c.ring) { ctx.strokeStyle = `rgba(92,200,255,${1 - c.t / 0.5})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(c.x - cx, c.y, 10 + c.t * 50, 0, 7); ctx.stroke(); continue; }
+      if (c.text) { // floating words: chest contents, "need a key"...
+        const ty = c.y - c.t * 14; ctx.save(); ctx.globalAlpha = Math.min(1, (1.3 - c.t) / 0.3); ctx.font = '9px Jua, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.lineWidth = 3; ctx.strokeStyle = '#231a00'; ctx.strokeText(c.text, c.x - cx, ty); ctx.fillStyle = '#fff6a0'; ctx.fillText(c.text, c.x - cx, ty); ctx.restore(); continue;
+      }
+      if (c.chunk) { R(c.x - cx - 2, c.y - 2, 4, 4, '#8a7e66'); continue; }
       if (c.dust) { ctx.fillStyle = `rgba(200,190,180,${1 - c.t / 0.5})`; for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.arc(c.x - cx + k * c.t * 30, c.y - c.t * 10, 3, 0, 7); ctx.fill(); } continue; }
       const y = c.y - Math.sin(c.t / 0.5 * Math.PI) * 28;
       if (c.heart) pixelHeart(c.x - cx - 2, y - 6, 2, '#ff5d7a');
@@ -1240,6 +1556,10 @@
     }
 
     ctx.translate(-cx, 0);
+    if (boss) for (const g of boss.gates) if (g.col * T - cx > -40 && g.col * T - cx < viewW + 40) drawGate(g);
+    for (const m of movers) if (m.x - cx > -60 && m.x - cx < viewW + 20) drawMover(m);
+    for (const c of chests) if (c.x - cx > -20 && c.x - cx < viewW + 20) drawChest(c);
+    for (const k of keyItems) if (!k.got && k.x - cx > -20 && k.x - cx < viewW + 20) drawKey(k);
     for (const sw of saws) if (sw.x - cx > -20 && sw.x - cx < viewW + 20) drawSaw(sw);
     for (const e of enemies) if (e.active && e.x - cx > -30 && e.x - cx < viewW + 30) drawMon(e);
     if (boss && boss.x - cx > -60 && boss.x - cx < viewW + 60) drawBoss(boss);
@@ -1254,6 +1574,7 @@
     // banner (screen space)
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (state && state !== 'title') drawStatus();
+    if (boss && boss.intro > 0) drawTitleCard();
     if (banner) {
       const age = banner.dur - banner.t, a = Math.min(1, age / 0.2, banner.t / 0.5), k = 1 + 0.18 * (1 - Math.min(1, age / 0.25));
       ctx.save(); ctx.translate(W / 2, H * 0.28); ctx.scale(k, k); ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1284,6 +1605,7 @@
 
   const BTN = { left: 'left', right: 'right', jump: 'jump', attack: 'atk' };
   function press(key, on) {
+    if (on && (key === 'jump' || key === 'attack') && atDoor()) { openShop(); return; }   // at the shop door these buttons mean "go in", never jump or swing
     input[key] = on; $(BTN[key]).classList.toggle('on', on);
     if (on && p) { if (key === 'jump') p.jumpBuf = 0.12; if (key === 'attack') p.atkBuf = 0.14; }
   }
@@ -1331,9 +1653,11 @@
         enemies: enemies.map(e => ({ kind: e.kind, x: e.x, y: e.y, w: e.w, h: e.h, hp: e.hp, dead: e.dead, active: e.active, mode: e.mode })) };
     },
     input, press, tile: (tx, ty) => (grid[ty] ? grid[ty][tx] : 0) || 0, stepSim(n) { for (let i = 0; i < n; i++) step(STEP); },
-    god(on) { godMode = !!on; }, setHp(n) { hp = n; updateHud(); }, addScore(n) { score += n; }, warp(x) { p.x = x * T; p.y = (13 - STAGES[stageIdx].H[Math.floor(x)]) * T - p.h; p.vx = 0; p.vy = 0; camX = Math.max(0, Math.min(COLS * T - W / sc, p.x - (W / sc) * 0.4)); },
+    god(on) { godMode = !!on; }, setHp(n) { hp = n; updateHud(); }, addScore(n) { score += n; }, warp(x, row) { p.x = x * T; p.y = (row ?? 13 - STAGES[stageIdx].H[Math.floor(x)]) * T - p.h; p.plat = null; p.vx = 0; p.vy = 0; camX = Math.max(0, Math.min(COLS * T - W / sc, p.x - (W / sc) * 0.4)); },
     gotoStage(i) { startStage(i); }, coinList() { return coinsList.map(c => [c.x, c.y, c.got]); }, pos() { return [p.x, p.y]; }, sawList() { return saws.map(w => [w.x, w.y]); }, stages() { return STAGES.map(S => ({ cols: S.cols, goal: S.goal, maxH: Math.max(...S.H.filter(v => v !== undefined)), pits: S.pits.size })); },
-    info(i = stageIdx) { const S = STAGES[i]; return { cols: S.cols, goal: S.goal, H: S.H, pits: [...S.pits], spikes: S.spikes, walls: S.walls, saws: S.saws, plats: S.plats, signs: S.signs, shop: S.shop, boss: S.boss, mons: S.mons, coins: S.coins, bricks: S.bricks }; },
+    info(i = stageIdx) { const S = STAGES[i]; return { cols: S.cols, goal: S.goal, H: S.H, pits: [...S.pits], spikes: S.spikes, saws: S.saws, signs: S.signs, shop: S.shop, boss: S.boss, mons: S.mons, coins: S.coins, chests: S.chests, keys: S.keys, movers: S.movers, cracks: S.cracks, caves: S.caves, segs: S.segs }; },
+    world() { return { chests: chests.map(c => ({ x: c.x, y: c.y, what: c.what, open: c.open })), keys: keyItems.map(k => ({ x: k.x, y: k.y, got: k.got })), keyCount, cracks: crackList.map(g => ({ x: g.x, r: g.r, broken: g.broken })), movers: movers.map(m => ({ x: m.x, y: m.y, w: m.w, ddx: m.ddx, ddy: m.ddy })), atDoor: atDoor(), doorX: shop && shop.x + 2.5 * T, intro: boss ? boss.intro : 0, gates: boss ? boss.gates.map(g => ({ col: g.col, k: g.k, to: g.to })) : [] }; },
+    setKeys(n) { keyCount = n; },
     shotList() { return shots.map(s => ({ kind: s.kind, x: s.x, y: s.y, w: s.w, h: s.h, t: s.t, vx: s.vx })); },
     items: ITEMS, openShop() { openShop(); }, closeShop() { closeShop(); }, buy, setCoins(n) { coinCount = n; updateHud(); }, hurt(x) { hurtPlayer(x ?? p.x + 20); }, hitBoss(n) { if (boss && boss.on) for (let i = 0; i < n; i++) hitBoss(1, p.x + p.w / 2 + (boss.mode === 'stun' ? 0 : -boss.face * 999)); }, clearMons() { enemies = []; }, clearHazards() { saws = []; },
     spawn(kind, dx, ty) { const e = makeMon(kind, (p.x + dx) / T, ty); e.x = p.x + dx; e.active = true; enemies.push(e); return enemies.length - 1; },
