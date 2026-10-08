@@ -468,3 +468,6 @@ export function castRay(s, x, y, a, maxD, col) {
   segs.push({ d0, d1: crateD, col });
   return segs;
 }
+
+// Give up on this life and go back to the last checkpoint (for a crate pushed into a corner).
+export function retry(s) { if (!s.p.dead && !s.cleared) die(s, 'retry'); }
