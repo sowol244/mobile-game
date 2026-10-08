@@ -2,7 +2,7 @@
 // Walking around walls uses a distance field (BFS) from the goal tile, cached per tile since walls never move.
 
 import { BOT_LEVELS } from './config.js';
-import { tileAt, blocksWalk, lineOfSight, canFire, BLUE } from './game.js';
+import { tileAt, blocksWalk, lineOfSight, canFire, hitsWall, BLUE } from './game.js';
 
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
@@ -28,21 +28,40 @@ function field(m, gx, gy) {
   return f;
 }
 
-// Unit vector that walks from b toward (gx, gy) around walls.
+// True if a body of radius r can slide in a straight line from a to b without touching a wall.
+function clearPath(map, ax, ay, bx, by, r) {
+  const d = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.ceil(d / 0.15));
+  for (let i = 1; i <= n; i++) if (hitsWall(map, ax + (bx - ax) * i / n, ay + (by - ay) * i / n, r)) return false;
+  return true;
+}
+
+// Unit vector that walks from b toward (gx, gy) around walls. Follows the distance field a few
+// tiles ahead and heads for the farthest tile it can reach in a straight line, so bots cut
+// corners smoothly instead of rubbing against them.
 export function walkToward(m, b, gx, gy) {
   const map = m.map, tx = Math.floor(b.x), ty = Math.floor(b.y);
   const gtx = Math.min(map.w - 1, Math.max(0, Math.floor(gx))), gty = Math.min(map.h - 1, Math.max(0, Math.floor(gy)));
-  if ((tx === gtx && ty === gty) || blocksWalk(tileAt(map, gtx, gty))) return norm(gx - b.x, gy - b.y);
+  if (clearPath(map, b.x, b.y, gx, gy, b.r + 0.02) || blocksWalk(tileAt(map, gtx, gty))) return norm(gx - b.x, gy - b.y);
   const f = field(m, gtx, gty);
-  let best = null, bestD = f[ty * map.w + tx] < 0 ? 1e9 : f[ty * map.w + tx];
-  for (const [dx, dy] of DIRS) {
-    const nx = tx + dx, ny = ty + dy;
-    if (blocksWalk(tileAt(map, nx, ny))) continue;
-    if (dx && dy && (blocksWalk(tileAt(map, tx + dx, ty)) || blocksWalk(tileAt(map, tx, ty + dy)))) continue;
-    const d = f[ny * map.w + nx];
-    if (d >= 0 && d < bestD) { bestD = d; best = [nx + 0.5, ny + 0.5]; }
+  const path = [];
+  let cx = tx, cy = ty;
+  for (let k = 0; k < 6; k++) {
+    let best = null, bestD = f[cy * map.w + cx] < 0 ? 1e9 : f[cy * map.w + cx];
+    for (const [dx, dy] of DIRS) {
+      const nx = cx + dx, ny = cy + dy;
+      if (blocksWalk(tileAt(map, nx, ny))) continue;
+      if (dx && dy && (blocksWalk(tileAt(map, cx + dx, cy)) || blocksWalk(tileAt(map, cx, cy + dy)))) continue;
+      const d = f[ny * map.w + nx];
+      if (d >= 0 && d < bestD) { bestD = d; best = [nx, ny]; }
+    }
+    if (!best) break;
+    [cx, cy] = best; path.push([cx + 0.5, cy + 0.5]);
+    if (bestD === 0) break;
   }
-  return best ? norm(best[0] - b.x, best[1] - b.y) : norm(gx - b.x, gy - b.y);
+  if (!path.length) return norm(gx - b.x, gy - b.y);
+  let aim = path[0];
+  for (let k = path.length - 1; k > 0; k--) if (clearPath(map, b.x, b.y, path[k][0], path[k][1], b.r + 0.02)) { aim = path[k]; break; }
+  return norm(aim[0] - b.x, aim[1] - b.y);
 }
 
 const norm = (x, y) => { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
@@ -92,7 +111,12 @@ export function botControl(m, b, brain, dt) {
       const want = R * 0.62, ux = (target.x - b.x) / d, uy = (target.y - b.y) / d;
       const radial = d > want + 0.8 ? 1 : d < want - 0.8 ? -0.8 : 0;
       if (brain.strafeT <= 0) { brain.strafe = m.rand() < 0.5 ? -1 : 1; brain.strafeT = 0.5 + m.rand() * 0.9; }
+      // Don't strafe into a wall: switch sides when that way is blocked.
+      if (hitsWall(m.map, b.x - uy * brain.strafe * 0.6, b.y + ux * brain.strafe * 0.6, b.r)) { brain.strafe = -brain.strafe; brain.strafeT = 0.6; }
       dir = { x: ux * radial - uy * brain.strafe * 0.85, y: uy * radial + ux * brain.strafe * 0.85 };
+      // Something solid (a wall, or water between us) right ahead: walk around it on the path instead.
+      const dl = Math.hypot(dir.x, dir.y);
+      if (dl > 0.1 && hitsWall(m.map, b.x + dir.x / dl * 0.35, b.y + dir.y / dl * 0.35, b.r)) dir = radial >= 0 ? walkToward(m, b, target.x, target.y) : { x: -ux, y: -uy };
     }
     if (los && d < R * 0.95 && brain.react <= 0 && canFire(b) && (b.ammo >= 2 || d < R * 0.6 || low)) {
       const lead = d / at.speed * brain.skill.lead;

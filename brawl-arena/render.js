@@ -139,9 +139,9 @@ export function createRenderer(canvas) {
       ctx.strokeStyle = isMe ? PAL.me : PAL.team[b.team]; ctx.lineWidth = isMe ? 3 : 2;
       ctx.beginPath(); ctx.ellipse(x, y, r * 1.1, r * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
       const top = drawPerson(ctx, b, x, y, T, walkPhase.get(b.id), b.hurtFlash > 0);
-      if (b.shieldT > 0) { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y - T * 0.4, T * 0.48, T * 0.62, 0, 0, Math.PI * 2); ctx.stroke(); }
+      if (b.shieldT > 0) { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y - T * 0.35, T * 0.42, T * 0.5, 0, 0, Math.PI * 2); ctx.stroke(); }
       // Name, HP bar, ammo (mine only)
-      const bw = T * 1.05, bh = Math.max(5, T * 0.13), by = top - T * 0.2;
+      const bw = T * 1.05, bh = Math.max(5, T * 0.13), by = top - T * 0.16;
       ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(x - bw / 2 - 1, by - 1, bw + 2, bh + 2);
       ctx.fillStyle = isMe ? '#5ee08a' : b.team === BLUE ? PAL.team[0] : PAL.team[1];
       ctx.fillRect(x - bw / 2, by, bw * Math.max(0, b.hp / b.maxHp), bh);

@@ -185,80 +185,82 @@ export function drawObstacle(ctx, map, x, y, sx, sy, T) {
 }
 
 // ---------- brawlers ----------
-// A little chibi person seen from the front-top: legs that walk, a team-coloured shirt,
-// arms holding the rifle toward the aim, and a big head that turns with it.
-export const PERSON_SCALE = 1.3; // people are drawn a bit bigger than their hitbox, like in arena games
+// A small chibi person: big round head, tiny body and stubby legs that waddle when walking,
+// holding a little rifle toward the aim. Team colour is the shirt (and the ring under the feet).
+export const PERSON_SCALE = 1.12;
 
 export function drawPerson(ctx, b, x, y, T, walk, flash) {
   const u = T * PERSON_SCALE, face = b.face, dirX = Math.cos(face), dirY = Math.sin(face);
   const flip = dirX < -0.05 ? -1 : 1;
   const moving = Math.hypot(b.vx, b.vy) > 0.3;
-  const swing = moving ? Math.sin(walk) : 0, bob = moving ? Math.abs(Math.cos(walk)) * u * 0.035 : 0;
+  const swing = moving ? Math.sin(walk) : 0, bob = moving ? Math.abs(Math.cos(walk)) * u * 0.04 : Math.sin(performance.now() / 400 + b.id) * u * 0.008;
+  const tilt = moving ? swing * 0.06 : 0; // little side-to-side waddle
   const team = PAL.team[b.team], teamDark = PAL.teamDark[b.team];
   const white = c => (flash ? '#ffffff' : c);
 
-  // Legs (feet sit on the brawler's position).
+  // Feet: two round shoes stepping in turn.
   for (const side of [-1, 1]) {
-    const lx = x + side * u * 0.09, step = side * swing * u * 0.07;
-    ctx.fillStyle = white(PAL.pants); ctx.fillRect(lx - u * 0.055, y - u * 0.2 + Math.max(0, -step) * 0.3, u * 0.11, u * 0.17);
-    ctx.fillStyle = white(PAL.shoe); ctx.beginPath(); ctx.ellipse(lx + flip * u * 0.02, y - u * 0.02 + step * 0.4, u * 0.075, u * 0.045, 0, 0, Math.PI * 2); ctx.fill();
+    const lift = Math.max(0, side * swing) * u * 0.05;
+    ctx.fillStyle = white(PAL.shoe);
+    ctx.beginPath(); ctx.ellipse(x + side * u * 0.09, y - u * 0.03 - lift, u * 0.07, u * 0.05, 0, 0, Math.PI * 2); ctx.fill();
   }
-  const by = y - u * 0.36 - bob; // body centre
+  ctx.save(); ctx.translate(x, y - bob); ctx.rotate(tilt);
 
+  const by = -u * 0.17; // body centre
   const gunBehind = dirY < -0.35;
   const drawGun = () => {
-    const hx = x + flip * u * 0.04, hy = by + u * 0.02;
-    ctx.save(); ctx.translate(hx, hy); ctx.rotate(face);
+    ctx.save(); ctx.translate(flip * u * 0.05, by + u * 0.02); ctx.rotate(face - tilt);
     if (flip < 0) ctx.scale(1, -1);
-    ctx.fillStyle = PAL.gunWood; ctx.fillRect(-u * 0.12, -u * 0.035, u * 0.16, u * 0.09);   // stock
-    ctx.fillStyle = PAL.gun; ctx.fillRect(u * 0.02, -u * 0.05, u * 0.34, u * 0.1);           // body
-    ctx.fillRect(u * 0.34, -u * 0.025, u * 0.16, u * 0.05);                                  // barrel
-    ctx.fillRect(u * 0.12, u * 0.04, u * 0.05, u * 0.07);                                    // magazine
-    ctx.fillStyle = white(PAL.skin);                                                         // hands
-    ctx.beginPath(); ctx.arc(u * 0.02, u * 0.03, u * 0.05, 0, Math.PI * 2); ctx.arc(u * 0.24, u * 0.03, u * 0.05, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = PAL.gunWood; roundRect(ctx, -u * 0.08, -u * 0.03, u * 0.12, u * 0.07, u * 0.025); ctx.fill();
+    ctx.fillStyle = PAL.gun; roundRect(ctx, u * 0.02, -u * 0.04, u * 0.24, u * 0.08, u * 0.03); ctx.fill();
+    ctx.fillRect(u * 0.24, -u * 0.02, u * 0.1, u * 0.04);
+    ctx.fillStyle = white(PAL.skin);
+    ctx.beginPath(); ctx.arc(u * 0.02, u * 0.03, u * 0.045, 0, Math.PI * 2); ctx.arc(u * 0.17, u * 0.03, u * 0.045, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   };
   if (gunBehind) drawGun();
 
-  // Torso: rounded shirt in team colour with a darker belt.
-  const tw = u * 0.36, th = u * 0.3;
-  ctx.fillStyle = white(team); ctx.strokeStyle = teamDark; ctx.lineWidth = Math.max(1.5, u * 0.03);
-  roundRect(ctx, x - tw / 2, by - th / 2, tw, th, u * 0.1); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = white(teamDark); ctx.fillRect(x - tw / 2 + 1, by + th / 2 - u * 0.07, tw - 2, u * 0.05);
+  // Body: a short rounded shirt.
+  ctx.fillStyle = white(team); ctx.strokeStyle = teamDark; ctx.lineWidth = Math.max(1.2, u * 0.025);
+  ctx.beginPath(); ctx.ellipse(0, by, u * 0.16, u * 0.13, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 
   if (!gunBehind) drawGun();
 
-  // Head.
-  const hr = u * 0.24, hx = x + dirX * u * 0.03, hy = by - th / 2 - hr * 0.78;
-  ctx.fillStyle = white(PAL.skin); ctx.strokeStyle = PAL.skinDark; ctx.lineWidth = Math.max(1, u * 0.025);
+  // Big round head.
+  const hr = u * 0.25, hx = dirX * u * 0.02, hy = by - u * 0.3;
+  ctx.fillStyle = white(PAL.skin); ctx.strokeStyle = PAL.skinDark; ctx.lineWidth = Math.max(1, u * 0.022);
   ctx.beginPath(); ctx.arc(hx, hy, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  const back = dirY < -0.55; // looking away from the camera: we see the back of the head
-  // Hair: a cap of dark hair with a few spikes on top (교행이's look).
+  const back = dirY < -0.55; // walking away from the camera: back of the head
   ctx.fillStyle = white(PAL.hair);
   ctx.beginPath();
-  if (back) ctx.arc(hx, hy, hr * 1.02, 0, Math.PI * 2);
+  if (back) ctx.arc(hx, hy, hr * 1.03, 0, Math.PI * 2);
   else {
-    ctx.arc(hx, hy - hr * 0.08, hr * 1.02, Math.PI * 1.02, Math.PI * 1.98);
-    ctx.quadraticCurveTo(hx + hr * 0.6, hy - hr * 0.2, hx + flip * hr * 0.1, hy - hr * 0.35);
-    ctx.quadraticCurveTo(hx - hr * 0.6, hy - hr * 0.2, hx - hr * 1.0, hy - hr * 0.1);
+    // Bowl cut with a soft fringe swept toward the facing side.
+    ctx.arc(hx, hy, hr * 1.03, Math.PI * 0.95, Math.PI * 2.05);
+    ctx.quadraticCurveTo(hx + hr * 0.7, hy - hr * 0.05, hx + flip * hr * 0.25, hy - hr * 0.3);
+    ctx.quadraticCurveTo(hx - hr * 0.3, hy - hr * 0.05, hx - hr * 1.03, hy + hr * 0.05);
   }
   ctx.fill();
-  for (const k of [-0.5, 0, 0.5]) {
-    ctx.beginPath(); ctx.moveTo(hx + (k - 0.2) * hr, hy - hr * 0.85); ctx.lineTo(hx + (k + 0.05) * hr + flip * hr * 0.1, hy - hr * 1.28); ctx.lineTo(hx + (k + 0.25) * hr, hy - hr * 0.8); ctx.fill();
-  }
+  // A single curl sticking up on top.
+  ctx.strokeStyle = white(PAL.hair); ctx.lineWidth = Math.max(1.5, u * 0.035); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(hx, hy - hr * 0.95); ctx.quadraticCurveTo(hx + flip * hr * 0.1, hy - hr * 1.45, hx + flip * hr * 0.45, hy - hr * 1.3); ctx.stroke();
+
   if (!back) {
-    const ex = dirX * hr * 0.28, ey = hr * 0.12 + Math.max(0, dirY) * hr * 0.12;
-    ctx.fillStyle = '#231a14';
-    for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(hx + s * hr * 0.32 + ex, hy + ey, hr * 0.09, hr * 0.14, 0, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = '#fff';
-    for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(hx + s * hr * 0.32 + ex + hr * 0.03, hy + ey - hr * 0.05, hr * 0.035, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = 'rgba(255,120,120,0.35)';
-    for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(hx + s * hr * 0.55 + ex * 0.5, hy + hr * 0.4, hr * 0.13, hr * 0.08, 0, 0, Math.PI * 2); ctx.fill(); }
+    const ex = dirX * hr * 0.25, ey = hr * 0.18 + Math.max(0, dirY) * hr * 0.1;
+    for (const s of [-1, 1]) {
+      const cx = hx + s * hr * 0.36 + ex, cy = hy + ey;
+      ctx.fillStyle = '#231a14'; ctx.beginPath(); ctx.ellipse(cx, cy, hr * 0.12, hr * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(cx + hr * 0.04, cy - hr * 0.06, hr * 0.055, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx - hr * 0.04, cy + hr * 0.06, hr * 0.025, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,110,120,0.4)';
+    for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(hx + s * hr * 0.62 + ex * 0.6, hy + hr * 0.45, hr * 0.15, hr * 0.09, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.strokeStyle = '#7a3b2a'; ctx.lineWidth = Math.max(1, u * 0.02);
+    ctx.beginPath(); ctx.arc(hx + ex * 0.8, hy + hr * 0.42, hr * 0.12, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
   }
-  // Team headband so friend and foe read at a glance even from the back.
-  ctx.fillStyle = white(team);
-  ctx.beginPath(); ctx.ellipse(hx, hy - hr * 0.45, hr * 1.0, hr * 0.17, 0, 0, Math.PI * 2); ctx.fill();
-  return hy - hr; // top of the head, for the name and health bar
+  ctx.restore();
+  return y - bob + hy - hr * 1.3; // top of the head, for the name and health bar
 }
 
 export function roundRect(ctx, x, y, w, h, r) {

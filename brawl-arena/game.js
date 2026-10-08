@@ -24,7 +24,7 @@ export const tileAt = (map, tx, ty) => (tx < 0 || ty < 0 || tx >= map.w || ty >=
 export const blocksWalk = ch => ch === '#' || ch === '~';
 export const blocksShot = ch => ch === '#';
 
-function hitsWall(map, x, y, r) {
+export function hitsWall(map, x, y, r) {
   for (let ty = Math.floor(y - r); ty <= Math.floor(y + r); ty++)
     for (let tx = Math.floor(x - r); tx <= Math.floor(x + r); tx++)
       if (blocksWalk(tileAt(map, tx, ty))) return true;
@@ -135,10 +135,27 @@ function move(m, b, c, dt) {
   const px = b.x, py = b.y, sp = b.def.speed;
   const nx = b.x + mx * sp * dt;
   if (!hitsWall(m.map, nx, b.y, b.r)) b.x = nx;
+  else if (Math.abs(mx) > 0.2 && Math.abs(my) < 0.5) slideAround(m, b, 'x', Math.sign(mx), sp * dt);
   const ny = b.y + my * sp * dt;
   if (!hitsWall(m.map, b.x, ny, b.r)) b.y = ny;
+  else if (Math.abs(my) > 0.2 && Math.abs(mx) < 0.5) slideAround(m, b, 'y', Math.sign(my), sp * dt);
   b.vx = (b.x - px) / dt; b.vy = (b.y - py) / dt;
   if (len > 0.1 && !b.burst) b.face = Math.atan2(my, mx);
+}
+
+// Corner assist: walking straight into the edge of an obstacle slips sideways around it
+// (when the way is open within half a tile) instead of grinding to a stop.
+function slideAround(m, b, axis, dir, dist) {
+  const other = axis === 'x' ? 'y' : 'x';
+  for (let off = 0.05; off <= 0.5; off += 0.05) {
+    for (const s of [-1, 1]) {
+      const p = { x: b.x, y: b.y }; p[other] += s * off; p[axis] += dir * dist;
+      if (hitsWall(m.map, p.x, p.y, b.r)) continue;
+      const q = { x: b.x, y: b.y }; q[other] += s * Math.min(off, dist);
+      if (!hitsWall(m.map, q.x, q.y, b.r)) { b.x = q.x; b.y = q.y; }
+      return;
+    }
+  }
 }
 
 // Brawlers push each other apart a little so they never stack on one spot.
