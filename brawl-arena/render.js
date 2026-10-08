@@ -1,20 +1,15 @@
 // Drawing only. Reads the match, never changes it.
 
 import { BLUE, tileAt } from './game.js';
-
-const COL = {
-  grassA: '#3a8a52', grassB: '#35804c',
-  wallTop: '#b07a52', wallSide: '#7d5034', wallLine: '#5c3a24',
-  water: '#2f8fd8', waterHi: '#5db2f0',
-  team: ['#4cc3ff', '#ff5d6c'], teamDark: ['#1d6f9c', '#a3283a'],
-  me: '#ffd23f', skin: '#ffd7b0', hair: '#3a2a20', gun: '#2b2b38',
-};
+import { PAL, paintGround, drawRipples, drawObstacle, drawPerson } from './art.js';
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
   const fx = { pops: [], sparks: [], shake: 0 };
   let W = 0, H = 0;
   const cam = { x: 0, y: 0, px: 40, ready: false };
+  const walkPhase = new Map();
+  let ground = null;
 
   function resize(w, h) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -27,11 +22,11 @@ export function createRenderer(canvas) {
     for (const e of m.events) {
       if (e.type === 'hit') {
         const b = m.brawlers[e.id];
-        fx.pops.push({ x: e.x + (Math.random() - 0.5) * 0.4, y: e.y - b.r - 0.3, t: 0.7, text: String(e.dmg), col: b.team === BLUE ? '#ffffff' : COL.me });
+        fx.pops.push({ x: e.x + (Math.random() - 0.5) * 0.4, y: e.y - 1.15, t: 0.7, text: String(e.dmg), col: b.team === BLUE ? '#ffffff' : PAL.me });
         if (e.id === meId) fx.shake = Math.min(0.25, fx.shake + 0.08);
       } else if (e.type === 'spark') fx.sparks.push({ x: e.x, y: e.y, t: 0.18 });
       else if (e.type === 'kill') {
-        for (let i = 0; i < 10; i++) { const a = Math.random() * Math.PI * 2, v = 1 + Math.random() * 2.5; fx.sparks.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0.45, col: COL.team[m.brawlers[e.id].team] }); }
+        for (let i = 0; i < 10; i++) { const a = Math.random() * Math.PI * 2, v = 1 + Math.random() * 2.5; fx.sparks.push({ x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0.45, col: PAL.team[m.brawlers[e.id].team] }); }
       }
     }
     m.events.length = 0;
@@ -54,22 +49,26 @@ export function createRenderer(canvas) {
     const ox = W / 2 - cx * T + (Math.random() - 0.5) * sh, oy = H / 2 - cy * T + (Math.random() - 0.5) * sh;
     const sx = x => ox + x * T, sy = y => oy + y * T;
 
-    ctx.fillStyle = '#244f33'; ctx.fillRect(0, 0, W, H);
-    const x0 = Math.max(-1, Math.floor(-ox / T)), x1 = Math.min(m.map.w, Math.ceil((W - ox) / T));
-    const y0 = Math.max(-1, Math.floor(-oy / T)), y1 = Math.min(m.map.h, Math.ceil((H - oy) / T));
-    // Ground first, then walls in row order so each wall's front face overlaps the row below.
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      const ch = tileAt(m.map, x, y), outside = x < 0 || y < 0 || x >= m.map.w || y >= m.map.h;
-      if (outside) continue;
-      if (ch === '~') {
-        ctx.fillStyle = COL.water; ctx.fillRect(sx(x), sy(y), T + 0.5, T + 0.5);
-        ctx.fillStyle = COL.waterHi; ctx.fillRect(sx(x) + T * 0.2, sy(y) + T * (0.3 + 0.1 * Math.sin(m.t * 2 + x)), T * 0.3, T * 0.06);
-      } else { ctx.fillStyle = (x + y) % 2 ? COL.grassA : COL.grassB; ctx.fillRect(sx(x), sy(y), T + 0.5, T + 0.5); }
+    ctx.fillStyle = '#2f6b3a'; ctx.fillRect(0, 0, W, H);
+    const x0 = Math.max(0, Math.floor(-ox / T)), x1 = Math.min(m.map.w - 1, Math.ceil((W - ox) / T));
+    const y0 = Math.max(0, Math.floor(-oy / T) - 1), y1 = Math.min(m.map.h - 1, Math.ceil((H - oy) / T) + 1);
+    // The ground is painted once per map and zoom, then just copied each frame.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (!ground || ground.map !== m.map || ground.T !== T || ground.dpr !== dpr) ground = { map: m.map, T, dpr, img: paintGround(m.map, T, dpr) };
+    ctx.drawImage(ground.img, ox, oy, m.map.w * T, m.map.h * T);
+    // Outside the arena: a thick row of round treetops instead of an empty band.
+    for (let y = Math.floor(-oy / T) - 1; y <= Math.ceil((H - oy) / T); y++) for (let x = Math.floor(-ox / T) - 1; x <= Math.ceil((W - ox) / T); x++) {
+      if (x >= 0 && y >= 0 && x < m.map.w && y < m.map.h) continue;
+      const k = ((x * 7 + y * 13) % 5 + 5) % 5;
+      ctx.fillStyle = k < 2 ? '#2e7d3a' : k < 4 ? '#357f3f' : '#28703a';
+      ctx.beginPath(); ctx.arc(sx(x + 0.5), sy(y + 0.5), T * (0.68 + k * 0.04), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.arc(sx(x + 0.38), sy(y + 0.36), T * 0.28, 0, Math.PI * 2); ctx.fill();
     }
+    drawRipples(ctx, m.map, m.t, sx, sy, T, x0, y0, x1, y1);
     // Spawn pads.
     for (const team of [0, 1]) for (const s of m.map.spawns[team]) {
-      ctx.fillStyle = team === BLUE ? 'rgba(76,195,255,0.18)' : 'rgba(255,93,108,0.18)';
-      ctx.beginPath(); ctx.arc(sx(s.x), sy(s.y), T * 0.55, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = team === BLUE ? 'rgba(63,182,255,0.55)' : 'rgba(255,82,103,0.55)'; ctx.lineWidth = 3;
+      ctx.setLineDash([T * 0.12, T * 0.1]); ctx.beginPath(); ctx.ellipse(sx(s.x), sy(s.y), T * 0.5, T * 0.32, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
     }
 
     // Aim guide under everything that moves.
@@ -89,17 +88,13 @@ export function createRenderer(canvas) {
 
     // Walls and brawlers sorted by y so things lower on screen draw on top.
     const items = [];
-    for (let y = Math.max(0, y0); y <= Math.min(m.map.h - 1, y1); y++) for (let x = Math.max(0, x0); x <= Math.min(m.map.w - 1, x1); x++)
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++)
       if (tileAt(m.map, x, y) === '#') items.push({ y: y + 1, wall: [x, y] });
-    for (const b of m.brawlers) if (b.alive) items.push({ y: b.y + b.r, b });
+    for (const b of m.brawlers) if (b.alive) items.push({ y: b.y + 0.05, b });
     items.sort((a, b) => a.y - b.y);
     for (const it of items) {
-      if (it.wall) {
-        const [x, y] = it.wall, lift = T * 0.28;
-        ctx.fillStyle = COL.wallSide; ctx.fillRect(sx(x), sy(y) + T - lift, T + 0.5, lift);
-        ctx.fillStyle = COL.wallTop; ctx.fillRect(sx(x), sy(y) - lift, T + 0.5, T);
-        ctx.strokeStyle = COL.wallLine; ctx.lineWidth = 1; ctx.strokeRect(sx(x) + 0.5, sy(y) - lift + 0.5, T - 0.5, T - 1);
-      } else drawBrawler(it.b, it.b.id === meId);
+      if (it.wall) drawObstacle(ctx, m.map, it.wall[0], it.wall[1], sx, sy, T);
+      else drawBrawler(it.b, it.b.id === meId);
     }
     // Map edge.
     ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 4; ctx.strokeRect(sx(0), sy(0), m.map.w * T, m.map.h * T);
@@ -109,7 +104,7 @@ export function createRenderer(canvas) {
       ctx.save(); ctx.translate(sx(s.x), sy(s.y)); ctx.rotate(a);
       ctx.fillStyle = s.team === BLUE ? '#bff0ff' : '#ffd0d5';
       ctx.fillRect(-T * 0.28, -T * 0.06, T * 0.36, T * 0.12);
-      ctx.fillStyle = s.team === BLUE ? COL.team[0] : COL.team[1];
+      ctx.fillStyle = s.team === BLUE ? PAL.team[0] : PAL.team[1];
       ctx.fillRect(-T * 0.08, -T * 0.08, T * 0.16, T * 0.16);
       ctx.restore();
     }
@@ -137,29 +132,18 @@ export function createRenderer(canvas) {
 
     function drawBrawler(b, isMe) {
       const x = sx(b.x), y = sy(b.y), r = b.r * T;
-      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(x, y + r * 0.85, r * 0.95, r * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-      if (isMe) { ctx.strokeStyle = COL.me; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, y + r * 0.85, r * 1.15, r * 0.5, 0, 0, Math.PI * 2); ctx.stroke(); }
-      // Rifle
-      ctx.save(); ctx.translate(x, y); ctx.rotate(b.face);
-      ctx.fillStyle = COL.gun; ctx.fillRect(r * 0.2, -r * 0.16, r * 1.25, r * 0.32);
-      ctx.fillStyle = '#5a4030'; ctx.fillRect(r * 0.1, -r * 0.2, r * 0.45, r * 0.4);
-      ctx.restore();
-      // Body in team colour
-      ctx.fillStyle = b.hurtFlash > 0 ? '#ffffff' : COL.team[b.team];
-      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-      ctx.lineWidth = 2.5; ctx.strokeStyle = COL.teamDark[b.team]; ctx.stroke();
-      // Head: face toward the aim, hair at the back (교행이)
-      const hx = x + Math.cos(b.face) * r * 0.15, hy = y - r * 0.15 + Math.sin(b.face) * r * 0.1;
-      ctx.fillStyle = COL.skin; ctx.beginPath(); ctx.arc(hx, hy, r * 0.58, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = COL.hair; ctx.beginPath(); ctx.arc(hx - Math.cos(b.face) * r * 0.12, hy - r * 0.18, r * 0.56, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
-      const ex = Math.cos(b.face) * r * 0.18, ey = Math.max(0, Math.sin(b.face)) * r * 0.12;
-      ctx.fillStyle = '#2a1a10';
-      ctx.beginPath(); ctx.arc(hx - r * 0.2 + ex, hy + ey, r * 0.075, 0, Math.PI * 2); ctx.arc(hx + r * 0.2 + ex, hy + ey, r * 0.075, 0, Math.PI * 2); ctx.fill();
-      if (b.shieldT > 0) { ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r * 1.35, 0, Math.PI * 2); ctx.stroke(); }
+      // Walking animation phase advances with actual speed.
+      const w = walkPhase.get(b.id) || 0, speed = Math.hypot(b.vx, b.vy);
+      walkPhase.set(b.id, speed > 0.3 ? w + dt * speed * 3.2 : 0);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(x, y, r * 0.95, r * 0.38, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = isMe ? PAL.me : PAL.team[b.team]; ctx.lineWidth = isMe ? 3 : 2;
+      ctx.beginPath(); ctx.ellipse(x, y, r * 1.1, r * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+      const top = drawPerson(ctx, b, x, y, T, walkPhase.get(b.id), b.hurtFlash > 0);
+      if (b.shieldT > 0) { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y - T * 0.4, T * 0.48, T * 0.62, 0, 0, Math.PI * 2); ctx.stroke(); }
       // Name, HP bar, ammo (mine only)
-      const bw = T * 1.05, bh = Math.max(5, T * 0.13), by = y - r - T * 0.42;
+      const bw = T * 1.05, bh = Math.max(5, T * 0.13), by = top - T * 0.2;
       ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(x - bw / 2 - 1, by - 1, bw + 2, bh + 2);
-      ctx.fillStyle = isMe ? '#5ee08a' : b.team === BLUE ? COL.team[0] : COL.team[1];
+      ctx.fillStyle = isMe ? '#5ee08a' : b.team === BLUE ? PAL.team[0] : PAL.team[1];
       ctx.fillRect(x - bw / 2, by, bw * Math.max(0, b.hp / b.maxHp), bh);
       ctx.font = `${Math.round(T * 0.3)}px Jua, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.55)';

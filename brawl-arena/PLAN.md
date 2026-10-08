@@ -149,7 +149,8 @@ brawl-arena/
   game.js      매치 진행 (업데이트 루프, 충돌, 피해)
   bot.js       봇 AI
   input.js     두 개의 조이스틱 + 키보드/마우스
-  render.js    그리기 (카메라, 캐릭터, 탄, 이펙트)
+  render.js    그리기 순서 (카메라, 탄, 이펙트)
+  art.js       생김새 (사람 캐릭터, 바위·돌담·나무상자, 연못, 풀밭)
   sound.js     효과음
   game.test.mjs 규칙 테스트 (피해 계산, 충돌, 승리 조건)
 ```
