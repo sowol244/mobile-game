@@ -52,7 +52,7 @@
           <li><b>필살기</b> 적을 맞히면 ★ 버튼 둘레의 게이지가 차요. 가득 차면 ★를 톡 치거나 끌어서 강한 공격! (PC: E)</li>
           <li><b>수풀·상자</b> 수풀에 숨으면 적에게 안 보여요. 생존전에서는 상자를 부수면 <b>파워 큐브</b>가 나와 강해져요.</li>
           <li><b>독구름</b> 생존전에서 50초가 지나면 바깥부터 독구름이 좁혀 와요. 안쪽으로 피하세요.</li>
-          <li><b>1~5탄</b> 팀전에서 이기거나 생존전에서 1등 하면 다음 탄으로! 탄이 오를수록 봇의 체력이 세져요.</li>
+          <li><b>1~5탄</b> 언제나 1탄부터 시작해요. 팀전에서 이기거나 생존전에서 1등 하면 다음 탄으로, 지면 다시 1탄부터!</li>
           <li><b>트로피·레벨</b> 등수나 승패에 따라 트로피를 얻거나 잃어요. 브롤러마다 트로피를 모으면 <b>레벨</b>이 올라 체력과 공격력이 5%씩 세져요 (최대 Lv.5).</li>
         </ul>
         <button class="go ghost" id="tutBtn" type="button">튜토리얼 다시 하기</button>
@@ -69,8 +69,8 @@
       <div class="panel" id="pSelect" hidden>
         <h1>브롤러 선택</h1>
         <div class="modes" role="group" aria-label="모드">
-          <button class="mode on" type="button" data-mode="team">3:3 팀전<small>1탄</small></button>
-          <button class="mode" type="button" data-mode="survival">생존전<small>1탄</small></button>
+          <button class="mode on" type="button" data-mode="team">3:3 팀전<small>1~5탄</small></button>
+          <button class="mode" type="button" data-mode="survival">생존전<small>1~5탄</small></button>
         </div>
         <div id="cards" role="radiogroup" aria-label="브롤러"></div>
         <button class="go" id="go" type="button">출전!</button>

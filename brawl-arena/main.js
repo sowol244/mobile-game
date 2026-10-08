@@ -33,9 +33,10 @@ const view = createRenderer($('c'));
 let state = 'title';   // title | play | paused | over
 let mode = 'team';     // team | survival | tutorial | tutorial-done
 let chosenMode = load(KEY_MODE, 'team') === 'survival' ? 'survival' : 'team';
-// Stage (탄) per mode: { team: 1..5, survival: 1..5, cleared: { team, survival } }.
-let stages = load(KEY_STAGE, {});
-const stageOf = md => Math.min(STAGES.count, Math.max(1, stages[md] || 1));
+// Every run starts at 1탄 and goes on to 5탄 while you keep winning; a loss ends the run.
+// Saved per mode: the best stage reached and whether 5탄 was ever cleared.
+let records = load(KEY_STAGE, {});
+if (typeof records.team === 'number' || typeof records.survival === 'number') records = {}; // older save format (current stage), drop it
 const MODE_NAME = { team: '3:3 팀전', survival: '생존전' };
 let trophyBy = load(KEY_BY, {}); // trophies per brawler → its level
 let match = null, brains = [], me = null, acc = 0, last = performance.now();
@@ -106,8 +107,8 @@ function markPick() {
   }
   for (const b of document.querySelectorAll('.mode')) {
     b.classList.toggle('on', b.dataset.mode === chosenMode);
-    const md = b.dataset.mode, cleared = stages.cleared && stages.cleared[md];
-    b.querySelector('small').textContent = cleared ? `${stageOf(md)}탄 · 클리어!` : `${stageOf(md)}탄`;
+    const r = records[b.dataset.mode];
+    b.querySelector('small').textContent = r && r.cleared ? '최고 5탄 클리어' : r && r.best > 1 ? `최고 ${r.best}탄` : '1~5탄';
   }
 }
 for (const b of document.querySelectorAll('.mode')) b.addEventListener('click', () => { chosenMode = b.dataset.mode; save(KEY_MODE, chosenMode); markPick(); });
@@ -118,7 +119,7 @@ homeBtn.addEventListener('click', showTitle);
 document.querySelectorAll('.back').forEach(b => b.addEventListener('click', () => panel('main')));
 startBtn.addEventListener('click', () => {
   unlock(); sfx.click();
-  if (state === 'over' && (mode === 'team' || mode === 'survival')) return startMatch();   // 다시 하기: same brawler and mode
+  if (state === 'over' && (mode === 'team' || mode === 'survival')) { const next = autoNext ? match.stage + 1 : 1; autoNext = 0; return startMatch(next); } // next stage after a win, else 1탄 again
   if (!load(KEY_TUT, false) && mode !== 'tutorial-done') return panel('ask');              // first time: offer the tutorial
   markPick(); panel('select');
 });
@@ -153,10 +154,9 @@ function begin() {
   state = 'play'; input.enabled = true; overlay.hidden = true; pauseBtn.hidden = false;
 }
 
-function startMatch() {
+function startMatch(st = 1) {
   mode = chosenMode; coach.hidden = true;
   const survival = mode === 'survival';
-  const st = stageOf(mode);
   match = createMatch({
     mapDef: stageMap(mode, st), mode, seed: (Math.random() * 1e9) | 0,
     playerKind: pick, level: levelFor(trophyBy[pick] || 0), botHp: STAGES.botHp[st - 1],
@@ -301,10 +301,11 @@ function finish() {
   const md = match.mode, st = match.stage || 1;
   let stageNote = '';
   if (won) {
-    if (st < STAGES.count) { stages[md] = st + 1; stageNote = `다음은 ${st + 1}탄!`; autoNext = 3; }
-    else { stages.cleared = { ...(stages.cleared || {}), [md]: true }; stageNote = `🏆 ${MODE_NAME[md]} ${STAGES.count}탄 클리어!`; }
-    save(KEY_STAGE, stages);
-  }
+    const r = records[md] || { best: 1, cleared: false };
+    if (st < STAGES.count) { r.best = Math.max(r.best, st + 1); stageNote = `다음은 ${st + 1}탄!`; autoNext = 3; }
+    else { r.cleared = true; stageNote = `🏆 ${MODE_NAME[md]} ${STAGES.count}탄까지 모두 클리어!`; }
+    records[md] = r; save(KEY_STAGE, records);
+  } else stageNote = `${st}탄에서 끝! 다시 1탄부터 도전해요.`;
   const first = survival ? `생존전 ${st}탄 ${place}등` : `팀전 ${st}탄 ${draw ? '무승부' : won ? '승리' : '패배'}`;
   const result = survival ? first : `${first} ${match.score[0]}:${match.score[1]}`;
   const d = new Date(), entry = { id: Date.now(), result, brawler: me.def.name, kills: me.kills, trophy: gain, date: `${d.getMonth() + 1}/${d.getDate()}` };
@@ -320,7 +321,7 @@ function finish() {
   line(`트로피 ${gain >= 0 ? '+' : ''}${gain}  (총 ${trophies})`, 'tr');
   if (lvUp) line(`🎉 ${me.def.name} Lv.${levelFor(trophyBy[me.kind])} 달성!`, 'tr');
   if (stageNote) line(stageNote);
-  finalEl.hidden = false; startBtn.textContent = autoNext ? `${st + 1}탄 시작 (${autoNext})` : '다시 하기';
+  finalEl.hidden = false; startBtn.textContent = autoNext ? `${st + 1}탄 시작 (${autoNext})` : '1탄부터 다시';
   buttons(false); panel('main'); overlay.hidden = false;
   updateHud();
 }
@@ -368,7 +369,7 @@ function frame(now) {
   // After a win the next stage starts by itself (the button starts it right away).
   if (state === 'over' && autoNext > 0 && !panels.main.hidden) {
     const before = Math.ceil(autoNext); autoNext -= dt;
-    if (autoNext <= 0) { autoNext = 0; startMatch(); }
+    if (autoNext <= 0) { autoNext = 0; startMatch(match.stage + 1); }
     else if (Math.ceil(autoNext) !== before) startBtn.textContent = `${match.stage + 1}탄 시작 (${Math.ceil(autoNext)})`;
   }
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) bannerEl.classList.remove('on'); }

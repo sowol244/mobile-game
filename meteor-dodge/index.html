@@ -523,7 +523,7 @@
       stageT += dt; score += dt;
       while (curPhase < 2 && stageT >= PHASE_AT[curPhase + 1]) {
         curPhase++;
-        showBanner('PHASE ' + (curPhase + 1), curPhase === 1 ? '' : '30초 뒤 보스!', '#ffc94d', 2.2);
+        showBanner('PHASE ' + (curPhase + 1), '', '#ffc94d', 2.2);
         beep(440, 0.12, 'square', 0.05); setTimeout(() => beep(660, 0.18, 'square', 0.05), 120);
       }
       if (!bossWarned && stageT >= BOSS_AT) {
