@@ -172,6 +172,14 @@ function popup(text, kr = false) {
   void el.offsetWidth; el.classList.add('show');
 }
 
+const LINE_NAMES = ['', 'SINGLE', 'DOUBLE', 'TRIPLE', 'TETRIS'];
+function linePop(n, rows) {
+  const el = $('linePop'), mid = rows.reduce((a, b) => a + b, 0) / rows.length + 0.5;
+  el.textContent = LINE_NAMES[n];
+  el.style.top = `calc(var(--cell) * ${0.25 + mid})`; // fieldWrap padding + row centre
+  el.className = 'n' + n; void el.offsetWidth; el.classList.add('show');
+}
+
 /* ---------- game flow ---------- */
 const topList = () => load('top', []);
 const topScore = () => { const t = topList(); return t.length ? t[0].score : 0; };
@@ -204,7 +212,8 @@ function onEvent(e) {
     case 'rotate': sound.rotate(); break;
     case 'lock': sound.lock(); break;
     case 'clear':
-      if (e.n === 4) { sound.four(); popup('4줄!', true); flash(); } else sound.clear(e.n);
+      if (e.n === 4) { sound.four(); flash(); } else sound.clear(e.n);
+      linePop(e.n, e.rows);
       break;
     case 'level':
       sound.level(); popup('LEVEL ' + pad(e.level, 2));

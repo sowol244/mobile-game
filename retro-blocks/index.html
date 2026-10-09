@@ -47,6 +47,11 @@
   #pop { position: absolute; left: 0; right: 0; top: 38%; text-align: center; font-family: var(--px); font-size: calc(var(--cell) * 0.75); color: #fcfcfc; text-shadow: 3px 3px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000; pointer-events: none; opacity: 0; line-height: 1.4; }
   #pop.kr { font-family: var(--kr); font-size: calc(var(--cell) * 1.9); color: #fca044; }
   #pop.show { animation: pop 1.1s steps(8) forwards; }
+  /* SINGLE / DOUBLE / TRIPLE / TETRIS, shown on the rows being cleared */
+  #linePop { position: absolute; left: 0; right: 0; text-align: center; transform: translateY(-50%); font-family: var(--px); font-size: calc(var(--cell) * 0.8); line-height: 1; color: #fcfcfc; text-shadow: 3px 3px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000; pointer-events: none; opacity: 0; }
+  #linePop.n2 { color: #80d010; } #linePop.n3 { color: #3cbcfc; } #linePop.n4 { color: #fca044; font-size: calc(var(--cell) * 1); }
+  #linePop.show { animation: linePop 0.9s steps(6) forwards; }
+  @keyframes linePop { 0% { opacity: 1; transform: translateY(-50%) scale(0.6); } 20% { transform: translateY(-50%) scale(1.15); } 30%, 70% { opacity: 1; transform: translateY(-50%) scale(1); } 100% { opacity: 0; transform: translateY(-50%) scale(1); } }
   @keyframes pop { 0% { opacity: 1; transform: scale(0.6); } 15% { transform: scale(1.1); } 25%, 75% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: translateY(-20px); } }
   #pausedMask { position: absolute; inset: calc(var(--cell) * 0.25); background: #000; display: flex; align-items: center; justify-content: center; font-family: var(--px); font-size: calc(var(--cell) * 0.6); }
 
@@ -194,6 +199,7 @@
         <div id="fieldWrap">
           <canvas id="field" width="80" height="160" aria-label="게임 판"></canvas>
           <div id="pop" aria-live="polite"></div>
+          <div id="linePop" aria-hidden="true"></div>
           <div id="pausedMask" hidden>PAUSE</div>
         </div>
       </div>
