@@ -214,7 +214,16 @@ function autoAim(b, spec) {
     if (d > reach + 0.5 || (!lobbed && spec.type !== 'pierce' && !lineOfSight(match.map, b.x, b.y, o.x, o.y))) continue;
     if (d < bd) { bd = d; best = o; }
   }
-  if (!best) return { a: b.face, d: null };
+  if (!best) {
+    // Nobody in reach: still turn toward the closest enemy we can see, instead of wherever we happen to face.
+    for (const o of match.brawlers) {
+      if (!o.alive || o.team === b.team || !visibleTo(match, b.team, o)) continue;
+      const d = Math.hypot(o.x - b.x, o.y - b.y);
+      if (d < bd) { bd = d; best = o; }
+    }
+    if (!best) return { a: b.face, d: null };
+    return { a: Math.atan2(best.y - b.y, best.x - b.x), d: Math.min(bd, spec.range || bd) };
+  }
   const t = lobbed ? spec.flight * 0.8 : spec.speed ? bd / spec.speed * 0.6 : 0;
   const px = best.x + best.vx * t, py = best.y + best.vy * t;
   return { a: Math.atan2(py - b.y, px - b.x), d: Math.hypot(px - b.x, py - b.y) };

@@ -50,10 +50,8 @@ export function createInput(el) {
     } else {
       if (st.aim) return;
       const onSuper = st.superReady && Math.hypot(p.x - L.super.x, p.y - L.super.y) < L.super.r + 16;
-      st.aim = onSuper
-        ? { id: e.pointerId, ox: L.super.x, oy: L.super.y, x: 0, y: 0, t0: performance.now(), type: 'super' }
-        : { id: e.pointerId, ox: p.x, oy: p.y, x: 0, y: 0, t0: performance.now(), type: 'fire' };
-      if (onSuper) upd(st.aim, p);
+      // The stick centres where the thumb lands, so a tap anywhere on ★ is a tap (auto aim), never a drag.
+      st.aim = { id: e.pointerId, ox: p.x, oy: p.y, x: 0, y: 0, t0: performance.now(), type: onSuper ? 'super' : 'fire' };
     }
     try { el.setPointerCapture(e.pointerId); } catch (err) { /* window listeners cover it */ }
   });
