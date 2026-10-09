@@ -378,3 +378,62 @@ export function useHint(g, prefer = -1) {
 // 3★ no mistakes and no hints, 2★ at most one mistake-or-hint in total, otherwise 1★
 export const starsFor = (mistakes, hints) => (mistakes + hints === 0 ? 3 : mistakes + hints <= 1 ? 2 : 1);
 export const fmtTime = s => { s = Math.max(0, Math.floor(s)); const h = (s / 3600) | 0, m = ((s % 3600) / 60) | 0, x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
+
+/* ---------- 오늘의 스도쿠: deterministic daily puzzles from the date ---------- */
+export function hashSeed(str) {
+  let h = 2166136261;
+  for (let k = 0; k < str.length; k++) { h ^= str.charCodeAt(k); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+export const DAILY = {
+  easy: { levels: [1, 1], givens: [36, 40] },
+  hard: { levels: [3, 5], givens: [25, 28] },
+};
+// Put symmetric solution pairs back while the hardest technique level stays the same.
+export function addBackSameLevel(puzzle, solution, minGivens, maxGivens, level, r) {
+  const p = puzzle.slice();
+  const count = () => p.filter(v => v).length;
+  const empty = shuffle(Array.from({ length: 41 }, (_, i) => i).filter(i => !p[i]), r);
+  for (const i of empty) {
+    if (count() >= minGivens) break;
+    const j = 80 - i, a = p[i], b = p[j];
+    p[i] = solution[i]; p[j] = solution[j];
+    if (count() > maxGivens || grade(p).level !== level) { p[i] = a; p[j] = b; }
+  }
+  return p;
+}
+// Same date + kind → same puzzle for everyone. Seeds are tried in order (attempt 0, 1, 2, …) until the grade fits.
+export function dailyPuzzle(date, kind) {
+  const spec = DAILY[kind];
+  if (!spec) throw new Error('unknown daily kind ' + kind);
+  const [lo, hi] = spec.givens;
+  for (let attempt = 0; attempt < 2000; attempt++) {
+    const r = rng(hashSeed(`sudoku:${date}:${kind}:${attempt}`));
+    const sol = randomSolution(r);
+    let p;
+    if (kind === 'easy') p = dig(sol, r, lo + ((r() * (hi - lo + 1)) | 0));
+    else p = dig(sol, r);
+    let g = grade(p);
+    if (!g.solved || g.level < spec.levels[0] || g.level > spec.levels[1]) continue;
+    let n = p.filter(v => v).length;
+    if (n < lo) { p = addBackSameLevel(p, sol, lo, hi, g.level, r); g = grade(p); n = p.filter(v => v).length; }
+    if (n < lo || n > hi || g.level < spec.levels[0] || g.level > spec.levels[1]) continue;
+    return { date, kind, p: gridString(p), s: sol.join(''), level: g.level, score: g.score, givens: n, attempt };
+  }
+  throw new Error('no daily puzzle found');
+}
+export const dateKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+export const addDays = (key, n) => { const [y, m, d] = key.split('-').map(Number); return dateKey(new Date(y, m - 1, d + n)); };
+// Consecutive days with at least one daily clear, ending today (or yesterday if today is not cleared yet).
+export function dailyStreak(recs, today) {
+  const cleared = k => recs[k] && (recs[k].easy || recs[k].hard);
+  let day = cleared(today) ? today : addDays(today, -1), n = 0;
+  while (cleared(day)) { n++; day = addDays(day, -1); }
+  return n;
+}
+export function bestStreak(recs) {
+  const days = Object.keys(recs).filter(k => recs[k].easy || recs[k].hard).sort();
+  let best = 0, run = 0, prev = null;
+  for (const d of days) { run = prev && addDays(prev, 1) === d ? run + 1 : 1; best = Math.max(best, run); prev = d; }
+  return best;
+}

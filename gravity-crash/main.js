@@ -8,11 +8,12 @@ import {
 import { STAGES, CHAPTERS } from './stages.js';
 import { STEPS } from './tutorial.js';
 import { createSound } from './sound.js';
+import { INFO, ORDER, typesOn, makeDemo } from './guide.js';
 
 const $ = id => document.getElementById(id);
 const cv = $('c'), ctx = cv.getContext('2d'), stageEl = $('stage');
 const overlay = $('overlay');
-const panels = { main: $('pMain'), ask: $('pAsk'), mode: $('pMode'), stages: $('pStages'), result: $('pResult'), pause: $('pPause'), help: $('pHelp'), rank: $('pRank') };
+const panels = { main: $('pMain'), ask: $('pAsk'), mode: $('pMode'), stages: $('pStages'), result: $('pResult'), pause: $('pPause'), help: $('pHelp'), rank: $('pRank'), intro: $('pIntro'), guide: $('pGuide') };
 const titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), toastEl = $('toast'), startBtn = $('start');
 const homeBtn = $('home'), helpBtn = $('helpBtn'), rankBtn = $('rankBtn'), menuLink = $('toMenu');
 const muteBtn = $('mute'), pauseBtn = $('pause'), barEl = $('bar');
@@ -543,6 +544,7 @@ function render() {
   drawChevrons();
   drawPreviews();
   drawBlocks();
+  drawIntroPulse();
   drawGhost();
   drawHint();
   ctx.restore();
@@ -574,6 +576,7 @@ function update(dt) {
   pops = pops.filter(p => p.t < p.life);
   if (shake) { shake.t += dt; if (shake.t >= shake.dur) shake = null; }
   if (tilt) { tilt.t += dt; if (tilt.t >= 0.55) tilt = null; }
+  if (introPulse) { introPulse.t += dt; if (introPulse.t >= 3.2) introPulse = null; }
   if (anim && phase !== 'paused') {
     const s = anim.steps[anim.i], t0 = anim.t;
     anim.t += dt * anim.speed;
@@ -591,6 +594,7 @@ function frame(t) {
   const dt = Math.min((t - last) / 1000 || 0, 0.05); last = t;
   requestAnimationFrame(frame); // schedule first so one bad frame can never stop the game
   update(dt); render();
+  if (demoDraws.length && !overlay.hidden) for (const d of demoDraws) d(t / 1000);
 }
 
 /* ---------- moves ---------- */
@@ -634,7 +638,8 @@ function startPuzzle(i) {
   mode = 'puzzle'; stageIdx = i; C = null; attract = null;
   st = stageState(STAGES[i]);
   movesUsed = 0; undoSnap = null; undoLeft = 1; hinted = false; hintDir = null; deadWarn = false; puzzleDone = false;
-  resetFx(); enterPlay(); hud(); tutCoach(false);
+  resetFx(); hud(); tutCoach(false);
+  introThen(typesOn(st.board), enterPlay);
 }
 function puzzleAfter() {
   const def = STAGES[stageIdx];
@@ -687,6 +692,10 @@ function startCrash(daily) {
   resetFx(); enterPlay(); hud(); tutCoach(false);
 }
 function crashTick(dt) {
+  if (!busy()) {
+    const un = unseen([...typesOn(st.board), ...C.wave.map(w => w.b.t)]);
+    if (un.length) { introThen(un, () => { phase = 'play'; overlay.hidden = true; }); return; }
+  }
   C.elapsed += dt;
   const lv = crashLevel(C.elapsed);
   if (lv !== C.level) { C.level = lv; pops.push({ text: `LEVEL ${lv}`, x: W / 2, y: Lay.by + Lay.bs * 0.3, color: '#00f0ff', size: 20, t: 0, life: 1.2 }); }
@@ -838,6 +847,65 @@ function attractTick(dt) {
   }
 }
 
+/* ---------- new-block intro cards, board pulse, block guide ---------- */
+let seen = new Set(load('seen', []));
+let introPulse = null, demoDraws = [], guideFrom = 'help';
+const PAINT = { paintBlock, drawHole, arrowPath, rr };
+const unseen = types => ORDER.filter(t => types.includes(t) && !seen.has(t));
+// Shows a card for each block type not seen yet, then runs `done` and makes those blocks pulse on the board.
+function introThen(types, done) {
+  const list = unseen(types);
+  if (!list.length) { done(); return; }
+  phase = 'intro'; preview = null; pauseBtn.hidden = true;
+  let k = 0;
+  const show = () => {
+    const t = list[k], info = INFO[t];
+    $('introTag').textContent = list.length > 1 ? `NEW BLOCK ${k + 1}/${list.length}` : 'NEW BLOCK';
+    $('introName').textContent = info.name;
+    $('introText').innerHTML = info.lines.join('<br>');
+    demoDraws = [makeDemo($('introDemo'), t, PAINT, Math.min(300, W - 40), 128)];
+    panel('intro');
+    sound.item();
+    try { $('introOk').focus({ preventScroll: true }); } catch {}
+  };
+  introOk = () => {
+    seen.add(list[k]); save('seen', [...seen]);
+    if (++k < list.length) { show(); return; }
+    demoDraws = []; introOk = null;
+    done();
+    introPulse = { types: new Set(list), t: 0 };
+  };
+  show();
+}
+let introOk = null;
+$('introOk').addEventListener('click', () => { sound.click(); if (introOk) introOk(); });
+function drawIntroPulse() {
+  if (!introPulse || !st || phase !== 'play') return;
+  const { cell, bx, by } = Lay, k = introPulse.t, a = Math.min(1, (3.2 - k) / 0.6) * (0.55 + 0.45 * Math.sin(k * 9));
+  ctx.save(); ctx.strokeStyle = `rgba(255,230,0,${a})`; ctx.shadowColor = '#ffe600'; ctx.shadowBlur = 14; ctx.lineWidth = 3;
+  const ring = (r, c) => { const g = 3 + 2 * Math.sin(k * 9); rr(ctx, bx + c * cell - g + 2, by + r * cell - g + 2, cell + 2 * g - 4, cell + 2 * g - 4, cell * 0.24); ctx.stroke(); };
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) { const b = st.board[r][c]; if (b && introPulse.types.has(b.t)) ring(r, c); }
+  if (introPulse.types.has('k') && st.exit) ring(st.exit.r, st.exit.c);
+  ctx.restore();
+}
+function buildGuide() {
+  const ul = $('guideList'); ul.replaceChildren(); demoDraws = [];
+  for (const t of ORDER) {
+    const li = document.createElement('li');
+    if (!seen.has(t)) li.className = 'new';
+    const cv2 = document.createElement('canvas');
+    demoDraws.push(makeDemo(cv2, t, PAINT, 140, 62));
+    const box = document.createElement('div');
+    const n = document.createElement('div'); n.className = 'gn'; n.textContent = INFO[t].name;
+    const tx = document.createElement('div'); tx.className = 'gt'; tx.innerHTML = INFO[t].lines.join(' ');
+    box.append(n, tx); li.append(cv2, box); ul.append(li);
+  }
+}
+function openGuide(from) { guideFrom = from; buildGuide(); panel('guide'); }
+$('guideBtn').addEventListener('click', () => { sound.click(); openGuide('help'); });
+$('pGuideBtn').addEventListener('click', () => { sound.click(); openGuide('pause'); });
+$('guideBack').addEventListener('click', () => { sound.click(); demoDraws = []; panel(guideFrom); });
+
 /* ---------- HUD / bar ---------- */
 function hud() {
   if (mode === 'puzzle' && st) {
@@ -889,7 +957,7 @@ function hideBar() { barEl.hidden = true; }
 /* ---------- menus ---------- */
 function panel(name) { for (const [k, el] of Object.entries(panels)) el.hidden = k !== name; overlay.hidden = false; overlay.scrollTop = 0; }
 function buttons(onTitle) { helpBtn.hidden = !onTitle; menuLink.hidden = !onTitle; homeBtn.hidden = onTitle; }
-function resetFx() { anim = null; parts = []; pops = []; shake = null; tilt = null; preview = null; flash = 0; }
+function resetFx() { introPulse = null; anim = null; parts = []; pops = []; shake = null; tilt = null; preview = null; flash = 0; }
 function enterPlay() {
   sound.setQuiet(false);
   phase = 'play'; overlay.hidden = true; pauseBtn.hidden = false;
@@ -1143,7 +1211,7 @@ requestAnimationFrame(frame);
 window.__gcrash = {
   get phase() { return phase; }, get mode() { return mode; }, get state() { return st; }, get busy() { return busy(); },
   get layout() { return Lay; }, get crash() { return C; }, get stage() { return stageIdx; }, get movesUsed() { return movesUsed; },
-  get tutorial() { return tut && { i: tut.i, done: tut.done }; }, get stars() { return stars; },
+  get tutorial() { return tut && { i: tut.i, done: tut.done }; }, get stars() { return stars; }, get seen() { return [...seen]; }, get pulsing() { return !!introPulse; },
   get fx() { return { parts: parts.length, pops: pops.length, shake: !!shake } },
   STAGES, tryGravity, startPuzzle, startCrash, useItem, undo, hint,
   setFever(on) { if (C) { C.combo = on ? FEVER_COMBO : 0; if (on) startFever(); else C.fever = 0; hud(); } },
