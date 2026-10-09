@@ -18,7 +18,8 @@ const titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), eyebrow = $(
 const startBtn = $('start'), homeBtn = $('home'), helpBtn = $('helpBtn'), rankBtn = $('rankBtn'), againBtn = $('again'), menuLink = $('toMenu');
 const pauseBtn = $('pause'), retryBtn = $('retry'), muteBtn = $('mute'), bannerEl = $('banner');
 const hud = { stage: $('hStage'), name: $('hName'), shard: $('hShard'), shardLabel: $('hShardLabel'), time: $('hTime'), timeLabel: $('hTimeLabel') };
-const torchBtn = $('torch'), knob = $('knob');
+const torchBtn = $('torch'), knob = $('knob'), blinkBtn = $('blink');
+let blinkWarned = false; // one hint per press of 깜빡 while the torch is off
 
 const KEY_PROG = 'lux-progress', KEY_TOP = 'lux-top';
 function load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; } }
@@ -306,6 +307,10 @@ function frame(now) {
     torchBtn.classList.toggle('red', game.fl.col === COL.r);
     torchBtn.classList.toggle('blue', game.fl.col === COL.b);
     knob.style.transform = `rotate(${game.fl.aim}rad)`;
+    // 깜빡 only works while the torch is on: dim it otherwise, and say so if pressed
+    blinkBtn.classList.toggle('idle', !game.fl.on);
+    if (state === 'play' && game.fl.dark && !game.fl.on) { if (!blinkWarned) { blinkWarned = true; banner('<small>깜빡은</small>손전등을 켠 채 눌러요', 1.4); } }
+    else if (!game.fl.dark) blinkWarned = false;
   }
   paintHud();
   requestAnimationFrame(frame);
