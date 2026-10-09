@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   countSolutions, solveGrid, grade, parseGrid, findHint, newGame, place, toggleNote, hasNote, erase, undo, useHint,
   starsFor, digitCount, candidatesAt, completedUnitsAt, fmtTime, PEERS, MAX_HINTS, ROW, COL, BOX,
+  dailyPuzzle, addDays, dateKey, dailyStreak, bestStreak, DAILY,
 } from './logic.js';
 import { STAGES, TIERS } from './stages.js';
 import { TUT, TUT_PUZZLE, TUT_SOLUTION, tutorialSteps } from './tutorial.js';
@@ -211,6 +212,51 @@ test('tutorial script: every step accepts its intended action and finishes', () 
   assert.deepEqual(rowBlanks.filter(i => candidatesAt(g, i).includes(G)), [TUT.H1], 'only one place for G in the row');
   run(10, { type: 'input', i: TUT.H1, d: G, memo: false }, () => place(g, TUT.H1, G));
   assert.equal(g.mistakes, 1); assert.ok(!g.failed);
+});
+
+test('오늘의 스도쿠: same date gives the same puzzle; different dates differ', () => {
+  for (const kind of ['easy', 'hard']) {
+    const a = dailyPuzzle('2026-10-09', kind), b = dailyPuzzle('2026-10-09', kind);
+    assert.deepEqual(a, b);
+    assert.notEqual(dailyPuzzle('2026-10-10', kind).p, a.p);
+  }
+  assert.notEqual(dailyPuzzle('2026-10-09', 'easy').s, dailyPuzzle('2026-10-09', 'hard').s);
+});
+
+test('오늘의 스도쿠: 30 consecutive dates are unique, match their solution and are graded correctly, within the time budget', () => {
+  let worst = 0, total = 0;
+  const t0 = Date.now();
+  for (let k = 0; k < 30; k++) {
+    const date = addDays('2026-10-01', k);
+    for (const kind of ['easy', 'hard']) {
+      const t = Date.now();
+      const d = dailyPuzzle(date, kind);
+      worst = Math.max(worst, Date.now() - t);
+      const spec = DAILY[kind];
+      assert.equal(countSolutions(d.p, 2), 1, `${date} ${kind} unique`);
+      assert.equal(solveGrid(d.p).join(''), d.s);
+      const g = grade(d.p);
+      assert.ok(g.solved && g.level >= spec.levels[0] && g.level <= spec.levels[1], `${date} ${kind} level ${g.level}`);
+      assert.equal(g.level, d.level);
+      assert.ok(d.givens >= spec.givens[0] && d.givens <= spec.givens[1], `${date} ${kind} givens ${d.givens}`);
+      for (let i = 0; i < 81; i++) if (d.p[i] !== '0') assert.equal(d.p[i], d.s[i]);
+    }
+  }
+  total = Date.now() - t0;
+  console.log(`    60 daily puzzles: total ${total}ms, slowest ${worst}ms`);
+  assert.ok(worst < 1500, 'each daily puzzle builds in under 1.5 s in node');
+  assert.ok(total < 15000, '30 days of puzzles in under 15 s');
+});
+
+test('dates and streaks', () => {
+  assert.equal(addDays('2026-12-31', 1), '2027-01-01');
+  assert.equal(addDays('2026-03-01', -1), '2026-02-28');
+  assert.equal(dateKey(new Date(2026, 0, 5)), '2026-01-05');
+  const r = { '2026-10-05': { easy: {} }, '2026-10-06': { hard: {} }, '2026-10-07': { easy: {} }, '2026-10-01': { easy: {} } };
+  assert.equal(dailyStreak(r, '2026-10-07'), 3);
+  assert.equal(dailyStreak(r, '2026-10-08'), 3, 'today not played yet keeps yesterday’s streak');
+  assert.equal(dailyStreak(r, '2026-10-09'), 0);
+  assert.equal(bestStreak(r), 3);
 });
 
 console.log(`\n${n} tests passed`);

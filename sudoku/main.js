@@ -1,6 +1,6 @@
 import {
   newGame, place, toggleNote, erase, undo as undoMove, useHint, starsFor, digitCount, fmtTime, hasNote, isCorrect,
-  ROW, COL, BOX, UNITS, MAX_MISTAKES, MAX_HINTS,
+  ROW, COL, BOX, UNITS, MAX_MISTAKES, MAX_HINTS, dailyPuzzle, dateKey, dailyStreak, bestStreak,
 } from './logic.js';
 import { STAGES, TIERS } from './stages.js';
 import { createSound } from './sound.js';
@@ -21,6 +21,13 @@ let saves = store.get('save', {});   // stage number -> saved game
 let mode = 'title';                  // title | play | tutorial | result
 let tut = null;                      // { steps, s, auto, done }
 const playing = () => mode === 'play' || mode === 'tutorial';
+let dailyRecs = store.get('daily', {}); // 'YYYY-MM-DD' -> { easy: { best, stars }, hard: {...} }
+let daily = null;                         // { date, kind, def } while playing 오늘의 스도쿠
+let fakeToday = null;                     // test hook override
+const KIND_KO = { easy: '쉬움', hard: '어려움' };
+const today = () => fakeToday || dateKey(new Date());
+const saveKey = () => (daily ? `d:${daily.date}:${daily.kind}` : String(stageNo));
+const fmtDate = key => { const [y, m, d] = key.split('-').map(Number); return `${m}월 ${d}일 (${'일월화수목금토'[new Date(y, m - 1, d).getDay()]})`; };
 let stageNo = 1, game = null, sel = -1, memo = false, elapsed = 0, lastTick = 0, page = store.get('page', 0);
 let toastTimer = 0, busyUntil = 0;
 
@@ -83,12 +90,13 @@ function paintSel() {
   }
 }
 function hud() {
-  $('stageName').innerHTML = mode === 'tutorial' ? '튜토리얼<small>기본 규칙</small>' : `${stageNo}탄<small>${TIERS[tierOf(stageNo)].name}</small>`;
+  $('stageName').innerHTML = mode === 'tutorial' ? '튜토리얼<small>기본 규칙</small>'
+    : daily ? `오늘의 스도쿠<small>${KIND_KO[daily.kind]} · ${fmtDate(daily.date)}</small>` : `${stageNo}탄<small>${TIERS[tierOf(stageNo)].name}</small>`;
   [...$('dots').children].forEach((d, k) => d.classList.toggle('on', k < game.mistakes));
   $('hintN').textContent = MAX_HINTS - game.hints;
   $('hint').disabled = game.hints >= MAX_HINTS;
   $('undo').disabled = !game.history.length;
-  const r = mode === 'tutorial' ? null : recs[stageNo];
+  const r = mode === 'tutorial' ? null : daily ? (dailyRecs[daily.date] || {})[daily.kind] : recs[stageNo];
   $('best').textContent = r ? fmtTime(r.best) : '-';
   for (let d = 1; d <= 9; d++) {
     const left = 9 - digitCount(game, d);
@@ -118,23 +126,75 @@ function toast(msg, kind = '', ms = 1800) {
 /* ---------- game flow ---------- */
 function persist() {
   if (!game || mode !== 'play' || game.won || game.failed) return;
-  if (!game.history.length && !game.hints && !game.mistakes) { if (saves[stageNo]) dropSave(stageNo); return; }
-  saves[stageNo] = { vals: game.vals, notes: game.notes, mistakes: game.mistakes, hints: game.hints, hinted: game.hinted || [], history: game.history.slice(-60), time: Math.floor(elapsed), at: Date.now() };
+  const key = saveKey();
+  if (!game.history.length && !game.hints && !game.mistakes) { if (saves[key]) dropSave(key); return; }
+  saves[key] = { vals: game.vals, notes: game.notes, mistakes: game.mistakes, hints: game.hints, hinted: game.hinted || [], history: game.history.slice(-60), time: Math.floor(elapsed), at: Date.now() };
   const keys = Object.keys(saves).sort((a, b) => saves[b].at - saves[a].at);
   for (const k of keys.slice(6)) delete saves[k];
   store.set('save', saves);
 }
 function dropSave(n) { delete saves[n]; store.set('save', saves); }
 
-function startStage(n, { fresh = false } = {}) {
+function startStage(n, opts = {}) {
   if (tut) endTutorial(false);
-  stageNo = n; const def = STAGES[n - 1];
+  daily = null; stageNo = n;
+  begin(STAGES[n - 1], opts);
+  store.set('last', n);
+}
+/* ---------- 오늘의 스도쿠: built in a worker, cached for the day ---------- */
+let worker = null, wid = 0;
+const pendingW = new Map(), inflight = new Map();
+function buildDaily(date, kind) {
+  return new Promise(resolve => {
+    const local = () => resolve(dailyPuzzle(date, kind));
+    if (worker === 'broken') { setTimeout(local, 30); return; }
+    try {
+      if (!worker) {
+        worker = new Worker(new URL('./daily-worker.js', import.meta.url), { type: 'module' });
+        worker.onmessage = e => { const p = pendingW.get(e.data.id); pendingW.delete(e.data.id); if (p) p.resolve(e.data.result || dailyPuzzle(p.date, p.kind)); };
+        worker.onerror = () => { worker = 'broken'; for (const [, p] of pendingW) p.resolve(dailyPuzzle(p.date, p.kind)); pendingW.clear(); };
+      }
+      const id = ++wid; pendingW.set(id, { resolve, date, kind });
+      worker.postMessage({ id, date, kind });
+    } catch (e) { worker = 'broken'; setTimeout(local, 30); }
+  });
+}
+function cachedDaily(date, kind) { const c = store.get('dcache', {}); return c.date === date ? c[kind] : null; }
+function getDaily(date, kind) {
+  const hit = cachedDaily(date, kind);
+  if (hit) return Promise.resolve(hit);
+  const k = date + ':' + kind;
+  if (!inflight.has(k)) inflight.set(k, buildDaily(date, kind).then(res => {
+    const c = store.get('dcache', {}); const next = c.date === date ? c : { date };
+    next[kind] = { p: res.p, s: res.s, level: res.level, givens: res.givens };
+    store.set('dcache', next); inflight.delete(k);
+    return next[kind];
+  }));
+  return inflight.get(k);
+}
+const prefetchDaily = () => { const d = today(); for (const kind of ['easy', 'hard']) getDaily(d, kind); };
+async function startDaily(kind, opts = {}) {
+  if (tut) endTutorial(false);
+  const date = opts.date || today();
+  let def = cachedDaily(date, kind);
+  if (!def) {
+    $('busy').hidden = false;
+    const t0 = performance.now();
+    def = await getDaily(date, kind);
+    if (performance.now() - t0 < 350) await new Promise(r => setTimeout(r, 350 - (performance.now() - t0)));
+    $('busy').hidden = true;
+  }
+  daily = { date, kind, def };
+  begin(def, opts);
+}
+function begin(def, { fresh = false } = {}) {
+  const key = saveKey();
   game = newGame(def.p, def.s); elapsed = 0;
-  const sv = !fresh && saves[n];
+  const sv = !fresh && saves[key];
   if (sv) {
     game.vals = sv.vals.slice(); game.notes = sv.notes.slice(); game.mistakes = sv.mistakes; game.hints = sv.hints;
     game.hinted = sv.hinted.slice(); game.history = sv.history || []; elapsed = sv.time || 0;
-  } else if (fresh) dropSave(n);
+  } else if (fresh) dropSave(key);
   memo = false; paintMemo();
   sel = game.vals.findIndex(v => !v);
   // start near the centre: the first empty cell of the middle box reads nicely
@@ -145,7 +205,6 @@ function startStage(n, { fresh = false } = {}) {
   showPanel(null); mode = 'play'; lastTick = performance.now(); busyUntil = 0;
   renderAll(); paintTime(); layoutBoard();
   if (sv) toast('이어서 풀어요');
-  store.set('last', n);
 }
 function select(i) {
   if (!playing() || i < 0 || i > 80) return;
@@ -282,28 +341,33 @@ function endTutorial(toSelect = true) {
 function win() {
   mode = 'result'; busyUntil = Infinity;
   const stars = starsFor(game.mistakes, game.hints), t = Math.floor(elapsed);
-  const prev = recs[stageNo];
+  const book = daily ? (dailyRecs[daily.date] = dailyRecs[daily.date] || {}) : recs, slot = daily ? daily.kind : stageNo;
+  const prev = book[slot];
   const newBest = !prev || t < prev.best;
-  recs[stageNo] = { stars: Math.max(stars, prev ? prev.stars : 0), best: prev ? Math.min(prev.best, t) : t };
-  store.set('rec', recs); dropSave(stageNo);
+  book[slot] = { stars: Math.max(stars, prev ? prev.stars : 0), best: prev ? Math.min(prev.best, t) : t };
+  if (daily) store.set('daily', dailyRecs); else store.set('rec', recs);
+  dropSave(saveKey());
+  const best = book[slot].best;
   sel = -1; paintSel(); hud();
   boardEl.classList.remove('win'); void boardEl.offsetWidth; boardEl.classList.add('win');
   sound.win();
   setTimeout(() => {
-    $('rTitle').textContent = stageNo === 100 ? '모두 클리어!' : '클리어!';
+    $('rTitle').textContent = daily ? `오늘의 스도쿠 ${KIND_KO[daily.kind]} 클리어!` : stageNo === 100 ? '모두 클리어!' : '클리어!';
     $('rStars').innerHTML = [0, 1, 2].map(k => (k < stars ? `<span class="s" style="animation-delay:${150 + k * 160}ms">★</span>` : '<i>★</i>')).join('');
     $('rBadge').hidden = !(newBest && prev);
     const why = game.mistakes + game.hints === 0 ? '실수·힌트 없이 깼어요' : `실수 <b>${game.mistakes}</b> · 힌트 <b>${game.hints}</b>`;
-    $('rMsg').innerHTML = `시간 <b>${fmtTime(t)}</b> · 최고 <b>${fmtTime(recs[stageNo].best)}</b><br>${why}`;
-    $('rNext').textContent = stageNo < 100 ? '다음 탄' : '단계 선택';
-    $('rNext').dataset.act = stageNo < 100 ? 'next' : 'select';
+    const streak = daily ? `<br>오늘의 스도쿠 <b>${dailyStreak(dailyRecs, today())}</b>일 연속!` : '';
+    $('rMsg').innerHTML = `시간 <b>${fmtTime(t)}</b> · 최고 <b>${fmtTime(best)}</b><br>${why}${streak}`;
+    const nextAct = daily ? (daily.kind === 'easy' && !(dailyRecs[daily.date] || {}).hard ? 'dhard' : 'select') : stageNo < 100 ? 'next' : 'select';
+    $('rNext').textContent = { next: '다음 탄', dhard: '어려움 도전', select: '단계 선택' }[nextAct];
+    $('rNext').dataset.act = nextAct;
     $('rRetry').hidden = false;
     $('result').hidden = false; confetti();
     setTimeout(() => $('rNext').focus({ preventScroll: true }), 50);
   }, 1250);
 }
 function lose() {
-  mode = 'result'; busyUntil = Infinity; dropSave(stageNo);
+  mode = 'result'; busyUntil = Infinity; dropSave(saveKey());
   sound.fail(); boardEl.classList.add('lost');
   setTimeout(() => {
     $('rTitle').textContent = '실패';
@@ -352,6 +416,7 @@ const HELP = [
   ['3', 'red', '틀린 숫자는 빨갛게 보이고, 3번 틀리면 실패예요'],
   ['?', '', '힌트는 한 판에 3번, 이유와 함께 한 칸을 채워요'],
   ['★', 'gold', '실수·힌트 없이 깨면 별 3개를 받아요'],
+  ['<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>', '', '오늘의 스도쿠: 매일 바뀌는 쉬움·어려움 두 판'],
   ['<svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 10h1M9.5 10h1M13 10h1M16.5 10h1M8 14h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>', '', 'PC: 방향키 이동 · 1~9 입력 · 0 지우기 · N 메모 · Z 되돌리기 · H 힌트'],
 ];
 function showHelp(back) {
@@ -373,6 +438,9 @@ function showRecords(back) {
     h += `<li><span><i style="display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;background:${TIER_COLORS[ti]}"></i>${t.name}</span><span class="n">${ns.length}/${t.to - t.from + 1}</span><span class="s">★ ${st}</span><span class="t">${fast ? fmtTime(recs[fast].best) + `<em>${fast}탄</em>` : '-'}</span></li>`;
   });
   $('recs').innerHTML = h;
+  const dDays = Object.keys(dailyRecs).filter(k => dailyRecs[k].easy || dailyRecs[k].hard);
+  const dClears = dDays.reduce((a, k) => a + (dailyRecs[k].easy ? 1 : 0) + (dailyRecs[k].hard ? 1 : 0), 0);
+  $('stats2').innerHTML = `<div><b>${dClears}</b><small>깬 퍼즐</small></div><div><b>${dailyStreak(dailyRecs, today())}일</b><small>연속 기록</small></div><div><b>${bestStreak(dailyRecs)}일</b><small>최고 연속</small></div>`;
   $('recBack').onclick = back || showTitle;
   showPanel('records');
 }
@@ -383,14 +451,19 @@ function showSelect(p) {
   store.set('page', page);
   $('selTot').textContent = `★ ${totalStars()}`;
   // resume banner: most recent unfinished game
+  const td = today();
+  const stale = Object.keys(saves).filter(k => k.startsWith('d:') && k.split(':')[1] !== td); // yesterday's daily is gone
+  if (stale.length) { stale.forEach(k => delete saves[k]); store.set('save', saves); }
   const last = Object.keys(saves).sort((a, b) => saves[b].at - saves[a].at)[0];
   $('resume').hidden = !last;
   if (last) {
     const s = saves[last], filled = s.vals.filter(v => v).length;
-    $('resumeT').textContent = `${last}탄 이어하기`;
-    $('resumeS').textContent = `${TIERS[tierOf(+last)].name} · ${fmtTime(s.time)} · ${filled}/81칸`;
-    $('resume').onclick = () => { sound.unlock(); sound.tap(); startStage(+last); };
+    const dk = last.startsWith('d:') ? last.split(':')[2] : null;
+    $('resumeT').textContent = dk ? `오늘의 스도쿠 ${KIND_KO[dk]} 이어하기` : `${last}탄 이어하기`;
+    $('resumeS').textContent = `${dk ? fmtDate(td) : TIERS[tierOf(+last)].name} · ${fmtTime(s.time)} · ${filled}/81칸`;
+    $('resume').onclick = () => { sound.unlock(); sound.tap(); if (dk) startDaily(dk); else startStage(+last); };
   }
+  paintDaily(); prefetchDaily();
   $('pages').innerHTML = Array.from({ length: 100 / PAGE }, (_, k) => {
     let st = 0; for (let n = k * PAGE + 1; n <= (k + 1) * PAGE; n++) st += recs[n] ? recs[n].stars : 0;
     return `<button type="button" role="tab" data-p="${k}" class="${k === page ? 'on' : ''}" aria-selected="${k === page}">${k * PAGE + 1}–${(k + 1) * PAGE}${st ? '<small>★' + st + '</small>' : ''}</button>`;
@@ -415,6 +488,18 @@ function showSelect(p) {
   showPanel('select');
   $('select').scrollTop = 0;
 }
+function paintDaily() {
+  const td = today(), rec = dailyRecs[td] || {}, streak = dailyStreak(dailyRecs, td);
+  $('dDate').textContent = fmtDate(td);
+  $('dStreak').textContent = streak ? `연속 ${streak}일` : '';
+  $('dStreak').hidden = !streak;
+  document.querySelectorAll('.dbtn').forEach(b => {
+    const k = b.dataset.k, r = rec[k], saved = saves[`d:${td}:${k}`];
+    b.classList.toggle('done', !!r); b.classList.toggle('saved', !r && !!saved);
+    b.querySelector('small').innerHTML = r ? `✓ ${fmtTime(r.best)}` : saved ? '이어하기' : k === 'easy' ? '싱글로 풀어요' : '고급 기법 필요';
+  });
+}
+document.querySelectorAll('.dbtn').forEach(b => b.addEventListener('click', () => { sound.unlock(); sound.tap(); startDaily(b.dataset.k); }));
 $('pages').addEventListener('click', e => { const b = e.target.closest('button[data-p]'); if (b) { sound.tap(); showSelect(+b.dataset.p); } });
 $('chapters').addEventListener('click', e => {
   const b = e.target.closest('.lv'); if (!b || b.disabled) return;
@@ -444,10 +529,12 @@ $('selBack').addEventListener('click', showTitle);
 $('rNext').addEventListener('click', () => {
   const act = $('rNext').dataset.act;
   if (act === 'next') startStage(stageNo + 1);
-  else if (act === 'retry') startStage(stageNo, { fresh: true });
+  else if (act === 'retry') restart();
+  else if (act === 'dhard') startDaily('hard', { date: daily.date });
   else showSelect();
 });
-$('rRetry').addEventListener('click', () => startStage(stageNo, { fresh: true }));
+function restart() { if (daily) startDaily(daily.kind, { date: daily.date, fresh: true }); else startStage(stageNo, { fresh: true }); }
+$('rRetry').addEventListener('click', restart);
 $('rSelect').addEventListener('click', () => showSelect());
 $('rHome').addEventListener('click', showTitle);
 
@@ -524,6 +611,11 @@ showPanel('title');
 window.__sudoku = {
   get mode() { return mode; },
   get stage() { return stageNo; },
+  get daily() { return daily && { date: daily.date, kind: daily.kind, p: daily.def.p }; },
+  get dailyRecs() { return dailyRecs; },
+  get today() { return today(); },
+  setToday(key) { fakeToday = key || null; if (!$('select').hidden) showSelect(page); },
+  startDaily,
   get selected() { return sel; },
   get memo() { return memo; },
   get page() { return page; },
