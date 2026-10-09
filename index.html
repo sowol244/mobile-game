@@ -44,6 +44,11 @@
   .badge.new { background: var(--new); color: #fff; }
   .badge.wip { background: #3a3358; color: var(--muted); }
   .game.wip { opacity: 0.6; }
+  /* My own designs: a highlighted group at the top */
+  details.own { margin-bottom: 8px; padding: 2px 10px 6px; border-radius: 18px; background: linear-gradient(160deg, rgba(255, 210, 63, 0.12), rgba(255, 93, 122, 0.08)); box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.35); }
+  details.own > summary { color: var(--accent); }
+  details.own > .branch { border-left-color: rgba(255, 210, 63, 0.45); }
+  details.own > .branch > .game::before { border-top-color: rgba(255, 210, 63, 0.45); }
   .note { margin: 22px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; }
 </style>
 </head>
@@ -66,12 +71,12 @@ const GAMES = [
   { id: 'super-jump', name: '교행이의 모험', desc: '칼로 몬스터를 베며 달리는 모험 게임', group: ['액션'] },
   { id: 'neon-block', name: '네온 블록', desc: '블록을 채워 줄을 지우는 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'] },
   { id: 'retro-blocks', name: '레트로 블록', desc: '떨어지는 블록으로 줄을 지우는 고전 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'], added: '2026-10-09' },
-  { id: 'gravity-crash', name: 'Gravity Crash', desc: '중력을 돌려 블록을 터뜨리는 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'], added: '2026-10-08' },
+  { id: 'gravity-crash', name: 'Gravity Crash', desc: '중력을 돌려 블록을 터뜨리는 퍼즐 게임', group: ['창작'], added: '2026-10-08' },
   { id: 'sudoku', name: '스도쿠', desc: '빈칸에 1~9를 채우는 숫자 퍼즐 게임', group: ['퍼즐', '숫자 퍼즐'], added: '2026-10-09' },
   { id: 'one-move', name: 'Move On', desc: '타일 하나씩 옮겨 숫자를 합치는 퍼즐 게임', group: ['퍼즐', '숫자 퍼즐'], added: '2026-10-08' },
-  { id: 'lux-umbra', name: 'Lux & Umbra', desc: '빛을 켜고 꺼서 길을 여는 퍼즐 게임', group: ['퍼즐', '탐험 퍼즐'], added: '2026-10-08' },
+  { id: 'lux-umbra', name: 'Lux & Umbra', desc: '빛을 켜고 꺼서 길을 여는 퍼즐 게임', group: ['창작'], added: '2026-10-08' },
 ];
-const TOP = [{ name: '액션', icon: '🎮' }, { name: '퍼즐', icon: '🧩' }];
+const TOP = [{ name: '창작 게임', key: '창작', icon: '✨', own: true }, { name: '액션', icon: '🎮' }, { name: '퍼즐', icon: '🧩' }];
 const NEW_DAYS = 30;
 
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -113,15 +118,18 @@ function group(path, label, count, children, sub) {
 
 const tree = document.getElementById('tree');
 for (const top of TOP) {
-  const games = GAMES.filter(g => g.group[0] === top.name);
+  const key = top.key || top.name;
+  const games = GAMES.filter(g => g.group[0] === key);
   const items = [];
   for (const g of games.filter(g => g.group.length === 1)) items.push(gameRow(g));
   const subs = [...new Set(games.filter(g => g.group[1]).map(g => g.group[1]))];
   for (const s of subs) {
     const inSub = games.filter(g => g.group[1] === s);
-    items.push(group(`${top.name}/${s}`, s, inSub.length, inSub.map(gameRow), true));
+    items.push(group(`${key}/${s}`, s, inSub.length, inSub.map(gameRow), true));
   }
-  tree.append(group(top.name, `${top.icon} ${top.name}`, games.length, items, false));
+  const d = group(key, `${top.icon} ${top.name}`, games.length, items, false);
+  if (top.own) d.classList.add('own');
+  tree.append(d);
 }
 
 const rec = recent.map(id => GAMES.find(g => g.id === id && !g.wip)).filter(Boolean);
