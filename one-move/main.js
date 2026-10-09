@@ -1,6 +1,6 @@
 import {
   parseStage, applyMove, blockReason, isWin, legalMoves, solve, starsFor, starCut, dailyStage, dayNumber,
-  movable, isGate, isNum, expOf, valueOf, kindOf, DIRS, PIN, ONCE,
+  movable, isGate, isNum, expOf, valueOf, kindOf, DIRS, PIN, ONCE, NUM, slideAll, canSlide, spawnTile,
 } from './logic.js';
 import { STAGES, CHAPTERS } from './stages.js';
 import { createSound } from './sound.js';
@@ -17,7 +17,7 @@ const DIR_ARROW = ['위로', '오른쪽으로', '아래로', '왼쪽으로'];
 
 let recs = store.get('rec', {});        // stage id -> { stars, best }
 let dailyRecs = store.get('daily', {}); // day number -> { stars, best }
-let mode = 'title';                     // title | play | tutorial | result
+let mode = 'title';                     // title | play | tutorial | endless | result
 let cur = null;                         // { def, index (stage index, -1 = daily), day }
 let st = null, history = [], undos = UNDOS, hints = HINTS, hinted = false, selId = 0, hintMove = null, hintMap = new Map();
 let tut = null, lastResult = null, panelBack = null;
@@ -145,7 +145,7 @@ function sparks(k, el) {
 // Selection arrows, hint arrow and the tutorial ring.
 function drawMarks() {
   boardEl.querySelectorAll('.arrow, .tutRing').forEach(e => e.remove());
-  if (!st || (mode !== 'play' && mode !== 'tutorial')) { $('status').textContent = ''; return; }
+  if (!st || (mode !== 'play' && mode !== 'tutorial')) { $('status').textContent = mode === 'endless' ? '밀면 모든 타일이 함께 움직여요' : ''; return; }
   const at = cellOfId(selId);
   $('status').textContent = at >= 0 ? '화살표 칸을 누르거나 그쪽으로 밀어요' : '움직일 타일을 눌러 고르세요';
   for (const el of tileEls.values()) el.classList.toggle('sel', +el.dataset.id === selId && at >= 0 && movable(st.codes[at]));
@@ -208,10 +208,11 @@ function toast(text, ms = 1500) {
 
 /* ---------- game flow ---------- */
 function showPanel(id) {
-  for (const p of ['title', 'offer', 'help', 'records', 'select']) $(p).hidden = p !== id;
+  for (const p of ['title', 'offer', 'help', 'records', 'select', 'modes']) $(p).hidden = p !== id;
   if (id) $('result').hidden = true;
 }
 function loadDef(def) {
+  setEndlessUI(false);
   st = parseStage(def);
   boardEl.classList.remove('win');
   document.querySelectorAll('.confetti').forEach(c => c.remove());
@@ -242,6 +243,7 @@ function restart(fresh) {
   if (!fresh) sound.undo();
 }
 function undo() {
+  if (mode === 'endless' || (mode === 'result' && lastResult && lastResult.endless)) { endlessUndo(); return; }
   if (mode !== 'play' && !(mode === 'result' && lastResult && !lastResult.win)) return;
   if (!history.length || undos <= 0) return;
   st = history.pop(); undos--; hintMove = null;
@@ -289,7 +291,7 @@ function finish(win) {
   const d = cur.def;
   lastResult = { win };
   $('result').hidden = false;
-  $('perfect').hidden = true;
+  $('perfect').hidden = true; $('perfect').textContent = '완벽! 최소 이동';
   const rNext = $('rNext'), rRetry = $('rRetry');
   if (win) {
     const stars = starsFor(st.moves, d.opt, d.limit, hinted), perfect = st.moves === d.opt && !hinted;
@@ -329,7 +331,7 @@ function confetti(count) {
     c.style.left = Math.random() * 100 + '%'; c.style.background = colors[i % colors.length];
     c.style.setProperty('--dx', (Math.random() - 0.5) * 160 + 'px'); c.style.setProperty('--r', (Math.random() - 0.5) * 1080 + 'deg');
     c.style.animationDuration = 1.4 + Math.random() * 1.2 + 's'; c.style.animationDelay = Math.random() * 0.3 + 's';
-    $('app').append(c); setTimeout(() => c.remove(), 3000);
+    $('fx').append(c); setTimeout(() => c.remove(), 3000);
   }
 }
 
@@ -425,7 +427,7 @@ function showSelect() {
   $('dailySub').textContent = dr ? `오늘 클리어 ★${dr.stars} · 연속 ${streak()}일` : `매일 새로운 한 판 · ${new Date().getMonth() + 1}월 ${new Date().getDate()}일`;
   $('dailyGo').textContent = dr ? '다시' : '도전';
   const c = host.querySelector('.cur');
-  if (c) c.scrollIntoView({ block: 'center' });
+  if (c) c.scrollIntoView({ block: 'center', inline: 'nearest' });
 }
 function streak() {
   let d = dayNumber(new Date()), n = 0;
@@ -455,6 +457,7 @@ const HELP = [
   ['<div class="tile once" data-e="1"><span class="n">2</span></div>', '① 타일은 한 번 움직이면 고정돼요.'],
   ['<div class="tile gate"><span class="n">8</span></div>', '문은 적힌 숫자를 만들면 열려요.'],
   ['<div class="tile" data-e="5"><span class="n">32</span></div>', '최소 이동에 가까울수록 별이 많아요.'],
+  ['<div class="tile" data-e="11" style="font-size:9px"><span class="n">2048</span></div>', '무한 모드: 밀면 모든 타일이 함께 움직여요.'],
   ['<div class="tile" data-e="6"><span class="n">64</span></div>', 'PC: 클릭 후 방향키, Z 되돌리기, H 힌트'],
 ];
 function showHelp() {
@@ -474,6 +477,10 @@ function showRecords(back) {
   const days = Object.keys(dailyRecs).length;
   rows.push(`<li><span>오늘의 퍼즐</span><span class="m">${days}일 클리어</span><span class="s">연속 ${streak()}일</span></li>`);
   $('recs').innerHTML = rows.join('');
+  const rank = store.get('endless-rank', []), fmt = n => n.toLocaleString('ko-KR');
+  $('endlessRecs').innerHTML = rank.length
+    ? rank.map((r, i) => { const d = new Date(r.t); return `<li${r.t === lastEntry ? ' class="me"' : ''}><span class="k">${i + 1}</span><span>${fmt(r.score)}점</span><span class="m">최고 ${r.tile} · ${d.getMonth() + 1}/${d.getDate()}</span><span class="s">${i === 0 ? '★' : ''}</span></li>`; }).join('')
+    : '<li><span class="empty" style="grid-column:1/-1">아직 기록이 없어요.</span></li>';
 }
 
 /* ---------- input ---------- */
@@ -541,6 +548,12 @@ function tap(k) {
 
 const KEYS = { ArrowUp: 0, KeyW: 0, ArrowRight: 1, KeyD: 1, ArrowDown: 2, KeyS: 2, ArrowLeft: 3, KeyA: 3 };
 document.addEventListener('keydown', e => {
+  if (mode === 'endless') {
+    if (e.code in KEYS) { e.preventDefault(); sound.unlock(); endlessMove(KEYS[e.code]); }
+    else if (e.code === 'KeyZ' || e.code === 'Backspace') endlessUndo();
+    else if (e.code === 'KeyR') endlessRestart();
+    return;
+  }
   if (mode !== 'play' && mode !== 'tutorial') {
     if (mode === 'result' && e.code === 'KeyZ') undo();
     return;
@@ -567,29 +580,205 @@ function cycle(step = 1) {
   sound.pick(); drawMarks();
 }
 
+
+/* ---------- endless mode: 2048 rules, every tile slides at once ---------- */
+const EN_SAVE = 'endless-save', EN_RANK = 'endless-rank';
+let en = null, enId = 1e6, lastEntry = 0, restartArm = 0;
+const fmt = n => n.toLocaleString('ko-KR');
+const enBest = () => { const r = store.get(EN_RANK, []); return Math.max(r.length ? r[0].score : 0, en ? en.score : 0); };
+const maxTile = vals => Math.max(2, ...vals);
+function setEndlessUI(on) {
+  $('app').classList.toggle('endless', on);
+  $('toSelectLabel').textContent = on ? '메뉴' : '단계';
+}
+function showModes() {
+  mode = 'title'; showPanel('modes');
+  $('modeStageSub').textContent = `한 타일씩 한 칸 옮기는 퍼즐 · ★ ${totalStars()}/${STAGES.length * 3}`;
+  const save = store.get(EN_SAVE, null), best = store.get(EN_RANK, [])[0];
+  $('modeEndlessSub').textContent = save && !save.over ? `이어하기 · ${fmt(save.score)}점` : best ? `모두 함께 밀어 합치기 · 최고 ${fmt(best.score)}점` : '모든 타일을 한꺼번에 밀어 합치기';
+}
+function enToSt() {
+  const codes = new Uint8Array(16), ids = new Int32Array(16);
+  en.vals.forEach((v, i) => { if (v) { codes[i] = NUM + Math.round(Math.log2(v)); ids[i] = en.ids[i]; } });
+  st = { n: 4, codes, ids, goal: -1, target: 99, limit: 0, moves: en.moves };
+}
+function addSpawn() {
+  const sp = spawnTile(en.vals, Math.random);
+  if (!sp) return null;
+  en.vals[sp.index] = sp.value; en.ids[sp.index] = ++enId;
+  return sp;
+}
+function startEndless() {
+  const save = store.get(EN_SAVE, null);
+  if (save && !save.over && Array.isArray(save.vals) && save.vals.length === 16) {
+    en = save; enId = Math.max(enId, ...en.ids) + 1;
+    openEndless();
+  } else newEndless();
+}
+function newEndless(vals) {
+  en = { vals: Array(16).fill(0), ids: Array(16).fill(0), score: 0, moves: 0, undo: null, undoUsed: false, reached: false, over: false };
+  if (vals) vals.forEach((v, i) => { en.vals[i] = v; if (v) en.ids[i] = ++enId; });
+  else { addSpawn(); addSpawn(); }
+  en.reached = maxTile(en.vals) >= 2048;
+  openEndless();
+}
+function openEndless() {
+  mode = 'endless'; tut = null; lastResult = null; selId = 0;
+  showPanel(null); $('result').hidden = true; $('coach').hidden = true;
+  setEndlessUI(true);
+  boardEl.classList.remove('win');
+  document.querySelectorAll('.confetti').forEach(c => c.remove());
+  $('toast').classList.add('fade');
+  enToSt(); buildCells(); layoutBoard();
+  for (const el of tileEls.values()) el.classList.add('spawn');
+  $('stageName').innerHTML = '무한 모드<small>모두 함께 밀기</small>';
+  enHud(); saveEndless();
+}
+function enHud(gain = 0) {
+  $('eScore').textContent = fmt(en.score);
+  $('eBest').textContent = fmt(enBest());
+  const t = maxTile(en.vals), et = $('eTile');
+  et.dataset.e = Math.round(Math.log2(t)); et.textContent = t;
+  $('undoN').textContent = en.undoUsed || !en.undo ? 0 : 1;
+  $('undo').disabled = !en.undo || en.undoUsed;
+  $('restart').disabled = false;
+  if (gain) {
+    const g = $('eGain'); g.textContent = '+' + gain; g.classList.remove('go'); void g.offsetWidth; g.classList.add('go');
+    const sc = $('eScore'); sc.classList.remove('bump'); void sc.offsetWidth; sc.classList.add('bump');
+  }
+}
+const saveEndless = () => store.set(EN_SAVE, en);
+function endlessMove(d) {
+  if (mode !== 'endless') return;
+  const r = slideAll(en.vals, 4, d, en.ids);
+  if (!r.moved) { boardEl.classList.remove('stuck'); void boardEl.offsetWidth; boardEl.classList.add('stuck'); sound.blocked(); return; }
+  if (!en.undoUsed) en.undo = { vals: en.vals.slice(), ids: en.ids.slice(), score: en.score, moves: en.moves, reached: en.reached };
+  en.vals = r.vals; en.ids = r.ids; en.score += r.score; en.moves++;
+  const sp = addSpawn();
+  enToSt();
+  // slide every tile; merged-away tiles slide under their partner and vanish, the partner pops with the new value
+  const merged = new Set();
+  for (const a of r.anims) {
+    const el = tileEls.get(a.id);
+    if (!el) continue;
+    place(el, a.to);
+    if (a.gone) {
+      tileEls.delete(a.id); el.classList.add('under');
+      setTimeout(() => el.remove(), 130);
+      merged.add(a.into);
+    }
+  }
+  for (const id of merged) {
+    const el = tileEls.get(id);
+    if (!el) continue;
+    setTimeout(() => {
+      const at = cellOfId(id); if (at < 0) return;
+      paint(el, st.codes[at]);
+      el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+      if (st.codes[at] - NUM >= 7) sparks(at, el);
+    }, 105);
+  }
+  if (sp) { const el = makeTile(en.ids[sp.index], sp.index); paint(el, st.codes[sp.index]); el.classList.add('spawn'); }
+  if (r.score) sound.merge(Math.round(Math.log2(Math.max(...r.anims.filter(a => a.gone).map(a => a.value))))); else sound.move();
+  if (!en.reached && maxTile(en.vals) >= 2048) {
+    en.reached = true;
+    setTimeout(() => { toast('2048 달성! 계속 가요', 2600); confetti(60); sound.win(true); boardEl.classList.remove('win'); void boardEl.offsetWidth; boardEl.classList.add('win'); }, 200);
+  }
+  enHud(r.score);
+  if (!canSlide(en.vals, 4)) { en.over = true; mode = 'result'; saveEndless(); setTimeout(endlessOver, 650); }
+  else saveEndless();
+}
+function recordEndless() {
+  if (!en || en.score <= 0) return 0;
+  const t = Date.now(), rank = store.get(EN_RANK, []);
+  rank.push({ score: en.score, tile: maxTile(en.vals), t });
+  rank.sort((a, b) => b.score - a.score || a.t - b.t);
+  const top = rank.slice(0, 10);
+  store.set(EN_RANK, top);
+  lastEntry = top.some(r => r.t === t) ? t : 0;
+  return lastEntry ? top.findIndex(r => r.t === t) + 1 : 0;
+}
+function endlessOver() {
+  const rankPos = recordEndless();
+  lastResult = { endless: true, entry: lastEntry, canUndo: !!en.undo && !en.undoUsed };
+  $('result').hidden = false;
+  $('rTitle').textContent = '게임 끝';
+  $('rStars').innerHTML = `<span class="escore">${fmt(en.score)}</span>`;
+  $('perfect').hidden = rankPos !== 1; $('perfect').textContent = '새 최고 기록!';
+  $('rMsg').innerHTML = `최고 타일 <b>${maxTile(en.vals)}</b>` + (rankPos ? ` · <b>${rankPos}</b>위` : '');
+  $('rNext').textContent = '새 게임';
+  $('rRetry').textContent = lastResult.canUndo ? '되돌리기 1' : '모드 선택';
+  if (rankPos === 1) { confetti(50); sound.win(true); } else sound.fail();
+}
+function endlessUndo() {
+  if (!en || !en.undo || en.undoUsed) return;
+  if (mode === 'result' && lastResult && lastResult.endless) {
+    // the game was over and is being continued: take back its ranking entry
+    if (lastResult.entry) store.set(EN_RANK, store.get(EN_RANK, []).filter(r => r.t !== lastResult.entry));
+    $('result').hidden = true; mode = 'endless'; lastResult = null; en.over = false;
+  }
+  if (mode !== 'endless') return;
+  Object.assign(en, en.undo); en.undo = null; en.undoUsed = true;
+  enToSt(); sync(null); enHud(); saveEndless(); sound.undo();
+}
+function endlessRestart() {
+  if (mode !== 'endless') return;
+  if (en.moves && Date.now() - restartArm > 2500) { restartArm = Date.now(); toast('한 번 더 누르면 새 게임', 2400); return; }
+  restartArm = 0;
+  recordEndless();
+  newEndless(); sound.undo();
+}
+// Swipe anywhere over the board area; the page itself never scrolls.
+let eg = null;
+stageEl.addEventListener('pointerdown', e => {
+  if (mode !== 'endless') return;
+  sound.unlock();
+  eg = { id: e.pointerId, x: e.clientX, y: e.clientY, fired: false };
+  try { stageEl.setPointerCapture(e.pointerId); } catch (err) {}
+});
+const enSwipe = (e, min) => {
+  if (!eg || eg.id !== e.pointerId || eg.fired) return;
+  const dx = e.clientX - eg.x, dy = e.clientY - eg.y;
+  if (Math.hypot(dx, dy) < min) return;
+  eg.fired = true;
+  endlessMove(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
+};
+stageEl.addEventListener('pointermove', e => enSwipe(e, 24));
+stageEl.addEventListener('pointerup', e => { enSwipe(e, 12); eg = null; });
+stageEl.addEventListener('pointercancel', () => { eg = null; });
+stageEl.addEventListener('touchmove', e => { if (mode === 'endless') e.preventDefault(); }, { passive: false });
+
 /* ---------- buttons ---------- */
-$('start').addEventListener('click', () => { sound.unlock(); if (tutorialDone()) showSelect(); else showPanel('offer'); });
+$('start').addEventListener('click', () => { sound.unlock(); if (tutorialDone()) showModes(); else showPanel('offer'); });
 $('tutYes').addEventListener('click', () => { sound.unlock(); startTutorial(true); });
-$('tutNo').addEventListener('click', () => { store.set('tut', 1); showSelect(); });
+$('tutNo').addEventListener('click', () => { store.set('tut', 1); showModes(); });
 $('howto').addEventListener('click', showHelp);
 $('tutAgain').addEventListener('click', () => { sound.unlock(); startTutorial(false); });
 $('helpBack').addEventListener('click', showTitle);
 $('rank').addEventListener('click', () => showRecords(showTitle));
 $('recBack').addEventListener('click', () => (panelBack || showTitle)());
-$('selBack').addEventListener('click', showTitle);
+$('selBack').addEventListener('click', showModes);
+$('modeBack').addEventListener('click', showTitle);
+$('modeStage').addEventListener('click', () => { sound.unlock(); sound.pick(); showSelect(); });
+$('modeEndless').addEventListener('click', () => { sound.unlock(); sound.pick(); startEndless(); });
 $('daily').addEventListener('click', () => { sound.unlock(); playDaily(); });
-$('toSelect').addEventListener('click', () => { if (mode === 'tutorial') { tut = null; $('coach').hidden = true; } showSelect(); });
+$('toSelect').addEventListener('click', () => {
+  if (mode === 'tutorial') { tut = null; $('coach').hidden = true; }
+  if (mode === 'endless' || (lastResult && lastResult.endless && mode === 'result')) showModes(); else showSelect();
+});
 $('cskip').addEventListener('click', () => endTutorial());
 $('undo').addEventListener('click', undo);
 $('hint').addEventListener('click', hint);
-$('restart').addEventListener('click', () => restart(false));
+$('restart').addEventListener('click', () => { if (mode === 'endless') endlessRestart(); else restart(false); });
 $('rNext').addEventListener('click', () => {
   if (!lastResult) return;
+  if (lastResult.endless) { $('result').hidden = true; newEndless(); return; }
   if (lastResult.next === 'next') startStage(cur.index + 1);
   else if (lastResult.next === 'select') showSelect();
   else { mode = 'play'; $('result').hidden = true; restart(false); }
 });
 $('rRetry').addEventListener('click', () => {
+  if (lastResult && lastResult.endless) { if (lastResult.canUndo) endlessUndo(); else showModes(); return; }
   if (lastResult && lastResult.win) { mode = 'play'; $('result').hidden = true; restart(false); }
   else if (lastResult && lastResult.canUndo) undo();
   else showSelect();
@@ -626,4 +815,8 @@ window.__onemove = {
   cellCenter(k) { const b = boardEl.getBoundingClientRect(), [x, y] = xy(k); return { x: b.left + x + geo.cs / 2, y: b.top + y + geo.cs / 2, cs: geo.cs }; },
   solveHere() { const r = solve(st, { maxDepth: st.limit - st.moves }); return r && r.path; },
   startStage,
+  get endless() { return en && { vals: en.vals.slice(), score: en.score, over: en.over, moves: en.moves, undo: !!en.undo && !en.undoUsed }; },
+  get endlessRank() { return store.get(EN_RANK, []); },
+  setEndless(vals) { newEndless(vals); },
+  showModes,
 };

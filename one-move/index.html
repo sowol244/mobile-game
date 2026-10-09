@@ -17,14 +17,14 @@
     --kr: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   }
   *, *::before, *::after { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; }
+  html, body { height: 100%; margin: 0; overflow: hidden; overflow: clip; }
   [hidden] { display: none !important; }
   body { background: var(--bg); color: var(--ink); font-family: var(--kr); overscroll-behavior: none; touch-action: manipulation;
     -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; word-break: keep-all;
     background-image: radial-gradient(rgba(140, 110, 70, 0.07) 1px, transparent 1px); background-size: 14px 14px; }
   button, a { font: inherit; color: inherit; }
   button { cursor: pointer; }
-  #app { position: relative; height: 100%; max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px;
+  #app { position: relative; overflow: hidden; overflow: clip; height: 100%; max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px;
     padding: calc(env(safe-area-inset-top, 0px) + 10px) calc(env(safe-area-inset-right, 0px) + 16px) calc(env(safe-area-inset-bottom, 0px) + 12px) calc(env(safe-area-inset-left, 0px) + 16px); }
 
   /* ---------- HUD ---------- */
@@ -122,7 +122,7 @@
   .tool svg { width: 18px; height: 18px; }
 
   #status { position: absolute; left: 0; right: 0; top: 0; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); pointer-events: none; }
-  #toast { position: absolute; left: 50%; top: 8px; translate: -50% 0; z-index: 20; max-width: calc(100% - 16px); background: var(--ink); color: #fff; font-size: 14px; font-weight: 700; padding: 8px 14px; border-radius: 999px; pointer-events: none; text-align: center; transition: opacity 200ms; }
+  #toast { position: absolute; left: 50%; top: 8px; translate: -50% 0; z-index: 20; width: max-content; max-width: calc(100% - 16px); background: var(--ink); color: #fff; font-size: 14px; font-weight: 700; padding: 8px 14px; border-radius: 999px; pointer-events: none; text-align: center; transition: opacity 200ms; }
   #toast.fade { opacity: 0; }
   #coach { position: absolute; left: 0; right: 0; top: 0; z-index: 15; background: var(--paper); border: 2px solid var(--teal); border-radius: 16px; padding: 8px 12px 10px; box-shadow: 0 6px 18px rgba(80, 60, 30, 0.15); }
   #coach .ct { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 900; color: var(--teal); }
@@ -155,8 +155,8 @@
   @keyframes logoA { 0%, 28% { translate: 0; opacity: 1; } 40% { translate: 80px; opacity: 1; } 41%, 90% { translate: 80px; opacity: 0; } 91% { translate: 0; opacity: 0; } 100% { translate: 0; opacity: 1; } }
   @keyframes logoB { 0%, 40% { opacity: 1; } 41%, 90% { opacity: 0; } 100% { opacity: 1; } }
   @keyframes logoC { 0%, 40% { opacity: 0; scale: 1; } 47% { opacity: 1; scale: 1.2; } 54% { scale: 1; } 84% { opacity: 1; } 92%, 100% { opacity: 0; } }
-  .help { list-style: none; margin: 0; padding: 0; width: min(380px, 100%); display: grid; gap: 7px; text-align: left; }
-  .help li { background: var(--paper); border: 1.5px solid var(--line); border-radius: 14px; padding: 7px 12px; font-size: 14px; font-weight: 500; line-height: 1.35; display: grid; grid-template-columns: 30px 1fr; gap: 8px; align-items: center; }
+  .help { list-style: none; margin: 0; padding: 0; width: min(380px, 100%); display: grid; gap: 6px; text-align: left; }
+  .help li { background: var(--paper); border: 1.5px solid var(--line); border-radius: 14px; padding: 6px 12px; font-size: 14px; font-weight: 500; line-height: 1.35; display: grid; grid-template-columns: 30px 1fr; gap: 8px; align-items: center; }
   .help li .ic { width: 30px; height: 30px; --cs: 30px; position: relative; font-size: 13px; }
   .help li .ic .tile { position: absolute; transition: none; font-size: 13px; }
   .stats { width: min(380px, 100%); display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -201,16 +201,54 @@
   #rMsg b { color: var(--ink); font-family: var(--num); }
   #perfect { font-weight: 900; color: #fff; background: linear-gradient(90deg, var(--accent), var(--gold)); border-radius: 999px; padding: 4px 14px; font-size: 15px; animation: starIn 500ms 300ms backwards; }
   #result .btns { width: 100%; }
+  #fx { position: absolute; inset: 0; overflow: hidden; overflow: clip; pointer-events: none; z-index: 24; }
   .confetti { position: absolute; top: -10px; width: 8px; height: 12px; z-index: 24; pointer-events: none; border-radius: 2px; animation: fall linear forwards; }
   @keyframes fall { to { translate: var(--dx) 105vh; rotate: var(--r); } }
   #busy { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(245, 239, 228, 0.7); font-weight: 900; font-size: 18px; }
+
+
+  /* endless mode */
+  #info2 { display: grid; grid-template-columns: 1fr 1fr 0.8fr; gap: 8px; }
+  #app:not(.endless) #info2, #app.endless #info, #app.endless #hint { display: none; }
+  #app.endless #tools { grid-template-columns: 1fr 1fr; }
+  #info2 .big { font-size: 26px; }
+  #eScore.bump { animation: bump 220ms ease-out; }
+  @keyframes bump { 40% { scale: 1.15; color: var(--accent); } }
+  #eTile { display: inline-grid; place-items: center; min-width: 40px; height: 32px; padding: 0 6px; margin-top: 3px; border-radius: 9px; position: static; width: auto; font-size: 17px; box-shadow: 0 2px 0 rgba(0,0,0,0.12); }
+  #eGain { position: absolute; right: 10px; top: 4px; font-family: var(--num); font-weight: 700; font-size: 15px; color: var(--accent); pointer-events: none; opacity: 0; }
+  #eGain.go { animation: gain 600ms ease-out; }
+  @keyframes gain { 0% { opacity: 1; translate: 0 8px; } 100% { opacity: 0; translate: 0 -10px; } }
+  #scoreCard { position: relative; }
+  #app.endless #stage { touch-action: none; }
+  .tile.spawn { animation: spawn 170ms 90ms ease-out backwards; }
+  @keyframes spawn { from { scale: 0.2; opacity: 0; } }
+  .tile.under { z-index: 0; }
+  #board.stuck { animation: stuck 260ms ease-out; }
+  @keyframes stuck { 25% { translate: -5px 0; } 50% { translate: 4px 0; } 75% { translate: -2px 0; } }
+  .tile[data-e="11"] { background: #f2b33d; color: #fff; }
+  .tile[data-e="12"], .tile[data-e="13"] { background: #3d3530; color: #fff; }
+  .escore { font-family: var(--num); font-weight: 700; font-size: 46px; line-height: 1.05; color: var(--ink); }
+  .modes { display: grid; gap: 12px; width: min(380px, 100%); }
+  .mode { display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: center; text-align: left; padding: 14px 16px; border-radius: 20px; border: 1.5px solid var(--line); background: var(--paper); box-shadow: 0 4px 0 var(--line); }
+  .mode:active { translate: 0 2px; box-shadow: 0 2px 0 var(--line); }
+  .mode:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .mode .mi { position: relative; width: 64px; height: 64px; --cs: 64px; }
+  .mode .mi .tile { position: absolute; transition: none; }
+  .mode b { display: block; font-size: 20px; font-weight: 900; }
+  .mode small { display: block; margin-top: 3px; font-size: 13.5px; color: var(--muted); font-weight: 500; }
+  .mode.endless { border-color: #f0c9a4; background: #fff4e6; box-shadow: 0 4px 0 #f0c9a4; }
+  .rh { margin: 4px 0 -4px; font-size: 17px; font-weight: 900; width: min(380px, 100%); text-align: left; }
+  .recs.rank li { grid-template-columns: 34px 1fr auto auto; }
+  .recs.rank li .k { font-family: var(--num); color: var(--muted); }
+  .recs.rank li.me { border-color: var(--accent); background: #fff1e8; }
+  .recs .empty { display: block; color: var(--muted); font-weight: 500; text-align: center; }
 
   /* landscape phones: board on the left, HUD + tools stacked on the right */
   @media (orientation: landscape) and (max-height: 560px) {
     #app { max-width: none; display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 320px); grid-template-rows: auto auto 1fr auto; column-gap: 18px; row-gap: 8px; }
     #stage { grid-column: 1; grid-row: 1 / 5; }
-    #top, #info, #tools { grid-column: 2; }
-    #top { grid-row: 1; } #info { grid-row: 2; } #tools { grid-row: 4; }
+    #top, #info, #info2, #tools { grid-column: 2; }
+    #top { grid-row: 1; } #info, #info2 { grid-row: 2; } #tools { grid-row: 4; }
     #status { display: none; }
     .card .big { font-size: 24px; }
     .tool { height: 44px; }
@@ -226,7 +264,7 @@
 <div id="app">
   <div id="top">
     <button class="chip" id="toSelect" type="button" aria-label="단계 선택">
-      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 3h10M2 7h10M2 11h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>단계</button>
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 3h10M2 7h10M2 11h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span id="toSelectLabel">단계</span></button>
     <div id="stageName">1-1<small>첫 걸음</small></div>
     <button class="chip" id="mute" type="button" aria-pressed="false">소리 켜짐</button>
   </div>
@@ -234,6 +272,11 @@
     <div class="card" id="goalCard"><small>목표</small><div id="goalTile" class="tile" data-e="4">16</div><div id="goalWhere" hidden>★ 칸에서</div></div>
     <div class="card" id="movesCard"><small>남은 이동</small><div class="big" id="moves">12<span>/12</span></div></div>
     <div class="card" id="starsCard"><small>최고 기록</small><div id="liveStars">★★★</div><div class="row" id="cuts"></div></div>
+  </div>
+  <div id="info2">
+    <div class="card" id="scoreCard"><small>점수</small><div class="big" id="eScore">0</div><span id="eGain"></span></div>
+    <div class="card"><small>최고 점수</small><div class="big" id="eBest">0</div></div>
+    <div class="card"><small>최고 타일</small><div id="eTile" class="tile" data-e="1">2</div></div>
   </div>
   <div id="stage">
     <div id="board" aria-label="게임 판"></div>
@@ -310,16 +353,30 @@
       <h2>내 기록</h2>
       <div class="stats" id="stats"></div>
       <ul class="recs" id="recs"></ul>
+      <h3 class="rh">무한 모드 순위</h3>
+      <ol class="recs rank" id="endlessRecs"></ol>
       <div class="btns"><button class="btn" id="recBack" type="button">돌아가기</button></div>
     </div>
   </div>
 
+  <div class="panel" id="modes" hidden>
+    <div class="center">
+      <h2>모드 선택</h2>
+      <div class="modes">
+        <button class="mode" id="modeStage" type="button"><span class="mi"><span class="tile" data-e="3"><span class="n">8</span></span></span><span><b>스테이지</b><small id="modeStageSub">한 타일씩 한 칸 옮기는 퍼즐</small></span></button>
+        <button class="mode endless" id="modeEndless" type="button"><span class="mi"><span class="tile d4" data-e="11"><span class="n">2048</span></span></span><span><b>무한 모드</b><small id="modeEndlessSub">모든 타일을 한꺼번에 밀어 합치기</small></span></button>
+      </div>
+      <div class="btns"><button class="btn" id="modeBack" type="button">처음으로</button></div>
+    </div>
+  </div>
+
   <div class="panel" id="select" hidden>
-    <div class="head"><button class="chip" id="selBack" type="button">처음으로</button><h2>단계 선택</h2><span class="tot" id="selTot">★ 0</span></div>
+    <div class="head"><button class="chip" id="selBack" type="button">뒤로</button><h2>단계 선택</h2><span class="tot" id="selTot">★ 0</span></div>
     <button id="daily" type="button"><span><b>오늘의 퍼즐</b><small id="dailySub">매일 새로운 한 판</small></span><span class="go" id="dailyGo">도전</span></button>
     <div id="chapters" style="display:contents"></div>
   </div>
 
+  <div id="fx" aria-hidden="true"></div>
   <div id="busy" hidden>준비 중…</div>
 </div>
 <script type="module" src="main.js"></script>
