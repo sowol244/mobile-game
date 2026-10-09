@@ -50,8 +50,9 @@
   /* SINGLE / DOUBLE / TRIPLE / TETRIS, shown on the rows being cleared */
   #linePop { position: absolute; left: 0; right: 0; text-align: center; transform: translateY(-50%); font-family: var(--px); font-size: calc(var(--cell) * 0.8); line-height: 1; color: #fcfcfc; text-shadow: 3px 3px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000; pointer-events: none; opacity: 0; }
   #linePop.n2 { color: #80d010; } #linePop.n3 { color: #3cbcfc; } #linePop.n4 { color: #fca044; font-size: calc(var(--cell) * 1); }
-  #linePop.show { animation: linePop 0.9s steps(6) forwards; }
-  @keyframes linePop { 0% { opacity: 1; transform: translateY(-50%) scale(0.6); } 20% { transform: translateY(-50%) scale(1.15); } 30%, 70% { opacity: 1; transform: translateY(-50%) scale(1); } 100% { opacity: 0; transform: translateY(-50%) scale(1); } }
+  #linePop.show { animation: linePop 1s linear forwards; }
+  /* wipes in from the left, holds, then wipes out to the right */
+  @keyframes linePop { 0% { opacity: 1; clip-path: inset(-20% 100% -20% 0); } 25%, 70% { opacity: 1; clip-path: inset(-20% 0 -20% 0); } 100% { opacity: 1; clip-path: inset(-20% 0 -20% 100%); } }
   @keyframes pop { 0% { opacity: 1; transform: scale(0.6); } 15% { transform: scale(1.1); } 25%, 75% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: translateY(-20px); } }
   #pausedMask { position: absolute; inset: calc(var(--cell) * 0.25); background: #000; display: flex; align-items: center; justify-content: center; font-family: var(--px); font-size: calc(var(--cell) * 0.6); }
 
