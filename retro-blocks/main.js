@@ -177,7 +177,7 @@ const topList = () => load('top', []);
 const topScore = () => { const t = topList(); return t.length ? t[0].score : 0; };
 
 function newGame(o) {
-  game = L.createGame({ ...o, hardDrop: opts.hard, seed: (Math.random() * 2 ** 32) >>> 0 });
+  game = L.createGame({ ...o, hardDrop: true, seed: (Math.random() * 2 ** 32) >>> 0 });
   levelShown = game.level; endShown = false; hudKey = '';
   phase = 'play'; acc = 0;
   overlay.hidden = true; $('pausedMask').hidden = true;
@@ -281,7 +281,6 @@ function pauseGame() {
 function resumeGame() {
   if (phase !== 'paused') return;
   phase = 'play'; acc = 0; overlay.hidden = true; $('pausedMask').hidden = true;
-  if (game) game.hardDrop = opts.hard;
   sound.unlock(); sound.pause();
   if (opts.music && game && (game.phase === 'play' || game.phase === 'are' || game.phase === 'clear')) sound.musicStart(false);
 }
@@ -312,7 +311,7 @@ document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click'
 
 const OPTS = [
   ['ghost', '고스트 블록', '떨어질 자리를 미리 보여 줘요'],
-  ['hard', '하드 드롭', '▲ · 스페이스로 바로 떨어뜨려요'],
+  ['hard', '▲로도 떨어뜨리기', '▲ · 위로 튕겨도 바로 떨어져요'],
   ['swipe', '스와이프 조작', '판을 쓸어 이동, 톡 쳐서 회전'],
   ['lv19', '레벨 0–19 선택', '더 빠른 레벨부터 시작해요'],
   ['music', '배경 음악', '8비트 음악을 틀어요'],
@@ -330,19 +329,18 @@ function buildOpts() {
 }
 function applyOpts() {
   sound.setMusic(opts.music);
-  if (game) game.hardDrop = opts.hard;
   document.querySelector('#dpad .iu').classList.toggle('off', !opts.hard);
 }
 function buildHelp() {
   const items = [
     ['◀ ▶', '블록을 옮겨요. 누르고 있으면 계속 가요.'],
     ['▼', '누르고 있으면 빨리 내려와요. (1줄 1점)'],
-    ['A B', '<b>A</b> 오른쪽, <b>B</b> 왼쪽으로 돌려요.'],
+    ['A B', '<b>A</b> 돌리기, <b>B</b> 바로 떨어뜨리기'],
     ['1-4', '가로줄을 채우면 지워져요. 40·100·300·1200점'],
     ['×LV', '점수는 (레벨+1)배! <b>4줄</b>이 가장 커요.'],
     ['LV↑', '10줄마다 레벨이 올라 빨라져요.'],
     ['B', '<b>B-TYPE</b>: 쌓인 블록 위에서 25줄 지우기'],
-    ['PC', '방향키 · X/Z 회전 · P 일시정지'],
+    ['PC', '방향키 · X 회전 · 스페이스 떨어뜨리기 · P 일시정지'],
   ];
   const ul = $('helpList'); ul.replaceChildren();
   for (const [k, html] of items) {
@@ -398,6 +396,7 @@ function tutorialTick(ev) {
   for (const e of ev) {
     if (e.type === 'move') st.moves++;
     if (e.type === 'rotate') { if (e.dir > 0) st.cw++; else st.ccw++; }
+    if (e.type === 'hard') st.hard = (st.hard || 0) + 1;
     if (e.type === 'lock') st.soft = Math.max(st.soft, e.soft);
     if (e.type === 'clear') st.cleared++;
   }
@@ -439,8 +438,7 @@ window.addEventListener('keydown', e => {
     if (k) { e.preventDefault(); if (!keys[k]) press(k); keys[k] = true; return; }
     if (e.repeat) return;
     if (e.code === 'KeyX' || e.code === 'ArrowUp') { e.preventDefault(); pend.cw++; }
-    else if (e.code === 'KeyZ') pend.ccw++;
-    else if (e.code === 'Space') { e.preventDefault(); if (opts.hard) pend.hard++; }
+    else if (e.code === 'KeyZ' || e.code === 'Space') { e.preventDefault(); pend.hard++; }
     else if (e.code === 'KeyP' || e.code === 'Escape') pauseGame();
   } else if (phase === 'paused' && !e.repeat && (e.code === 'KeyP' || e.code === 'Escape')) resumeGame();
 });
@@ -478,7 +476,7 @@ dpad.addEventListener('pointerup', dpadUp);
 dpad.addEventListener('pointercancel', dpadUp);
 dpad.addEventListener('lostpointercapture', dpadUp);
 
-for (const [id, key] of [['aBtn', 'cw'], ['bBtn', 'ccw']]) {
+for (const [id, key] of [['aBtn', 'cw'], ['bBtn', 'hard']]) {
   const b = $(id); const ids = new Set();
   b.addEventListener('pointerdown', e => {
     e.preventDefault();
