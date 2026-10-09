@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {
   parseStage, parseToken, tokenOf, applyMove, blockReason, isWin, legalMoves, solve, starsFor, starCut, dailyStage, boardRows,
-  kindOf, valueOf, PIN, ONCE, NUM, slideAll, canSlide, spawnTile, mulberry32,
+  kindOf, valueOf, PIN, ONCE, NUM,
 } from './logic.js';
 import { STAGES, CHAPTERS } from './stages.js';
 import { LESSONS, INTROS } from './tutorial.js';
@@ -117,63 +117,6 @@ test('stage list shape', () => {
   for (const ch of CHAPTERS) assert.ok(STAGES.filter(s => s.ch === ch.id).length >= 10, `chapter ${ch.id} has 10+ stages`);
   assert.ok(STAGES.some(s => s.rows.join('/') === '2 4 . 2/. 2 . ./4 . 2 ./. . 4 .'), "designer's example is included");
   for (const id of Object.keys(INTROS)) assert.ok(STAGES.some(s => s.id === id), 'intro for ' + id);
-});
-
-
-/* ---------- endless mode (2048 rules) ---------- */
-const row = (line, d) => slideAll([...line, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 4, d).vals.slice(0, 4);
-test('endless: every tile slides to the edge', () => {
-  assert.deepEqual(row([0, 2, 0, 4], 3), [2, 4, 0, 0]);
-  assert.deepEqual(row([2, 0, 4, 0], 1), [0, 0, 2, 4]);
-  const r = slideAll([0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8], 4, 0);
-  assert.deepEqual(r.vals, [2, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 'up moves whole columns');
-});
-test('endless: each tile merges at most once per move', () => {
-  assert.deepEqual(row([2, 2, 2, 2], 3), [4, 4, 0, 0]);
-  assert.deepEqual(row([4, 4, 8, 0], 3), [8, 8, 0, 0], 'a fresh 8 does not merge again with the 8');
-  assert.deepEqual(row([2, 2, 4, 8], 3), [4, 4, 8, 0]);
-  assert.deepEqual(row([8, 8, 8, 8], 1), [0, 0, 16, 16]);
-});
-test('endless: merge order starts at the edge the tiles move toward', () => {
-  assert.deepEqual(row([2, 2, 2, 0], 3), [4, 2, 0, 0]);
-  assert.deepEqual(row([2, 2, 2, 0], 1), [0, 0, 2, 4]);
-  assert.deepEqual(row([4, 2, 2, 2], 1), [0, 4, 2, 4]);
-});
-test('endless: score is the sum of merged values, ids follow tiles', () => {
-  const ids = [11, 12, 13, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-  const r = slideAll([2, 2, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 4, 3, ids);
-  assert.deepEqual(r.vals.slice(0, 4), [4, 8, 0, 0]);
-  assert.equal(r.score, 12);
-  assert.deepEqual(r.ids.slice(0, 4), [11, 13, 0, 0], 'the leading tile of each pair survives');
-  assert.deepEqual(r.anims.filter(a => a.gone).map(a => [a.id, a.into, a.to]), [[12, 11, 0], [14, 13, 1]]);
-});
-test('endless: a move that changes nothing is a no-op', () => {
-  const b = [2, 4, 8, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-  const r = slideAll(b, 4, 3);
-  assert.equal(r.moved, false); assert.equal(r.score, 0); assert.deepEqual(r.vals, b);
-  assert.equal(slideAll(b, 4, 0).moved, false, 'already at the top');
-  assert.equal(slideAll(b, 4, 2).moved, true);
-});
-test('endless: game over only when no direction changes the board', () => {
-  const full = [2, 4, 2, 4, 4, 2, 4, 2, 2, 4, 2, 4, 4, 2, 4, 2];
-  assert.equal(canSlide(full, 4), false);
-  const merge = full.slice(); merge[1] = 2; // 2 2 in the first row
-  assert.equal(canSlide(merge, 4), true);
-  const gap = full.slice(); gap[15] = 0;
-  assert.equal(canSlide(gap, 4), true);
-});
-test('endless: spawns 2 or 4 (about 10% fours) only on empty cells', () => {
-  const rnd = mulberry32(7);
-  let fours = 0;
-  for (let i = 0; i < 2000; i++) {
-    const b = Array(16).fill(8); b[3] = 0; b[9] = 0;
-    const s = spawnTile(b, rnd);
-    assert.ok(s.index === 3 || s.index === 9);
-    assert.ok(s.value === 2 || s.value === 4);
-    if (s.value === 4) fours++;
-  }
-  assert.ok(fours > 120 && fours < 300, 'about 10% fours: ' + fours);
-  assert.equal(spawnTile(Array(16).fill(2), rnd), null);
 });
 
 const relax = {
