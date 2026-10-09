@@ -88,6 +88,17 @@
   .row2 { display: flex; gap: 8px; width: min(340px, 100%); }
   .row2 .go { flex: 1 1 0; min-width: 0; font-size: 16px; height: 48px; padding: 0 8px; }
   #pHelp { gap: 10px; }
+  #introTag { font-family: var(--num); font-weight: 700; font-size: 12px; letter-spacing: 0.2em; color: var(--yellow); text-shadow: 0 0 8px rgba(255, 230, 0, 0.7); }
+  #introDemo { display: block; border-radius: 14px; }
+  #introName { color: var(--pink) !important; text-shadow: 0 0 14px rgba(255, 47, 209, 0.6) !important; }
+  #introText { font-size: 15px !important; color: #dfe3ff !important; }
+  #guideList { list-style: none; margin: 0; padding: 0; width: min(360px, 100%); display: grid; gap: 6px; text-align: left; }
+  #guideList li { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; padding: 7px 9px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); }
+  #guideList canvas { display: block; }
+  #guideList .gn { font-size: 15px; font-weight: 900; color: var(--cyan); }
+  #guideList .gt { font-size: 12.5px; line-height: 1.4; color: #c9cdf0; }
+  #guideList b { color: var(--yellow); }
+  #guideList li.new .gn::after { content: ' NEW'; font-family: var(--num); font-size: 9px; color: var(--yellow); vertical-align: 2px; }
   .helplist .tx { color: #dfe3ff; }
 
   .modes { display: grid; gap: 10px; width: min(340px, 100%); }
@@ -224,11 +235,24 @@
           </div>
         </div>
       </div>
+      <div class="panel" id="pIntro" hidden>
+        <small id="introTag">NEW BLOCK</small>
+        <canvas id="introDemo" aria-hidden="true"></canvas>
+        <h2 id="introName"></h2>
+        <p id="introText"></p>
+        <div class="btns"><button class="go" id="introOk" type="button">알겠어요</button></div>
+      </div>
+      <div class="panel" id="pGuide" hidden>
+        <h2>블록 도감</h2>
+        <ul id="guideList"></ul>
+        <button class="go" id="guideBack" type="button">돌아가기</button>
+      </div>
       <div class="panel" id="pPause" hidden>
         <h2>일시정지</h2>
         <div class="btns">
           <button class="go" id="resume" type="button">계속하기</button>
           <button class="go ghost" id="pRetry" type="button">다시 하기</button>
+          <button class="go ghost" id="pGuideBtn" type="button">블록 도감</button>
           <button class="go ghost" id="quit" type="button">처음으로</button>
         </div>
       </div>
@@ -237,6 +261,7 @@
         <ul class="helplist" id="helpList"></ul>
         <div class="row2">
           <button class="go ghost" id="tutBtn" type="button">튜토리얼</button>
+          <button class="go ghost" id="guideBtn" type="button">블록 도감</button>
           <button class="go back" type="button">돌아가기</button>
         </div>
       </div>

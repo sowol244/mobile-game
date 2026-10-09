@@ -7,6 +7,7 @@ import {
 } from './logic.js';
 import { STAGES, CHAPTERS } from './stages.js';
 import { STEPS } from './tutorial.js';
+import { INFO, ORDER, typesOn } from './guide.js';
 
 let n = 0;
 const test = (name, fn) => { fn(); n++; console.log('ok  ' + name); };
@@ -266,6 +267,16 @@ test('random play never breaks invariants (block count only shrinks by explosion
       assert.equal(settle(cloneState(st).board, st.gravity).moves.length, 0, 'board is at rest after a move');
       assert.equal(findGroups(st.board).length, 0, 'no match left standing');
     }
+  }
+});
+
+test('every block type has a guide card and first appears in a gentle teaching stage (par ≤ 3)', () => {
+  const first = {};
+  STAGES.forEach((def, i) => { for (const t of typesOn(stageState(def).board)) if (!(t in first)) first[t] = i; });
+  for (const t of ORDER) {
+    assert.ok(INFO[t] && INFO[t].name && INFO[t].lines.length === 2, 'guide entry for ' + t);
+    assert.ok(t in first, 'type ' + t + ' appears in some stage');
+    assert.ok(STAGES[first[t]].par <= 3, `${INFO[t].name} first appears in stage ${first[t] + 1} with par ${STAGES[first[t]].par}`);
   }
 });
 
