@@ -4,6 +4,7 @@ import {
 } from './logic.js';
 import { STAGES, TIERS } from './stages.js';
 import { createSound } from './sound.js';
+import { TUT, TUT_PUZZLE, TUT_SOLUTION, tutorialSteps } from './tutorial.js';
 
 const $ = id => document.getElementById(id);
 const sound = createSound();
@@ -17,7 +18,9 @@ const PAGE = 20;
 
 let recs = store.get('rec', {});     // stage number -> { stars, best }
 let saves = store.get('save', {});   // stage number -> saved game
-let mode = 'title';                  // title | play | result
+let mode = 'title';                  // title | play | tutorial | result
+let tut = null;                      // { steps, s, auto, done }
+const playing = () => mode === 'play' || mode === 'tutorial';
 let stageNo = 1, game = null, sel = -1, memo = false, elapsed = 0, lastTick = 0, page = store.get('page', 0);
 let toastTimer = 0, busyUntil = 0;
 
@@ -80,12 +83,12 @@ function paintSel() {
   }
 }
 function hud() {
-  $('stageName').innerHTML = `${stageNo}탄<small>${TIERS[tierOf(stageNo)].name}</small>`;
+  $('stageName').innerHTML = mode === 'tutorial' ? '튜토리얼<small>기본 규칙</small>' : `${stageNo}탄<small>${TIERS[tierOf(stageNo)].name}</small>`;
   [...$('dots').children].forEach((d, k) => d.classList.toggle('on', k < game.mistakes));
   $('hintN').textContent = MAX_HINTS - game.hints;
   $('hint').disabled = game.hints >= MAX_HINTS;
   $('undo').disabled = !game.history.length;
-  const r = recs[stageNo];
+  const r = mode === 'tutorial' ? null : recs[stageNo];
   $('best').textContent = r ? fmtTime(r.best) : '-';
   for (let d = 1; d <= 9; d++) {
     const left = 9 - digitCount(game, d);
@@ -124,6 +127,7 @@ function persist() {
 function dropSave(n) { delete saves[n]; store.set('save', saves); }
 
 function startStage(n, { fresh = false } = {}) {
+  if (tut) endTutorial(false);
   stageNo = n; const def = STAGES[n - 1];
   game = newGame(def.p, def.s); elapsed = 0;
   const sv = !fresh && saves[n];
@@ -144,20 +148,21 @@ function startStage(n, { fresh = false } = {}) {
   store.set('last', n);
 }
 function select(i) {
-  if (mode !== 'play' || i < 0 || i > 80) return;
-  sel = i; paintSel();
+  if (!playing() || i < 0 || i > 80) return;
+  sel = i; paintSel(); drawTut();
 }
 function input(d) {
-  if (mode !== 'play' || performance.now() < busyUntil) return;
+  if (!playing() || performance.now() < busyUntil) return;
   sound.unlock();
   if (sel < 0) { toast('칸을 먼저 골라 주세요'); return; }
+  if (!gate({ type: 'input', i: sel, d, memo })) return;
   if (game.given[sel] || isCorrect(game, sel)) {
     // tapping a digit on a filled cell just highlights that digit
     sound.tap(); paintSel(); return;
   }
   if (memo) {
     if (digitCount(game, d) === 9) return;
-    if (toggleNote(game, sel, d)) { sound.note(); renderCell(sel); paintSel(); hud(); persist(); }
+    if (toggleNote(game, sel, d)) { sound.note(); renderCell(sel); paintSel(); hud(); persist(); tutAfter(); }
     return;
   }
   const r = place(game, sel, d);
@@ -169,8 +174,8 @@ function input(d) {
     if (navigator.vibrate) try { navigator.vibrate(40); } catch (e) {}
     paintSel(); hud();
     if (r.failed) return lose();
-    toast(`틀렸어요 (실수 ${game.mistakes}/${MAX_MISTAKES})`, '', 1200);
-    persist(); return;
+    if (mode !== 'tutorial') toast(`틀렸어요 (실수 ${game.mistakes}/${MAX_MISTAKES})`, '', 1200);
+    persist(); tutAfter(); return;
   }
   for (const p of r.removed) renderCell(p);
   animate(sel, 'pop'); paintSel(); hud();
@@ -179,15 +184,16 @@ function input(d) {
   else if (r.digitDone) sound.digit();
   else sound.place(d);
   if (r.digitDone) { const k = keyEls[d]; k.animate([{ transform: 'scale(1.15)' }, { transform: 'scale(1)' }], { duration: 300 }); }
-  persist();
+  persist(); tutAfter();
 }
 function doErase() {
-  if (mode !== 'play' || sel < 0) return;
-  if (erase(game, sel)) { sound.erase(); renderCell(sel); paintSel(); hud(); persist(); }
+  if (!playing() || sel < 0) return;
+  if (!gate({ type: 'erase', i: sel })) return;
+  if (erase(game, sel)) { sound.erase(); renderCell(sel); paintSel(); hud(); persist(); tutAfter(); }
   else if (game.given[sel] || isCorrect(game, sel)) toast('이 칸은 지울 수 없어요', '', 1200);
 }
 function doUndo() {
-  if (mode !== 'play') return;
+  if (!playing() || !gate({ type: 'undo' })) return;
   const before = game.vals.slice(), nb = game.notes.slice();
   if (!undoMove(game)) { toast('되돌릴 수 없어요', '', 1100); return; }
   sound.undo();
@@ -195,10 +201,10 @@ function doUndo() {
   for (let i = 0; i < 81; i++) if (before[i] !== game.vals[i] || nb[i] !== game.notes[i]) { renderCell(i); changed.push(i); }
   const main = changed.find(i => before[i] !== game.vals[i]);
   if (main != null) sel = main; else if (changed.length === 1) sel = changed[0];
-  paintSel(); hud(); persist();
+  paintSel(); hud(); persist(); tutAfter();
 }
 function doHint() {
-  if (mode !== 'play') return;
+  if (!playing() || !gate({ type: 'hint', i: sel })) return;
   if (game.hints >= MAX_HINTS) { toast('힌트를 모두 썼어요'); return; }
   const h = useHint(game, sel);
   if (!h) return;
@@ -209,9 +215,69 @@ function doHint() {
   if (h.won) return win();
   if (h.units.length) flashUnits(h.units, h.idx);
   else if (h.unit != null) flashUnits([h.unit], h.idx, 'var(--green)');
-  persist();
+  persist(); tutAfter();
 }
-function toggleMemo() { if (mode !== 'play') return; memo = !memo; sound.tap(); paintMemo(); }
+function toggleMemo() { if (!playing() || !gate({ type: 'memo' })) return; memo = !memo; sound.tap(); paintMemo(); tutAfter(); }
+
+/* ---------- tutorial ---------- */
+const tutorialDone = () => store.get('tut', 0) === 1 || Object.keys(recs).length > 0;
+function coach(html, cls = '') { const c = $('ctext'); c.innerHTML = html; c.className = cls; }
+function gate(act) {
+  if (mode !== 'tutorial') return true;
+  const st = tut.steps[tut.s];
+  if (tut.done) return false;
+  const r = st.allow(act);
+  if (r === true) return true;
+  coach(r.replace(/[<>&]/g, ch => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[ch]), 'warn'); sound.nope();
+  clearTimeout(tut.warnT); const token = tut;
+  tut.warnT = setTimeout(() => { if (tut === token && !tut.done) showStep(); }, 1700);
+  return false;
+}
+function drawTut() {
+  document.querySelectorAll('.tut, .tutRow').forEach(e => e.classList.remove('tut', 'tutRow'));
+  if (mode !== 'tutorial' || !tut || tut.done) return;
+  const st = tut.steps[tut.s];
+  if (st.ring != null) cellEls[st.ring].classList.add('tut');
+  if (st.row != null) for (let c = 0; c < 9; c++) cellEls[st.row * 9 + c].classList.add('tutRow');
+  if (st.key && (st.ring == null || sel === st.ring)) keyEls[st.key].classList.add('tut');
+  if (st.tool) $(st.tool).classList.add('tut');
+}
+function showStep() {
+  const st = tut.steps[tut.s];
+  $('cstep').textContent = `튜토리얼 ${tut.s + 1}/${tut.steps.length} · ${st.title}`;
+  $('cnext').hidden = !st.next;
+  coach(st.text); drawTut();
+}
+function tutAfter() {
+  if (mode !== 'tutorial' || !tut || tut.done) return;
+  drawTut();
+  const st = tut.steps[tut.s];
+  if (!st.done || !st.done(game, { memo })) return;
+  clearTimeout(tut.warnT);
+  tut.s++;
+  if (tut.s < tut.steps.length) { showStep(); return; }
+  tut.done = true; drawTut(); $('cnext').hidden = true;
+  coach('잘했어요! 이제 1탄부터 풀어 봐요.');
+  sound.win(); boardEl.classList.remove('win'); void boardEl.offsetWidth; boardEl.classList.add('win');
+  const token = tut;
+  setTimeout(() => { if (tut === token && mode === 'tutorial') endTutorial(); }, 2200);
+}
+function startTutorial(auto) {
+  leavePlay();
+  tut = { steps: tutorialSteps(Array.from(TUT_SOLUTION, Number)), s: 0, auto, done: false };
+  game = newGame(TUT_PUZZLE, TUT_SOLUTION); elapsed = 0; memo = false; paintMemo();
+  sel = -1; mode = 'tutorial';
+  boardEl.classList.remove('win', 'lost');
+  cellEls.forEach(c => { c.dataset.v = 'x'; c.className = 'cell'; });
+  $('result').hidden = true; showPanel(null);
+  $('app').classList.add('tutorial'); $('coach').hidden = false;
+  renderAll(); paintTime(); layoutBoard(); showStep();
+}
+function endTutorial(toSelect = true) {
+  store.set('tut', 1); tut = null; $('coach').hidden = true; $('app').classList.remove('tutorial');
+  document.querySelectorAll('.tut, .tutRow').forEach(e => e.classList.remove('tut', 'tutRow'));
+  if (toSelect) showSelect();
+}
 
 function win() {
   mode = 'result'; busyUntil = Infinity;
@@ -274,9 +340,9 @@ document.addEventListener('visibilitychange', () => { lastTick = performance.now
 window.addEventListener('pagehide', persist);
 
 /* ---------- panels ---------- */
-const PANELS = ['title', 'help', 'records', 'select'];
+const PANELS = ['title', 'offer', 'help', 'records', 'select'];
 function showPanel(id) { for (const p of PANELS) $(p).hidden = p !== id; }
-function leavePlay() { if (mode === 'play') persist(); }
+function leavePlay() { if (mode === 'play') persist(); if (mode === 'tutorial' && tut) endTutorial(false); }
 function showTitle() { leavePlay(); mode = 'title'; $('result').hidden = true; showPanel('title'); }
 
 const HELP = [
@@ -366,7 +432,12 @@ $('erase').addEventListener('click', doErase);
 $('memo').addEventListener('click', toggleMemo);
 $('hint').addEventListener('click', doHint);
 $('toSelect').addEventListener('click', () => { sound.tap(); showSelect(); });
-$('start').addEventListener('click', () => { sound.unlock(); sound.tap(); showSelect(); });
+$('start').addEventListener('click', () => { sound.unlock(); sound.tap(); if (tutorialDone()) showSelect(); else showPanel('offer'); });
+$('tutYes').addEventListener('click', () => { sound.unlock(); sound.tap(); startTutorial(true); });
+$('tutNo').addEventListener('click', () => { store.set('tut', 1); showSelect(); });
+$('tutAgain').addEventListener('click', () => { sound.unlock(); sound.tap(); startTutorial(false); });
+$('cskip').addEventListener('click', () => { sound.tap(); endTutorial(); });
+$('cnext').addEventListener('click', () => { if (mode !== 'tutorial' || !tut) return; sound.tap(); tut.s++; showStep(); });
 $('howto').addEventListener('click', () => showHelp());
 $('rank').addEventListener('click', () => showRecords());
 $('selBack').addEventListener('click', showTitle);
@@ -382,9 +453,10 @@ $('rHome').addEventListener('click', showTitle);
 
 document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.key === 'Escape') { if (mode === 'play') { showSelect(); e.preventDefault(); } else if (!$('help').hidden || !$('records').hidden) showTitle(); return; }
-  if (mode !== 'play') return;
+  if (e.key === 'Escape') { if (playing()) { showSelect(); e.preventDefault(); } else if (!$('help').hidden || !$('records').hidden) showTitle(); return; }
+  if (!playing()) return;
   const k = e.key;
+  if (mode === 'tutorial' && tut && tut.steps[tut.s].next && (k === 'Enter' || k === ' ')) { e.preventDefault(); $('cnext').click(); return; }
   const move = { ArrowUp: -9, ArrowDown: 9, ArrowLeft: -1, ArrowRight: 1 }[k];
   if (move) {
     e.preventDefault();
@@ -394,7 +466,7 @@ document.addEventListener('keydown', e => {
       if (move === -9) r = (r + 8) % 9; else if (move === 9) r = (r + 1) % 9; else if (move === -1) c = (c + 8) % 9; else c = (c + 1) % 9;
       sel = r * 9 + c;
     }
-    sound.tap(); paintSel(); return;
+    sound.tap(); paintSel(); drawTut(); return;
   }
   const code = e.code || '';
   const dm = /^(Digit|Numpad)([0-9])$/.exec(code);
@@ -410,6 +482,27 @@ document.addEventListener('keydown', e => {
   else if (l === 'z' || l === 'u') { e.preventDefault(); doUndo(); }
   else if (l === 'h') { e.preventDefault(); doHint(); }
 });
+
+/* ---------- theme: auto (system) → dark → light ---------- */
+let theme = store.get('theme', 'auto');
+const THEME_ICON = {
+  auto: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 3a7 7 0 0 1 0 14Z" fill="currentColor"/></svg>',
+  dark: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 12.2A7 7 0 0 1 7.8 3.5a7 7 0 1 0 8.7 8.7Z" fill="currentColor"/></svg>',
+  light: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.6" fill="currentColor"/><path d="M10 1.8v2.4M10 15.8v2.4M1.8 10h2.4M15.8 10h2.4M4.2 4.2l1.7 1.7M14.1 14.1l1.7 1.7M4.2 15.8l1.7-1.7M14.1 5.9l1.7-1.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+};
+const THEME_KO = { auto: '화면: 기기 설정 따르기', dark: '화면: 어둡게', light: '화면: 밝게' };
+function applyTheme() {
+  if (theme === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = theme;
+  document.querySelectorAll('.themeBtn').forEach(b => { b.innerHTML = THEME_ICON[theme]; b.setAttribute('aria-label', THEME_KO[theme]); b.title = THEME_KO[theme]; });
+  const m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#f2f4f8';
+}
+document.querySelectorAll('.themeBtn').forEach(b => b.addEventListener('click', () => {
+  theme = { auto: 'dark', dark: 'light', light: 'auto' }[theme];
+  store.set('theme', theme); applyTheme(); sound.tap(); toast(THEME_KO[theme], '', 1200);
+}));
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme); } catch (e) {}
+applyTheme();
 
 let muted = store.get('mute', false);
 function paintMute() { sound.setMuted(muted); $('mute').textContent = muted ? '소리 꺼짐' : '소리 켜짐'; $('mute').setAttribute('aria-pressed', String(muted)); }
@@ -436,6 +529,10 @@ window.__sudoku = {
   get page() { return page; },
   get game() { return game && { vals: game.vals.slice(), notes: game.notes.slice(), sol: game.sol.slice(), given: game.given.slice(), mistakes: game.mistakes, hints: game.hints, won: game.won, failed: game.failed, history: game.history.length }; },
   get time() { return elapsed; },
+  get theme() { return theme; },
+  get tutorial() { return tut && { s: tut.s, n: tut.steps.length, done: tut.done, ring: tut.steps[tut.s] && tut.steps[tut.s].ring, row: tut.steps[tut.s] && tut.steps[tut.s].row }; },
+  tut: TUT,
+  startTutorial,
   get records() { return recs; },
   get saves() { return saves; },
   stages: STAGES,

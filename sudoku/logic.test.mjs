@@ -5,6 +5,7 @@ import {
   starsFor, digitCount, candidatesAt, completedUnitsAt, fmtTime, PEERS, MAX_HINTS, ROW, COL, BOX,
 } from './logic.js';
 import { STAGES, TIERS } from './stages.js';
+import { TUT, TUT_PUZZLE, TUT_SOLUTION, tutorialSteps } from './tutorial.js';
 
 let n = 0;
 const test = (name, fn) => { const t = Date.now(); fn(); n++; console.log(`ok  ${name}  (${Date.now() - t}ms)`); };
@@ -174,6 +175,42 @@ test('stars: 3 clean, 2 with one mistake or hint, 1 otherwise; time format', () 
   assert.equal(starsFor(1, 0), 2); assert.equal(starsFor(0, 1), 2);
   assert.equal(starsFor(1, 1), 1); assert.equal(starsFor(2, 0), 1); assert.equal(starsFor(0, 3), 1);
   assert.equal(fmtTime(65), '1:05'); assert.equal(fmtTime(3725), '1:02:05');
+});
+
+test('tutorial script: every step accepts its intended action and finishes', () => {
+  const sol = Array.from(TUT_SOLUTION, Number), steps = tutorialSteps(sol);
+  const g = newGame(TUT_PUZZLE, TUT_SOLUTION);
+  assert.equal(g.vals.filter(v => !v).length, 8);
+  const ctx = { memo: false };
+  const run = (k, act, apply) => {
+    const st = steps[k];
+    assert.equal(st.allow(act), true, `step ${k + 1} accepts`);
+    apply();
+    if (st.done) assert.ok(st.done(g, ctx), `step ${k + 1} done`);
+  };
+  assert.notEqual(steps[0].allow({ type: 'memo' }), true);
+  run(1, { type: 'input', i: TUT.A, d: sol[TUT.A], memo: false }, () => place(g, TUT.A, sol[TUT.A]));
+  assert.notEqual(steps[2].allow({ type: 'input', i: TUT.B, d: sol[TUT.B], memo: false }), true);
+  run(2, { type: 'input', i: TUT.B, d: TUT.W, memo: false }, () => assert.ok(place(g, TUT.B, TUT.W).wrong));
+  run(3, { type: 'erase', i: TUT.B }, () => erase(g, TUT.B));
+  run(4, { type: 'memo' }, () => { ctx.memo = true; });
+  const k = sol[TUT.D];
+  run(5, { type: 'input', i: TUT.C, d: k, memo: true }, () => toggleNote(g, TUT.C, k));
+  assert.notEqual(steps[6].allow({ type: 'input', i: TUT.D, d: k, memo: true }), true, 'memo must be off');
+  ctx.memo = false;
+  run(6, { type: 'input', i: TUT.D, d: k, memo: false }, () => place(g, TUT.D, k));
+  assert.ok(!hasNote(g, TUT.C, k), 'note auto-removed in the tutorial');
+  run(7, { type: 'hint', i: TUT.X }, () => assert.equal(useHint(g, TUT.X).idx, TUT.X));
+  run(8, { type: 'undo' }, () => undo(g));
+  assert.equal(candidatesAt(g, TUT.F).length, 1, 'F is a naked single');
+  assert.notEqual(steps[9].allow({ type: 'input', i: TUT.F, d: (sol[TUT.F] % 9) + 1, memo: false }), true);
+  run(9, { type: 'input', i: TUT.F, d: sol[TUT.F], memo: false }, () => place(g, TUT.F, sol[TUT.F]));
+  const G = sol[TUT.H1];
+  assert.ok(candidatesAt(g, TUT.H1).length > 1, 'H1 needs the row view');
+  const rowBlanks = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(c => ROW(TUT.H1) * 9 + c).filter(i => !g.vals[i]);
+  assert.deepEqual(rowBlanks.filter(i => candidatesAt(g, i).includes(G)), [TUT.H1], 'only one place for G in the row');
+  run(10, { type: 'input', i: TUT.H1, d: G, memo: false }, () => place(g, TUT.H1, G));
+  assert.equal(g.mistakes, 1); assert.ok(!g.failed);
 });
 
 console.log(`\n${n} tests passed`);

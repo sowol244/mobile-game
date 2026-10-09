@@ -31,6 +31,7 @@ export function createSound() {
     note() { tone(note(26), 0.05, { type: 'triangle', vol: 0.025 }); },
     erase() { tone(note(10), 0.07, { type: 'triangle', vol: 0.035, slide: 0.7 }); },
     wrong() { tone(note(-6), 0.16, { type: 'square', vol: 0.03, slide: 0.8 }); tone(note(-7), 0.14, { type: 'sine', vol: 0.05, delay: 0.05 }); },
+    nope() { tone(note(2), 0.08, { type: 'triangle', vol: 0.03, slide: 0.85 }); },
     undo() { tone(note(9), 0.08, { type: 'triangle', vol: 0.04, slide: 0.75 }); },
     hint() { tone(note(12), 0.12, { type: 'sine', vol: 0.05 }); tone(note(19), 0.16, { type: 'sine', vol: 0.045, delay: 0.08 }); },
     unit(n = 1) { [0, 4, 7].slice(0, 2 + Math.min(1, n - 1)).forEach((s, i) => tone(note(s + 19), 0.14, { type: 'sine', vol: 0.04, delay: 0.06 + i * 0.06 })); },
