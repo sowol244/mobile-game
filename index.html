@@ -5,28 +5,135 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>모바일게임 작업실 (by 석)</title>
 <style>
-  body { margin: 0; padding: 32px 16px; font-family: system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; background: #14111f; color: #fdf6e3; }
-  main { max-width: 420px; margin: 0 auto; display: grid; gap: 12px; }
-  h1 { font-size: 24px; margin: 0 0 8px; }
-  a { display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: center; padding: 14px; border-radius: 14px; background: #241e3a; color: inherit; text-decoration: none; font-size: 18px; }
-  a img { width: 64px; height: 64px; border-radius: 14px; display: block; }
-  a:focus-visible { outline: 3px solid #ffd23f; outline-offset: 2px; }
-  .note { margin: 8px 0 0; color: #9a93b8; font-size: 14px; line-height: 1.5; text-align: center; }
-  a small { display: block; margin-top: 4px; color: #9a93b8; font-size: 14px; }
+  :root { --bg: #14111f; --card: #241e3a; --card-hi: #2e2650; --fg: #fdf6e3; --muted: #9a93b8; --line: #4a4170; --accent: #ffd23f; --new: #ff5d7a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 16px 32px; font-family: system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 440px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 18px; }
+  h2 { font-size: 14px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
+
+  /* Recently played: a row of icons */
+  #recent { margin-bottom: 20px; }
+  #recent .row { display: flex; gap: 10px; }
+  #recent a { flex: 0 0 calc((100% - 20px) / 3); min-width: 0; display: grid; justify-items: center; gap: 6px; padding: 10px 6px; border-radius: 14px; background: var(--card); color: inherit; text-decoration: none; font-size: 13px; text-align: center; }
+  #recent a img { width: 48px; height: 48px; border-radius: 12px; }
+  #recent a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Tree */
+  details { margin: 0; }
+  summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 10px 4px; font-size: 19px; font-weight: 700; user-select: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary .arrow { width: 18px; color: var(--muted); font-size: 14px; transition: transform 0.15s; }
+  details[open] > summary .arrow { transform: rotate(90deg); }
+  summary .count { font-size: 13px; font-weight: 500; color: var(--muted); }
+  summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+  .branch { margin-left: 12px; padding-left: 14px; border-left: 2px solid var(--line); }
+  .sub > summary { font-size: 15px; font-weight: 600; color: #d9d2f2; padding: 8px 4px; }
+  /* A short horizontal tick from the tree line to each item */
+  .branch > details, .branch > .game { position: relative; }
+  .branch > details::before, .branch > .game::before { content: ""; position: absolute; left: -14px; top: 22px; width: 12px; border-top: 2px solid var(--line); }
+  .branch > .game::before { top: 50%; }
+  .branch > :last-child { margin-bottom: 4px; }
+
+  .game { display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: center; margin: 6px 0; padding: 10px 12px; border-radius: 14px; background: var(--card); color: inherit; text-decoration: none; font-size: 17px; }
+  a.game:hover { background: var(--card-hi); }
+  a.game:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .game img { width: 56px; height: 56px; border-radius: 12px; display: block; background: #1b1630; }
+  .game small { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; line-height: 1.35; }
+  .game .badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; vertical-align: 2px; }
+  .badge.new { background: var(--new); color: #fff; }
+  .badge.wip { background: #3a3358; color: var(--muted); }
+  .game.wip { opacity: 0.6; }
+  .note { margin: 22px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; }
 </style>
 </head>
 <body>
 <main>
   <h1>모바일게임 작업실 (by 석)</h1>
-  <a href="brawl-arena/"><img src="icons/brawl-arena.png" alt=""><span>대난투 아레나<small>봇과 총을 쏘며 겨루는 난투 게임</small></span></a>
-  <a href="super-jump/"><img src="icons/super-jump.png" alt=""><span>교행이의 모험<small>칼로 몬스터를 베며 달리는 모험 게임</small></span></a>
-  <a href="neon-block/"><img src="icons/neon-block.png" alt=""><span>네온 블록<small>블록을 채워 줄을 지우는 퍼즐 게임</small></span></a>
-  <a href="lux-umbra/"><img src="icons/lux-umbra.png" alt=""><span>Lux &amp; Umbra<small>빛을 켜고 꺼서 길을 여는 퍼즐 게임</small></span></a>
-  <a href="gravity-crash/"><img src="icons/gravity-crash.png" alt=""><span>Gravity Crash<small>중력을 돌려 블록을 터뜨리는 퍼즐 게임</small></span></a>
-  <a href="one-move/"><img src="icons/one-move.png" alt=""><span>Move On<small>타일 하나씩 옮겨 숫자를 합치는 퍼즐 게임</small></span></a>
-  <a href="sudoku/"><img src="icons/sudoku.png" alt=""><span>스도쿠<small>빈칸에 1~9를 채우는 숫자 퍼즐 게임</small></span></a>
-  <a href="meteor-dodge/"><img src="icons/meteor-dodge.png" alt=""><span>스타 슈터<small>적을 쏘며 우주를 나는 슈팅 게임</small></span></a>
+  <section id="recent" hidden>
+    <h2>최근에 한 게임</h2>
+    <div class="row"></div>
+  </section>
+  <nav id="tree" aria-label="게임 목록"></nav>
   <p class="note">이곳의 게임들은 예고 없이 추가되거나 삭제될 수 있습니다.</p>
 </main>
+<script>
+// The game list. To add a game: one line here, in the right group. `added` drives the NEW badge for 30 days;
+// `wip: true` lists it greyed out without a link.
+const GAMES = [
+  { id: 'brawl-arena', name: '대난투 아레나', desc: '봇과 총을 쏘며 겨루는 난투 게임', group: ['액션'], added: '2026-10-08' },
+  { id: 'meteor-dodge', name: '스타 슈터', desc: '적을 쏘며 우주를 나는 슈팅 게임', group: ['액션'] },
+  { id: 'super-jump', name: '교행이의 모험', desc: '칼로 몬스터를 베며 달리는 모험 게임', group: ['액션'] },
+  { id: 'neon-block', name: '네온 블록', desc: '블록을 채워 줄을 지우는 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'] },
+  { id: 'retro-blocks', name: '레트로 블록', desc: '떨어지는 블록으로 줄을 지우는 고전 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'], wip: true },
+  { id: 'gravity-crash', name: 'Gravity Crash', desc: '중력을 돌려 블록을 터뜨리는 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'], added: '2026-10-08' },
+  { id: 'sudoku', name: '스도쿠', desc: '빈칸에 1~9를 채우는 숫자 퍼즐 게임', group: ['퍼즐', '숫자 퍼즐'], added: '2026-10-09' },
+  { id: 'one-move', name: 'Move On', desc: '타일 하나씩 옮겨 숫자를 합치는 퍼즐 게임', group: ['퍼즐', '숫자 퍼즐'], added: '2026-10-08' },
+  { id: 'lux-umbra', name: 'Lux & Umbra', desc: '빛을 켜고 꺼서 길을 여는 퍼즐 게임', group: ['퍼즐', '탐험 퍼즐'], added: '2026-10-08' },
+];
+const TOP = [{ name: '액션', icon: '🎮' }, { name: '퍼즐', icon: '🧩' }];
+const NEW_DAYS = 30;
+
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } };
+const recent = load('hub-recent', []);   // ids, most recent first
+const visited = load('hub-visited', {}); // id → true once opened (hides NEW)
+const closed = load('hub-closed', {});   // group path → true when folded
+
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+const isNew = g => g.added && !visited[g.id] && (Date.now() - Date.parse(g.added)) / 864e5 < NEW_DAYS;
+
+function gameRow(g) {
+  const title = el('span', {}, g.name);
+  if (g.wip) title.append(el('span', { className: 'badge wip' }, '작업 중'));
+  else if (isNew(g)) title.append(el('span', { className: 'badge new' }, 'NEW'));
+  title.append(el('small', {}, g.desc));
+  const img = el('img', { src: `icons/${g.id}.png`, alt: '' });
+  img.onerror = () => { img.style.visibility = 'hidden'; };
+  if (g.wip) return el('div', { className: 'game wip' }, img, title);
+  const a = el('a', { className: 'game', href: `${g.id}/` }, img, title);
+  a.addEventListener('click', () => open(g.id));
+  return a;
+}
+
+function open(id) {
+  visited[id] = true; save('hub-visited', visited);
+  save('hub-recent', [id, ...recent.filter(x => x !== id)].slice(0, 3));
+}
+
+// A collapsible group; its open/closed state is remembered per path.
+function group(path, label, count, children, sub) {
+  const d = el('details', { className: sub ? 'sub' : '' });
+  d.open = !closed[path];
+  d.addEventListener('toggle', () => { if (d.open) delete closed[path]; else closed[path] = true; save('hub-closed', closed); });
+  d.append(el('summary', {}, el('span', { className: 'arrow' }, '▶'), label, el('span', { className: 'count' }, `(${count})`)));
+  d.append(el('div', { className: 'branch' }, ...children));
+  return d;
+}
+
+const tree = document.getElementById('tree');
+for (const top of TOP) {
+  const games = GAMES.filter(g => g.group[0] === top.name);
+  const items = [];
+  for (const g of games.filter(g => g.group.length === 1)) items.push(gameRow(g));
+  const subs = [...new Set(games.filter(g => g.group[1]).map(g => g.group[1]))];
+  for (const s of subs) {
+    const inSub = games.filter(g => g.group[1] === s);
+    items.push(group(`${top.name}/${s}`, s, inSub.length, inSub.map(gameRow), true));
+  }
+  tree.append(group(top.name, `${top.icon} ${top.name}`, games.length, items, false));
+}
+
+const rec = recent.map(id => GAMES.find(g => g.id === id && !g.wip)).filter(Boolean);
+if (rec.length) {
+  const row = document.querySelector('#recent .row');
+  for (const g of rec) {
+    const a = el('a', { href: `${g.id}/` }, el('img', { src: `icons/${g.id}.png`, alt: '' }), el('span', {}, g.name));
+    a.addEventListener('click', () => open(g.id));
+    row.append(a);
+  }
+  document.getElementById('recent').hidden = false;
+}
+</script>
 </body>
 </html>
