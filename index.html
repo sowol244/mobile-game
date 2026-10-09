@@ -76,7 +76,7 @@ const GAMES = [
   { id: 'one-move', name: 'Move On', desc: '타일 하나씩 옮겨 숫자를 합치는 퍼즐 게임', group: ['퍼즐', '숫자 퍼즐'], added: '2026-10-08' },
   { id: 'lux-umbra', name: 'Lux & Umbra', desc: '빛을 켜고 꺼서 길을 여는 퍼즐 게임', group: ['창작'], added: '2026-10-08' },
 ];
-const TOP = [{ name: '창작 게임', key: '창작', icon: '✨', own: true }, { name: '액션', icon: '🎮' }, { name: '퍼즐', icon: '🧩' }];
+const TOP = [{ name: "석's 오리지널", key: '창작', icon: '💡', own: true }, { name: '액션', icon: '🎮' }, { name: '퍼즐', icon: '🧩' }];
 const NEW_DAYS = 30;
 
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
