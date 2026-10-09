@@ -30,7 +30,22 @@ const input = createInput({ stage, left: $('left'), right: $('right'), jump: $('
 
 let state = 'title';      // title | play | paused | clear
 let game = null, idx = 0, demo = null, bot = null;
-let progress = load(KEY_PROG, {});   // { '1-1': { s: [clear, shard, time], best: seconds } }
+// { '1-1': { s: [clear, shard, time], best: seconds } }. Saves from older builds are kept by stage id;
+// anything malformed or for a stage that no longer exists is dropped instead of crashing the menus.
+let progress = cleanProgress(load(KEY_PROG, {}));
+function cleanProgress(p) {
+  const out = {}, ids = new Set(LEVELS.map(L => L.id));
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return out;
+  for (const [id, v] of Object.entries(p)) {
+    if (!ids.has(id) || !v || typeof v !== 'object') continue;
+    const st = Array.isArray(v.s) ? [0, 1, 2].map(k => !!v.s[k]) : [true, false, false];
+    st[0] = true;
+    const best = Number.isFinite(v.best) && v.best > 0 ? v.best : LEVELS.find(L => L.id === id).par;
+    out[id] = { s: st, best };
+  }
+  return out;
+}
+const cleanTop = t => (Array.isArray(t) ? t.filter(e => e && typeof e === 'object' && typeof e.stage === 'string' && Number.isFinite(e.time) && Number.isFinite(e.stars)).slice(0, 10) : []);
 let lastEntry = null, clearT = 0, resultShown = false, bannerT = 0;
 let acc = 0, last = performance.now(), clock = 0;
 
@@ -115,7 +130,7 @@ $('chNext').addEventListener('click', () => { sfx.click(); buildStages(page + 1)
 }
 
 function renderTop(highlight) {
-  const rows = $('rows'), top = load(KEY_TOP, []);
+  const rows = $('rows'), top = cleanTop(load(KEY_TOP, []));
   rows.replaceChildren();
   top.forEach((e, i) => {
     const li = document.createElement('li');
@@ -185,7 +200,7 @@ function finishStage() {
   progress[L.id] = { s: prev ? prev.s.map((v, k) => v || st[k]) : st, best: prev ? Math.min(prev.best, game.t) : game.t };
   save(KEY_PROG, progress);
   const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const top = load(KEY_TOP, []);
+  const top = cleanTop(load(KEY_TOP, []));
   top.push({ uid, stage: L.id, name: L.name, stars: n, time: Math.round(game.t * 10) / 10 });
   top.sort((a, b) => b.stars - a.stars || a.time - b.time);
   const kept = top.slice(0, 10);

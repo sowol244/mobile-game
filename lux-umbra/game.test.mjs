@@ -24,6 +24,15 @@ test('80 stages in 8 chapters of 10, ids and names unique', () => {
   assert.equal(new Set(LEVELS.map(l => l.name)).size, LEVELS.length);
 });
 
+test('only each chapter\'s first stage teaches (has signs); stages 2-10 have none', () => {
+  for (const L of LEVELS) {
+    const first = L.id.endsWith('-1');
+    const signs = (L.signs || []).length + (L.rows.join('').split('?').length - 1);
+    if (first) assert.ok(signs > 0, `${L.id} should teach`);
+    else assert.equal(signs, 0, `${L.id} has a sign`);
+  }
+});
+
 test('every stage is rectangular, has one start, a door, a shard and only known tiles', () => {
   for (const L of LEVELS) {
     const w = L.rows[0].length;
@@ -210,12 +219,15 @@ test('첫 불빛 cannot be crossed without the torch', () => {
   assert.ok(s.deaths >= 1);
 });
 
-test('그림자 다리 cannot be crossed while the crate stays near the lamp', () => {
-  const s = createGame(byName('그림자 다리'));
-  // hop over the crate and try to walk across without pushing it
-  const next = driver(s, function* (b) { yield* b.go(4.3); yield* b.jump(5.5); yield* b.go(7); for (let i = 0; i < 6; i++) yield* b.jump(14); });
-  try { for (let k = 0; k < 8 / STEP && !s.cleared; k++) step(s, next(), STEP); } catch { /* bot gives up */ }
-  assert.equal(s.cleared, false);
+test('상자 그림자: near the lamp the crate shadow is a wall, at the edge a thin bridge', () => {
+  const s = createGame(byName('상자 그림자'));
+  const F = s.h - 4, crate = s.crates.find(c => c.hy === F - 1), x = crate.hx - 4; // room starts at the lamp
+  run(s, {}, 0.02);
+  assert.equal(isSolid(s, x + 18, F - 2), true, 'tall shadow blocks the corridor');
+  crate.x = x + 10.02;
+  run(s, {}, 0.02);
+  assert.equal(isSolid(s, x + 18, F - 2), false);
+  assert.equal(isSolid(s, x + 18, F - 1), true, 'thin shadow bridge');
 });
 
 // ---------- every stage is solvable ----------

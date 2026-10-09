@@ -40,7 +40,7 @@ export function createRenderer(canvas) {
   const rimTmp = document.createElement('canvas'), rctx = rimTmp.getContext('2d');
   let W = 300, H = 300, dpr = 1, T = 30;
   const cam = { x: 0, y: 0, ready: false };
-  let layer = null, warm = null, layerKey = '', vig = null;
+  let layer = null, warm = null, layerKey = '', vig = null, layerPx = 1;
   let fade = null, fadeFor = null;
   let parts = [];
   let shake = 0;
@@ -67,7 +67,9 @@ export function createRenderer(canvas) {
   // ---------- static rock layer, rendered once per level / size ----------
   function solidStatic(s, x, y) { const c = tileAt(s, x, y); return c === '#' || c === 'H'; }
   function buildLayer(s) {
-    const px = T * dpr;
+    // long stages: keep each layer under ~6M pixels (phones refuse bigger canvases); it is scaled up when drawn
+    const px = Math.min(T * dpr, Math.sqrt(6e6 / (s.w * s.h)));
+    layerPx = px;
     const cw = Math.ceil(s.w * px), ch = Math.ceil(s.h * px);
     layer = document.createElement('canvas'); layer.width = cw; layer.height = ch;
     warm = document.createElement('canvas'); warm.width = cw; warm.height = ch;
@@ -597,13 +599,13 @@ export function createRenderer(canvas) {
     ctx.globalAlpha = 0.55; ctx.drawImage(bloom, 0, 0, canvas.width, canvas.height); ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     // rock
-    const px = T * dpr;
-    blit(ctx, layer, cx * px, cy * px, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+    const px = T * dpr, lp = layerPx, k = lp / px;
+    blit(ctx, layer, cx * lp, cy * lp, canvas.width * k, canvas.height * k, 0, 0, canvas.width, canvas.height);
     // warm rims where light falls: copy the rim layer at half-res, keep it only where the light canvas has light
     rctx.globalCompositeOperation = 'source-over';
     rctx.setTransform(1, 0, 0, 1, 0, 0);
     rctx.clearRect(0, 0, rimTmp.width, rimTmp.height);
-    blit(rctx, warm, cx * px, cy * px, canvas.width, canvas.height, 0, 0, rimTmp.width, rimTmp.height);
+    blit(rctx, warm, cx * lp, cy * lp, canvas.width * k, canvas.height * k, 0, 0, rimTmp.width, rimTmp.height);
     rctx.globalCompositeOperation = 'destination-in';
     rctx.drawImage(light, 0, 0);
     rctx.globalCompositeOperation = 'lighter';

@@ -47,7 +47,7 @@ export function parseLevel(def) {
       out.lamps.push({
         x: x + 0.5 + (L.ox || 0), y: y + 0.5 + (L.oy || 0), kind: L.kind || 'radial', dir: ((L.dir ?? 0) * Math.PI) / 180,
         half: ((L.spread ?? 25) * Math.PI) / 180, range: L.range ?? 8, col: COL[L.color || 'w'], g: L.g || null, on: L.on ?? true, id: c,
-        move: L.move || null, period: L.period || 4, phase: L.phase || 0,
+        move: L.move || null, period: L.period || 4, phase: L.phase || 0, reflect: L.reflect, dyn: !!L.move,
       });
       const lp = out.lamps[out.lamps.length - 1]; lp.x0 = lp.x; lp.y0 = lp.y;
       tiles[i] = '.';
@@ -71,7 +71,7 @@ export function createGame(def) {
     groups: { ...(def.groups || {}) },
     p: null, fl: { on: false, dark: false, aim: LIGHT.defaultAim, col: COL.w },
     crates: lv.crates.map(c => ({ x: c.x + (1 - PHYS.cw) / 2, y: c.y, w: PHYS.cw, h: 1, vx: 0, vy: 0, hx: c.x, hy: c.y })),
-    statues: lv.statues.map(m => ({ x: m.x + (1 - PHYS.sw) / 2, y: m.y + 1 - PHYS.sh, w: PHYS.sw, h: PHYS.sh, vy: 0, vx: 0, awake: false, face: -1, walk: 0 })),
+    statues: lv.statues.map(m => ({ x: m.x + (1 - PHYS.sw) / 2, y: m.y + 1 - PHYS.sh, w: PHYS.sw, h: PHYS.sh, vy: 0, vx: 0, awake: false, face: -1, walk: 0, hx: m.x })),
     shard: lv.shard ? { ...lv.shard, got: false } : null,
     t: 0, deaths: 0, cleared: false, events: [], snap: null, startPos: lv.start,
   };
@@ -188,8 +188,8 @@ export function lightSources(s) {
   for (const z of s.zones) if (z.g ? s.groups[z.g] : z.on) out.push({ kind: 'zone', ...z });
   if (torchLit(s) && !s.p.dead && !s.cleared) {
     const o = torchOrigin(s);
-    out.push({ kind: 'beam', x: o.x, y: o.y, dir: s.fl.aim, half: LIGHT.flashHalf, range: LIGHT.flashRange, col: s.fl.col, torch: true });
-    out.push({ kind: 'radial', x: o.x, y: o.y, range: LIGHT.halo, col: s.fl.col, torch: true, halo: true });
+    out.push({ kind: 'beam', x: o.x, y: o.y, dir: s.fl.aim, half: LIGHT.flashHalf, range: LIGHT.flashRange, col: s.fl.col, torch: true, dyn: true });
+    out.push({ kind: 'radial', x: o.x, y: o.y, range: LIGHT.halo, col: s.fl.col, torch: true, halo: true, dyn: true });
   }
   if (s.mirrors.length) reflect(s, out);
   return out;
@@ -214,7 +214,8 @@ function reflect(s, out) {
         const key = `${m.i}|${ox},${oy}|${col}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        next.push({ kind: 'beam', x: cx, y: cy, dir: Math.atan2(oy, ox), half: 0.17, range: 16, col, from: m, mirror: true });
+        const reach2 = src.reflect ?? 16; // a lamp can say how far its reflections carry
+        next.push({ kind: 'beam', x: cx, y: cy, dir: Math.atan2(oy, ox), half: 0.17, range: reach2, reflect: reach2, col, from: m, mirror: true, dyn: !!src.dyn });
       }
     }
     out.push(...next);
@@ -275,11 +276,33 @@ function catchPlayer(s, x, y) {
   return true;
 }
 
+// Light from fixed sources only changes when crates move, levers flip, mirrors turn or a door opens:
+// it is cached per tile and only the moving lights (torch, lamps on rails) are traced every step.
+function staticKey(s) {
+  let k = '';
+  for (const c of s.crates) k += `${c.x.toFixed(3)},${c.y.toFixed(3)};`;
+  for (const g in s.groups) k += s.groups[g] ? '1' : '0';
+  for (const m of s.mirrors) k += m.state;
+  let r = 0; for (const d of s.doors) if (d.hidden) r += s.reveal[d.y * s.w + d.x];
+  return k + '|' + r;
+}
+
 function updateLight(s, initial = false) {
   const srcs = lightSources(s), bs = bodies(s);
+  const stat = [], dyn = [];
+  for (const src of srcs) (src.dyn ? dyn : stat).push(src);
+  const key = staticKey(s);
+  if (key !== s.lightKey || !s.staticLight) {
+    s.lightKey = key; s.staticLight = s.staticLight || new Uint8Array(s.w * s.h);
+    for (const i of s.reactive) s.staticLight[i] = tileLight(s, i % s.w, (i / s.w) | 0, stat);
+  }
   for (const i of s.reactive) {
     const x = i % s.w, y = (i / s.w) | 0, c = s.tiles[i];
-    const m = tileLight(s, x, y, srcs);
+    let m = s.staticLight[i];
+    for (const src of dyn) {
+      if (Math.abs(x + 0.5 - src.x) > src.range + 1 || Math.abs(y + 0.5 - src.y) > src.range + 1) continue;
+      m |= tileLight(s, x, y, [src]);
+    }
     s.light[i] = m;
     if (c === 'H') { if (m && !s.reveal[i]) { s.reveal[i] = 1; if (!initial) s.events.push({ type: 'reveal', x, y }); } continue; }
     const want = wants(c, m);
