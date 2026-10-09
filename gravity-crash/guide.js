@@ -1,13 +1,12 @@
 // Block guide: names, two short lines and a looping mini demo per block type. Drawn with the game's own painters
 // (passed in from main.js), so the cards look exactly like the board.
-export const ORDER = ['n', 'w', 'i', 'a', 'h', 'k'];
+export const ORDER = ['n', 'w', 'i', 'a', 'h'];
 export const INFO = {
   n: { name: '색 블록', lines: ['같은 색 <b>4개 이상</b>이 상하좌우로 붙으면 터져요.', '중력을 돌려 같은 색끼리 모으세요.'] },
   w: { name: '벽', lines: ['절대 움직이지 않고 부서지지도 않아요.', '블록을 원하는 칸에 <b>멈춰 세우는 받침</b>으로 쓰세요.'] },
   i: { name: '얼음', lines: ['중력으로 움직이지만 짝이 없어 혼자선 안 터져요.', '<b>바로 옆</b>에서 색 블록이 터지면 함께 깨져요.'] },
   a: { name: '화살표 블록', lines: ['같은 색과 함께 터지면 <b>화살표 방향</b>으로 레이저!', '그 줄의 블록을 벽 앞까지 모두 부숴요.'] },
   h: { name: '블랙홀', lines: ['멈췄을 때 주변 8칸에 색 블록이 <b>3개 이상</b>이면', '가장 많은 색으로 바꾸고 사라져요.'] },
-  k: { name: '코어 · 출구', lines: ['코어는 부서지지 않아요. <b>주황 출구</b>로 내보내세요.', '출구 바깥쪽으로 중력을 돌리면 빠져나가요.'] },
 };
 // Block types present on a board (an arrow counts as 'a', not 'n').
 export function typesOn(board) {
@@ -106,18 +105,6 @@ export function makeDemo(canvas, type, P, w, h) {
       block(C(2), 2, 6);
       if (act < 1) block({ t: 'h' }, lerp(0, 1, fall), 3, { scale: Math.max(0, 1 + 0.3 * Math.sin(act * Math.PI) - act * 1.1) });
       for (const c of [1, 2, 3, 4]) sparks(2, c, seg(p, 0.65, 0.9), '#ff2fd1');
-    } else if (type === 'k') {
-      frame('right');
-      // exit gate on the right edge of the bottom row
-      g.save(); g.strokeStyle = '#ff9a3c'; g.shadowColor = '#ff9a3c'; g.shadowBlur = 10; g.lineWidth = 3; g.lineCap = 'round';
-      g.fillStyle = 'rgba(255,154,60,0.18)'; g.fillRect(X(6) + 1, Y(2) + 1, s - 2, s - 2);
-      const gx = X(7) + 3; g.beginPath(); g.moveTo(gx - 4, Y(2)); g.lineTo(gx + 4, Y(2)); g.moveTo(gx - 4, Y(3)); g.lineTo(gx + 4, Y(3)); g.stroke();
-      g.restore();
-      block({ t: 'w' }, 1, 4);
-      const k = ease(seg(p, 0.15, 0.45)), out = seg(p, 0.45, 0.6);
-      block({ t: 'k' }, 2, lerp(1, 7, k) + out * 0.6, { alpha: 1 - seg(p, 0.42, 0.6) });
-      block(C(2), 1, lerp(1, 3, ease(seg(p, 0.15, 0.3)))); // blocked by the wall: stays inside
-      sparks(2, 7, seg(p, 0.45, 0.8), '#ff9a3c');
     }
   };
 }

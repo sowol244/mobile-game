@@ -97,7 +97,6 @@ export function createSound() {
       [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => tone(note(s + 7), 0.16, { type: 'square', vol: 0.03, delay: i * 0.05 }));
       hiss(0.6, { vol: 0.1, f0: 200, f1: 6000, q: 2, attack: 0.4 });
     },
-    rescue() { [0, 4, 7, 12, 16].forEach((s, i) => tone(note(s + 12), 0.22, { type: 'triangle', vol: 0.05, delay: i * 0.07 })); },
     clear() { [0, 4, 7, 12, 7, 12, 16, 19, 24].forEach((s, i) => tone(note(s + 7), 0.22, { type: 'triangle', vol: 0.05, delay: i * 0.075 })); },
     star(i) { tone(note(PENTA[4 + i * 2] + 12), 0.25, { type: 'triangle', vol: 0.06 }); tone(note(PENTA[4 + i * 2] + 24), 0.2, { type: 'sine', vol: 0.025 }); },
     fail() { [7, 4, 0, -5].forEach((s, i) => tone(note(s), 0.3, { type: 'sawtooth', vol: 0.035, delay: i * 0.15, slide: 0.9 })); },

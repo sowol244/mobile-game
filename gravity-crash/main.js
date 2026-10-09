@@ -1,9 +1,9 @@
 // 그라비티 크래시 — entry point: menus, puzzle / crash / tutorial flows, the animation timeline, rendering and input.
 // All rules live in logic.js; this file only animates the step list that logic.resolve() returns.
 import {
-  N, DIRS, DV, OPP, cloneBoard, cloneState, settle, resolve, stageState, goalMet, solve, starsFor,
+  N, DIRS, DV, OPP, cloneBoard, cloneState, settle, resolve, stageState, goalMet, solve, starsFor, createAids, migrateSave,
   rng, dailySeed, crashLevel, spawnInterval, planWave, blockedLines, spawnWave, crashStart, entryCell,
-  shuffleColors, commonColor, colorBomb, nextCombo, FEVER_COMBO, FEVER_TIME, fillCount, parseBoard, parseExit, mk,
+  shuffleColors, commonColor, colorBomb, nextCombo, FEVER_COMBO, FEVER_TIME, fillCount, parseBoard, mk,
 } from './logic.js';
 import { STAGES, CHAPTERS } from './stages.js';
 import { STEPS } from './tutorial.js';
@@ -13,7 +13,7 @@ import { INFO, ORDER, typesOn, makeDemo } from './guide.js';
 const $ = id => document.getElementById(id);
 const cv = $('c'), ctx = cv.getContext('2d'), stageEl = $('stage');
 const overlay = $('overlay');
-const panels = { main: $('pMain'), ask: $('pAsk'), mode: $('pMode'), stages: $('pStages'), result: $('pResult'), pause: $('pPause'), help: $('pHelp'), rank: $('pRank'), intro: $('pIntro'), guide: $('pGuide') };
+const panels = { main: $('pMain'), ask: $('pAsk'), mode: $('pMode'), stages: $('pStages'), result: $('pResult'), pause: $('pPause'), help: $('pHelp'), rank: $('pRank'), intro: $('pIntro'), guide: $('pGuide'), diff: $('pDiff') };
 const titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), toastEl = $('toast'), startBtn = $('start');
 const homeBtn = $('home'), helpBtn = $('helpBtn'), rankBtn = $('rankBtn'), menuLink = $('toMenu');
 const muteBtn = $('mute'), pauseBtn = $('pause'), barEl = $('bar');
@@ -29,7 +29,6 @@ function save(key, v) { try { localStorage.setItem('gcrash-' + key, JSON.stringi
 const sound = createSound();
 const COL = ['#00f0ff', '#ff2fd1', '#7dff3a', '#ffe600'];
 const RGB = ['0,240,255', '255,47,209', '125,255,58', '255,230,0'];
-const EXIT = '#ff9a3c';
 const rnd = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ease = k => 1 - (1 - k) ** 3;
@@ -37,14 +36,20 @@ const ease = k => 1 - (1 - k) ** 3;
 /* ---------- game state ---------- */
 let phase = 'title';      // title | play | paused | over | result
 let mode = 'crash';       // puzzle | crash | daily | tutorial
-let st = null;            // logic state { board, gravity, exit, rescued }
+let st = null;            // logic state { board, gravity }
 let anim = null;          // { steps, i, t, dur, done, speed }
 let parts = [], pops = [], shake = null, tilt = null, warp = 0, lockFlash = 0, flash = 0, time = 0, last = 0;
 let preview = null;       // ghost landing preview { dir, ghosts }
 let hintDir = null, deadWarn = false;
 // puzzle
-let stageIdx = 0, movesUsed = 0, undoSnap = null, undoLeft = 1, hinted = false, puzzleDone = false;
-let stars = load('stars', []);
+let stageIdx = 0, movesUsed = 0, undoSnap = null, hinted = false, puzzleDone = false;
+const aids = createAids();   // undo 1 · hint 2 per stage
+// v2 save cleanup (core goal removed): drop unknown block types from the seen list, sanitize stars.
+const migrated = migrateSave({ stars: load('stars', []), seen: load('seen', []) }, STAGES.length);
+let stars = migrated.stars;
+save('stars', stars); save('seen', migrated.seen); save('ver', 2);
+// 초급 (easy) warns when the stage can no longer be cleared; 고급 (hard) never does. null = not chosen yet.
+let level = ['easy', 'hard'].includes(load('level', null)) ? load('level', null) : null;
 // crash
 let C = null;             // { daily, Rs, Ri, score, shown, combo, fever, stopT, elapsed, level, spawnT, wave, items, prog, cleared, warned }
 let best = load('best', 0), lastEntry = null;
@@ -91,7 +96,7 @@ function arrowPath(g, d, cx, cy, s) {
   g.lineTo(-s * 0.55, s * 0.2); g.lineTo(-s * 0.05, s * 0.2); g.lineTo(-s * 0.05, s * 0.5); g.closePath();
   g.restore();
 }
-// Draws one block tile with its top-left at (x0, y0), width w. Static parts only (holes / core add live effects).
+// Draws one block tile with its top-left at (x0, y0), width w. Static parts only (black holes are drawn live).
 function paintBlock(g, b, x0, y0, w) {
   const r = w * 0.2, cx = x0 + w / 2, cy = y0 + w / 2;
   if (b.t === 'n' || b.t === 'a') {
@@ -135,15 +140,6 @@ function paintBlock(g, b, x0, y0, w) {
     g.beginPath(); g.moveTo(x0 + w * 0.18, y0 + w * 0.3); g.lineTo(x0 + w * 0.45, y0 + w * 0.5); g.lineTo(x0 + w * 0.38, y0 + w * 0.8);
     g.moveTo(x0 + w * 0.45, y0 + w * 0.5); g.lineTo(x0 + w * 0.8, y0 + w * 0.42); g.stroke();
     g.fillStyle = 'rgba(255,255,255,0.65)'; rr(g, x0 + w * 0.14, y0 + w * 0.12, w * 0.3, w * 0.09, w * 0.04); g.fill();
-  } else if (b.t === 'k') {
-    g.shadowColor = EXIT; g.shadowBlur = w * 0.45;
-    const grd = g.createRadialGradient(cx, cy - w * 0.1, w * 0.05, cx, cy, w * 0.7);
-    grd.addColorStop(0, '#ffffff'); grd.addColorStop(0.45, '#ffd9a8'); grd.addColorStop(1, EXIT);
-    g.fillStyle = grd; rr(g, x0, y0, w, w, r); g.fill();
-    g.shadowBlur = 0;
-    g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = Math.max(1, w * 0.045); rr(g, x0 + 0.5, y0 + 0.5, w - 1, w - 1, r); g.stroke();
-    g.strokeStyle = 'rgba(120,40,0,0.75)'; g.lineWidth = Math.max(1.5, w * 0.07);
-    g.beginPath(); g.moveTo(cx, cy - w * 0.26); g.lineTo(cx + w * 0.26, cy); g.lineTo(cx, cy + w * 0.26); g.lineTo(cx - w * 0.26, cy); g.closePath(); g.stroke();
   } else if (b.t === 'h') {
     // static fallback (help icons); the board draws holes live with drawHole()
     drawHole(g, cx, cy, w, 0.7, 1);
@@ -191,11 +187,6 @@ function drawBlockAt(b, r, c, { alpha = 1, scale = 1, sx = 1, sy = 1, white = 0 
   ctx.drawImage(s.c, -s.dim / 2, -s.dim / 2, s.dim, s.dim);
   if (white > 0) { ctx.globalAlpha = alpha * white; ctx.fillStyle = '#fff'; rr(ctx, -w / 2, -w / 2, w, w, w * 0.2); ctx.fill(); }
   ctx.restore();
-  if (b.t === 'k') { // pulsing ring: the core is what you rescue
-    const p = (time * 0.9) % 1;
-    ctx.strokeStyle = `rgba(255,154,60,${0.7 * (1 - p)})`; ctx.lineWidth = 2;
-    rr(ctx, cx - w / 2 - p * cell * 0.3, cy - w / 2 - p * cell * 0.3, w + p * cell * 0.6, w + p * cell * 0.6, w * 0.25); ctx.stroke();
-  }
 }
 
 /* ---------- background streaks (flow in the gravity direction) ---------- */
@@ -289,13 +280,12 @@ function stepFx(s) {
     sound.item(); flash = 0.25;
   }
 }
-// Move steps: thud when blocks land; the core leaving through the exit.
+// Move steps: thud when blocks land.
 function animMoveLandings(s, t0, t1) {
   let n = 0, maxD = 0;
   for (const m of s.moves) {
     const tl = landTime(m.dist);
     if (tl > t0 && tl <= t1) {
-      if (m.exit) { rescueFx(); continue; }
       n++; maxD = Math.max(maxD, m.dist);
       const [dy, dx] = DV[st.gravity], [x, y] = cellCenter(m.tr, m.tc);
       for (let i = 0; i < 3 && parts.length < 700; i++) {
@@ -308,14 +298,6 @@ function animMoveLandings(s, t0, t1) {
     if (maxD >= 3) shake = shake && shake.mag > 2.5 ? shake : { t: 0, dur: 0.12, mag: Math.min(3, 1 + n * 0.15) };
   }
 }
-function rescueFx() {
-  sound.rescue();
-  const e = st.exit; if (!e) return;
-  const [x, y] = cellCenter(e.r, e.c);
-  for (let i = 0; i < 40; i++) { const a = rnd(0, 6.283), v = rnd(80, 320); parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: rnd(0.5, 1), color: i % 3 ? EXIT : '#ffffff', size: rnd(2, 5), g: 0.3 }); }
-  pops.push({ text: 'RESCUE!', x: W / 2, y: Lay.by + Lay.bs * 0.5, color: EXIT, size: 28, t: 0, life: 1.2 });
-}
-
 /* ---------- rendering ---------- */
 function drawFrame() {
   const { cell, bx, by, bs } = Lay, g = gravNow();
@@ -358,26 +340,6 @@ function drawChevrons() {
     ctx.beginPath(); ctx.moveTo(-cell * 0.12, -cell * 0.22); ctx.lineTo(cell * 0.06, 0); ctx.lineTo(-cell * 0.12, cell * 0.22); ctx.stroke();
     ctx.restore();
   }
-}
-function drawExit() {
-  const e = st && st.exit; if (!e) return;
-  const { cell, bx, by } = Lay, [dy, dx] = DV[e.side];
-  const x = bx + e.c * cell, y = by + e.r * cell;
-  const open = !st.rescued;
-  ctx.save();
-  ctx.fillStyle = open ? 'rgba(255,154,60,0.16)' : 'rgba(255,154,60,0.05)'; ctx.fillRect(x + 1, y + 1, cell - 2, cell - 2);
-  // gate: a gap in the frame with bright brackets
-  const gx = x + cell / 2 + dx * (cell / 2 + 5), gy = y + cell / 2 + dy * (cell / 2 + 5);
-  ctx.translate(gx, gy); ctx.rotate(Math.atan2(dy, dx));
-  ctx.fillStyle = '#05040f'; ctx.fillRect(-4, -cell / 2 + 2, 8, cell - 4);
-  ctx.shadowColor = EXIT; ctx.shadowBlur = 14; ctx.strokeStyle = EXIT; ctx.lineWidth = 3; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(-6, -cell / 2); ctx.lineTo(4, -cell / 2); ctx.moveTo(-6, cell / 2); ctx.lineTo(4, cell / 2); ctx.stroke();
-  if (open) for (let i = 0; i < 2; i++) {
-    const p = (time * 1.2 + i / 2) % 1;
-    ctx.strokeStyle = `rgba(255,154,60,${Math.sin(p * Math.PI)})`; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.moveTo(p * cell * 0.4 - cell * 0.05, -cell * 0.2); ctx.lineTo(p * cell * 0.4 + cell * 0.12, 0); ctx.lineTo(p * cell * 0.4 - cell * 0.05, cell * 0.2); ctx.stroke();
-  }
-  ctx.restore();
 }
 function drawPreviews() { // crash: where the next wave enters (ceiling side) + countdown
   if (!C || phase === 'over' || mode === 'tutorial' || mode === 'puzzle') return;
@@ -431,7 +393,6 @@ function drawBlocks() {
       const r = m.fr + (m.tr - m.fr) * k, c = m.fc + (m.tc - m.fc) * k;
       let sx = 1, sy = 1, alpha = 1;
       if (t > tl) { const q = Math.max(0, 1 - (t - tl) / 0.1); const a = 0.16 * q; if (gy) { sy = 1 - a; sx = 1 + a * 0.6; } else { sx = 1 - a; sy = 1 + a * 0.6; } }
-      if (m.exit) alpha = clamp(1 - (k - 0.6) / 0.4, 0, 1);
       drawBlockAt(m.b, r, c, { sx, sy, alpha });
     }
   } else if (s.type === 'boom') {
@@ -466,7 +427,7 @@ function drawGhost() {
   ctx.save();
   for (const gh of preview.ghosts) {
     const x = bx + gh.c * cell + cell * 0.08, y = by + gh.r * cell + cell * 0.08, w = cell * 0.84;
-    const col = gh.b.c != null ? COL[gh.b.c] : gh.b.t === 'k' ? EXIT : '#c9f3ff';
+    const col = gh.b.c != null ? COL[gh.b.c] : '#c9f3ff';
     ctx.setLineDash([4, 3]); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
     rr(ctx, x, y, w, w, w * 0.2); ctx.stroke();
     ctx.setLineDash([]); ctx.globalAlpha = 0.14;
@@ -540,7 +501,6 @@ function render() {
   }
   if (shake) { const k = 1 - shake.t / shake.dur; ctx.translate(rnd(-1, 1) * shake.mag * k, rnd(-1, 1) * shake.mag * k); }
   drawFrame();
-  drawExit();
   drawChevrons();
   drawPreviews();
   drawBlocks();
@@ -637,17 +597,17 @@ const movesLeft = () => STAGES[stageIdx].limit - movesUsed;
 function startPuzzle(i) {
   mode = 'puzzle'; stageIdx = i; C = null; attract = null;
   st = stageState(STAGES[i]);
-  movesUsed = 0; undoSnap = null; undoLeft = 1; hinted = false; hintDir = null; deadWarn = false; puzzleDone = false;
+  movesUsed = 0; undoSnap = null; aids.reset(); hinted = false; hintDir = null; deadWarn = false; puzzleDone = false;
   resetFx(); hud(); tutCoach(false);
   introThen(typesOn(st.board), enterPlay);
 }
 function puzzleAfter() {
   const def = STAGES[stageIdx];
-  if (goalMet(st, def.goal)) { puzzleDone = true; setTimeout(() => puzzleResult(true), 650); return; }
+  if (goalMet(st)) { puzzleDone = true; setTimeout(() => puzzleResult(true), 650); return; }
   if (movesLeft() <= 0) { puzzleDone = true; setTimeout(() => puzzleResult(false), 600); return; }
   // Can it still be solved in the moves left? (small search; skipped quietly if it would take too long)
-  const r = solve(cloneState(st), def.goal, movesLeft(), 25000);
-  deadWarn = r === null;
+  const r = solve(cloneState(st), 'clear', movesLeft(), 25000);
+  deadWarn = level !== 'hard' && r === null;
 }
 function puzzleResult(ok) {
   if (phase !== 'play') return;
@@ -669,15 +629,21 @@ function puzzleResult(ok) {
   panel('result');
 }
 function undo() {
-  if (mode !== 'puzzle' || phase !== 'play' || busy() || !undoSnap || undoLeft <= 0 || puzzleDone) return;
-  st = undoSnap.st; movesUsed = undoSnap.movesUsed; undoSnap = null; undoLeft--; deadWarn = false; hintDir = null;
+  if (mode !== 'puzzle' || phase !== 'play' || busy() || !undoSnap || puzzleDone || !aids.use('undo')) return;
+  st = undoSnap.st; movesUsed = undoSnap.movesUsed; undoSnap = null; deadWarn = false; hintDir = null;
   sound.whoosh(true); warp = 0.6; hud();
 }
 function hint() {
-  if (mode !== 'puzzle' || phase !== 'play' || busy() || puzzleDone) return;
-  const r = solve(cloneState(st), STAGES[stageIdx].goal, movesLeft(), 300000);
-  if (r && r.length) { hintDir = r[0]; hinted = true; sound.item(); pops.push({ text: '힌트', kr: true, x: W / 2, y: Lay.by - 2 > 20 ? Lay.by + Lay.cell : 40, color: '#ffe600', size: 18, t: 0, life: 1.2 }); }
-  else { deadWarn = true; sound.bump(); }
+  if (mode !== 'puzzle' || phase !== 'play' || busy() || puzzleDone || aids.hint <= 0) return;
+  const r = solve(cloneState(st), 'clear', movesLeft(), 300000);
+  if (r && r.length) {
+    aids.use('hint'); hintDir = r[0]; hinted = true; sound.item();
+    pops.push({ text: `힌트 (남은 ${aids.hint})`, kr: true, x: W / 2, y: Lay.by + Lay.cell, color: '#ffe600', size: 18, t: 0, life: 1.2 });
+  } else { // no hint used up when there is nothing to show
+    sound.bump();
+    if (level === 'hard') pops.push({ text: '힌트를 찾지 못했어요', kr: true, x: W / 2, y: Lay.by + Lay.cell, color: '#ff8aa0', size: 16, t: 0, life: 1.4 });
+    else deadWarn = true;
+  }
   hud();
 }
 
@@ -800,7 +766,7 @@ function startTutorial(auto) {
 function setupStep(i) {
   const s = STEPS[i];
   tut.i = i; tut.moves = 0; tut.done = false;
-  st = { board: parseBoard(s.rows), gravity: 'down', exit: parseExit(s.exit), rescued: false };
+  st = { board: parseBoard(s.rows), gravity: 'down' };
   resetFx();
   cstepEl.textContent = `TUTORIAL ${i + 1} / ${STEPS.length}`;
   ctextEl.innerHTML = s.text; ctextEl.className = '';
@@ -808,7 +774,7 @@ function setupStep(i) {
 }
 function tutAfter() {
   const s = STEPS[tut.i], token = tut.token;
-  if (goalMet(st, s.goal)) {
+  if (goalMet(st)) {
     tut.done = true;
     const lastStep = tut.i === STEPS.length - 1;
     ctextEl.textContent = lastStep ? '완벽해요! 이제 진짜 게임을 시작해요.' : '좋아요!'; ctextEl.className = 'ok';
@@ -848,7 +814,7 @@ function attractTick(dt) {
 }
 
 /* ---------- new-block intro cards, board pulse, block guide ---------- */
-let seen = new Set(load('seen', []));
+let seen = new Set(migrated.seen);
 let introPulse = null, demoDraws = [], guideFrom = 'help';
 const PAINT = { paintBlock, drawHole, arrowPath, rr };
 const unseen = types => ORDER.filter(t => types.includes(t) && !seen.has(t));
@@ -885,7 +851,6 @@ function drawIntroPulse() {
   ctx.save(); ctx.strokeStyle = `rgba(255,230,0,${a})`; ctx.shadowColor = '#ffe600'; ctx.shadowBlur = 14; ctx.lineWidth = 3;
   const ring = (r, c) => { const g = 3 + 2 * Math.sin(k * 9); rr(ctx, bx + c * cell - g + 2, by + r * cell - g + 2, cell + 2 * g - 4, cell + 2 * g - 4, cell * 0.24); ctx.stroke(); };
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) { const b = st.board[r][c]; if (b && introPulse.types.has(b.t)) ring(r, c); }
-  if (introPulse.types.has('k') && st.exit) ring(st.exit.r, st.exit.c);
   ctx.restore();
 }
 function buildGuide() {
@@ -912,12 +877,12 @@ function hud() {
     const def = STAGES[stageIdx];
     H.lLabel.textContent = '스테이지'; H.lVal.textContent = stageIdx + 1;
     H.mLabel.textContent = def.name; H.gauge.hidden = true;
-    H.glabel.textContent = def.goal === 'clear' ? '색 블록 모두 부수기' : def.goal === 'rescue' ? '코어 탈출' : '모두 부수고 코어 탈출';
+    H.glabel.textContent = '색 블록 모두 부수기';
     H.rLabel.textContent = `남은 이동 · ★${def.par}`; H.rVal.textContent = movesLeft();
     H.rVal.classList.toggle('low', movesLeft() <= 1);
     setTools([
-      { ic: '↶', l: '되돌리기', k: 'Z', n: undoLeft ? '1' : '0', on: !!undoSnap && undoLeft > 0 && !puzzleDone, act: undo },
-      { ic: '?', l: '힌트', k: 'H', n: '', on: !puzzleDone, act: hint, ready: deadWarn ? false : undefined },
+      { ic: '↶', l: '되돌리기', k: 'Z', n: '×' + aids.undo, on: !!undoSnap && aids.undo > 0 && !puzzleDone, act: undo },
+      { ic: '?', l: '힌트', k: 'H', n: '×' + aids.hint, on: aids.hint > 0 && !puzzleDone, act: hint, ready: deadWarn ? false : undefined },
       { ic: '⟲', l: '다시 하기', k: 'R', n: '', on: true, act: () => startPuzzle(stageIdx), ready: deadWarn },
     ]);
     $('iprog').hidden = true;
@@ -1066,7 +1031,7 @@ function buildHelp() {
     [{ t: 'i' }, '<b>얼음</b>은 옆 블록이 터질 때 깨져요.'],
     [{ t: 'a', c: 3, d: 'right' }, '<b>화살표</b>가 터지면 그 방향 줄이 사라져요.'],
     [{ t: 'h' }, '<b>블랙홀</b>은 주변 3개+를 한 색으로 바꿔요.'],
-    [{ t: 'k' }, '<b>퍼즐</b>: 다 부수거나 <b>코어</b>를 출구로!'],
+    [{ t: 'n', c: 2 }, '<b>퍼즐</b>: 정해진 횟수 안에 색 블록을 모두!'],
     [{ t: 'warn' }, '<b>크래시</b>: 예고된 칸이 막히면 게임 오버.'],
     [{ t: 'n', c: 3 }, '<b>5콤보</b>면 5초간 <b>그라비티 프리</b>!'],
     [{ t: 'item' }, '블록 30개를 부술 때마다 <b>아이템</b> 1개.'],
@@ -1097,7 +1062,12 @@ startBtn.addEventListener('click', () => {
 });
 $('askYes').addEventListener('click', () => { sound.unlock(); startTutorial(true); });
 $('askNo').addEventListener('click', () => { save('tut', true); refreshModes(); panel('mode'); });
-$('mPuzzle').addEventListener('click', () => { sound.click(); chapter = -1; buildStages(); panel('stages'); });
+$('mPuzzle').addEventListener('click', () => { sound.click(); chapter = -1; if (!level) { panel('diff'); return; } buildStages(); panel('stages'); });
+function setLevel(v) { level = v; save('level', v); paintLevel(); }
+function paintLevel() { for (const b of document.querySelectorAll('[data-level]')) b.setAttribute('aria-pressed', String(b.dataset.level === level)); }
+for (const b of document.querySelectorAll('#pDiff [data-level]')) b.addEventListener('click', () => { sound.click(); setLevel(b.dataset.level); buildStages(); panel('stages'); });
+for (const b of document.querySelectorAll('#lvl [data-level]')) b.addEventListener('click', () => { if (level !== b.dataset.level) { sound.click(); setLevel(b.dataset.level); } });
+paintLevel();
 $('mCrash').addEventListener('click', () => { sound.unlock(); sound.click(); startCrash(false); });
 $('mDaily').addEventListener('click', () => { sound.unlock(); sound.click(); startCrash(true); });
 $('stagesBack').addEventListener('click', () => { if (phase === 'result') { showTitle(); } else { refreshModes(); panel('mode'); } });
@@ -1148,9 +1118,9 @@ function computePreview(dir) {
   const b = cloneBoard(st.board);
   const pos = new Map();
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (b[r][c]) pos.set(b[r][c].id, [r, c]);
-  const { moves } = settle(b, dir, st.exit);
+  const { moves } = settle(b, dir);
   if (!moves.length) return { dir, ghosts: [] };
-  return { dir, ghosts: moves.filter(m => !m.exit).map(m => ({ b: m.b, r: m.tr, c: m.tc, fr: m.fr, fc: m.fc })) };
+  return { dir, ghosts: moves.map(m => ({ b: m.b, r: m.tr, c: m.tc, fr: m.fr, fc: m.fc })) };
 }
 cv.addEventListener('pointerdown', e => {
   sound.unlock();
@@ -1211,7 +1181,7 @@ requestAnimationFrame(frame);
 window.__gcrash = {
   get phase() { return phase; }, get mode() { return mode; }, get state() { return st; }, get busy() { return busy(); },
   get layout() { return Lay; }, get crash() { return C; }, get stage() { return stageIdx; }, get movesUsed() { return movesUsed; },
-  get tutorial() { return tut && { i: tut.i, done: tut.done }; }, get stars() { return stars; }, get seen() { return [...seen]; }, get pulsing() { return !!introPulse; },
+  get tutorial() { return tut && { i: tut.i, done: tut.done }; }, get stars() { return stars; }, get seen() { return [...seen]; }, get level() { return level; }, get aids() { return { undo: aids.undo, hint: aids.hint }; }, get deadWarn() { return deadWarn; }, get pulsing() { return !!introPulse; },
   get fx() { return { parts: parts.length, pops: pops.length, shake: !!shake } },
   STAGES, tryGravity, startPuzzle, startCrash, useItem, undo, hint,
   setFever(on) { if (C) { C.combo = on ? FEVER_COMBO : 0; if (on) startFever(); else C.fever = 0; hud(); } },

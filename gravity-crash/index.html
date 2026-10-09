@@ -18,7 +18,6 @@
     --pink: #ff2fd1;
     --lime: #7dff3a;
     --yellow: #ffe600;
-    --exit: #39ff9e;
     color-scheme: dark;
     --num: "Orbitron", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --kr: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
@@ -123,6 +122,13 @@
   .st:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   #starTotal { font-family: var(--num); font-size: 14px; color: var(--yellow); }
   #pStages { gap: 10px; }
+  #lvl { display: flex; width: min(340px, 100%); border: 1px solid #2c2c70; border-radius: 999px; padding: 3px; gap: 3px; background: rgba(18, 18, 58, 0.85); }
+  #lvl button { flex: 1 1 0; min-width: 0; height: 40px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: 15px; font-weight: 900; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+  #lvl button small { font-size: 11px; font-weight: 500; }
+  #lvl button[aria-pressed="true"] { background: var(--cyan); color: #04121a; box-shadow: 0 0 12px rgba(0, 240, 255, 0.5); }
+  #lvl button[data-level="hard"][aria-pressed="true"] { background: var(--pink); box-shadow: 0 0 12px rgba(255, 47, 209, 0.5); }
+  #lvl button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  #pDiff .note { font-size: 13px !important; color: var(--muted) !important; }
   #chap { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 6px; width: min(340px, 100%); }
   #chInfo { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; }
   #chNo { font-family: var(--num); font-size: 11px; letter-spacing: 0.14em; color: var(--muted); }
@@ -210,9 +216,21 @@
         </div>
         <button class="go ghost back" type="button">돌아가기</button>
       </div>
+      <div class="panel" id="pDiff" hidden>
+        <h2>난이도</h2>
+        <div class="modes">
+          <button class="mode m1" type="button" data-level="easy"><span class="t">초급</span><span class="d">막히면 알려줘요</span></button>
+          <button class="mode m2" type="button" data-level="hard"><span class="t">고급</span><span class="d">알려주지 않아요</span></button>
+        </div>
+        <p class="note">스테이지 화면에서 언제든 바꿀 수 있어요.</p>
+      </div>
       <div class="panel" id="pStages" hidden>
         <h2>스테이지</h2>
         <div id="starTotal"></div>
+        <div id="lvl" role="group" aria-label="난이도">
+          <button type="button" data-level="easy">초급<small>막히면 알려줘요</small></button>
+          <button type="button" data-level="hard">고급<small>알려주지 않아요</small></button>
+        </div>
         <div id="chap">
           <button class="nav" id="chPrev" type="button" aria-label="이전 챕터">‹</button>
           <div id="chInfo"><small id="chNo"></small><b id="chName"></b><span id="chStars"></span></div>

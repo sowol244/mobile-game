@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   N, DIRS, parseBoard, toRows, settle, findGroups, explode, activateHoles, resolve, stageState, goalMet, solve, cloneState,
   starsFor, rng, planWave, spawnWave, blockedLines, crashStart, entryCell, nextCombo, FEVER_COMBO, colorBomb, commonColor,
-  shuffleColors, fillCount, deadClear, parseExit, crashLevel, spawnInterval, boardKey, mk,
+  shuffleColors, fillCount, deadClear, crashLevel, spawnInterval, boardKey, mk, createAids, UNDO_LIMIT, HINT_LIMIT, migrateSave,
 } from './logic.js';
 import { STAGES, CHAPTERS } from './stages.js';
 import { STEPS } from './tutorial.js';
@@ -13,10 +13,10 @@ let n = 0;
 const test = (name, fn) => { fn(); n++; console.log('ok  ' + name); };
 const E = '. . . . . . . . .';
 const pad = rows => [...Array(N - rows.length).fill(E), ...rows];
-const S = (rows, extra = {}) => ({ board: parseBoard(rows), gravity: 'down', exit: null, rescued: false, ...extra });
+const S = (rows, extra = {}) => ({ board: parseBoard(rows), gravity: 'down', ...extra });
 
 test('parse / print round trip', () => {
-  const rows = pad(['c p g y # * o K .', 'c^ p> gv y< . . . . .']);
+  const rows = pad(['c p g y # * o . .', 'c^ p> gv y< . . . . .']);
   assert.deepEqual(toRows(parseBoard(rows)), rows.map(r => r.split(/\s+/).join(' ')));
 });
 
@@ -39,10 +39,10 @@ test('settling twice in the same direction changes nothing', () => {
   assert.equal(resolve(st, 'down'), null, 'a move that moves nothing is not a move');
 });
 
-test('blocks stack on each other and ice / black hole / core fall too', () => {
-  const b = parseBoard(['c . . . . . . . .', '* . . . . . . . .', 'o . . . . . . . .', 'K . . . . . . . .', E, E, E, E, E]);
+test('blocks stack on each other and ice / black hole fall too', () => {
+  const b = parseBoard(['c . . . . . . . .', '* . . . . . . . .', 'o . . . . . . . .', 'p . . . . . . . .', E, E, E, E, E]);
   settle(b, 'down');
-  assert.deepEqual(toRows(b).slice(5).map(r => r[0]), ['c', '*', 'o', 'K']);
+  assert.deepEqual(toRows(b).slice(5).map(r => r[0]), ['c', '*', 'o', 'p']);
 });
 
 test('4+ orthogonal same color match, diagonals do not count, arrows join their color', () => {
@@ -86,14 +86,14 @@ test('ice breaks only when a neighbouring colored block explodes', () => {
   assert.equal(toRows(b).at(-2)[0], '*', 'diagonal ice survives');
 });
 
-test('arrow laser clears its line, stops at walls, skips the core, chains other arrows', () => {
-  let b = parseBoard(pad(['c c c c> p g # y K']));
+test('arrow laser clears its line, stops at walls, chains other arrows', () => {
+  let b = parseBoard(pad(['c c c c> p g # y p']));
   let ex = explode(b, findGroups(b));
-  assert.equal(toRows(b).at(-1), '. . . . . . # y K');
+  assert.equal(toRows(b).at(-1), '. . . . . . # y p');
   assert.equal(ex.lasers[0].len, 2);
-  b = parseBoard(pad(['. . . . p^ . . . .', 'c c c c> g K . y .']));
-  ex = explode(b, findGroups(b)); // laser passes over the core; p^ sits on another row, so it stays
-  assert.equal(toRows(b).at(-1), '. . . . . K . . .');
+  b = parseBoard(pad(['. . . . p^ . . . .', 'c c c c> g * o y .']));
+  ex = explode(b, findGroups(b)); // the laser takes ice and black holes too; p^ sits on another row, so it stays
+  assert.equal(toRows(b).at(-1), '. . . . . . . . .');
   assert.equal(toRows(b).at(-2), '. . . . p^ . . . .');
   b = parseBoard(['. . . . . . . . .', '. . . . . y . . .', E, E, E, E, E, '. . . . . . . . .', 'c c c c> . p^ . g .']);
   ex = explode(b, findGroups(b));
@@ -122,18 +122,6 @@ test('black hole inside resolve: convert → settle → match', () => {
   assert.equal(fillCount(st.board), 0);
 });
 
-test('core passes only through its exit gate, and only with gravity pointing out', () => {
-  const st = { board: parseBoard(pad(['. . . . K . . . .'])), gravity: 'down', exit: parseExit('right:8'), rescued: false };
-  resolve(st, 'left');
-  assert.ok(!st.rescued);
-  resolve(st, 'right');
-  assert.ok(st.rescued);
-  assert.equal(fillCount(st.board), 0);
-  const st2 = { board: parseBoard(pad(['. . . . K . . . c'])), gravity: 'down', exit: parseExit('right:8'), rescued: false };
-  resolve(st2, 'right');
-  assert.ok(!st2.rescued, 'a block in the gate cell keeps it shut');
-});
-
 test('stars and dead-end detection', () => {
   assert.deepEqual([3, 4, 5, 9].map(m => starsFor(m, 4)), [3, 3, 2, 1]);
   assert.equal(starsFor(3, 4, true), 2);
@@ -157,20 +145,21 @@ test(`every puzzle stage (${STAGES.length}) is stable at start, has no solution 
     const key = boardKey(s.board); assert.ok(!seen.has(key), `${tag} duplicates another`); seen.add(key);
     assert.ok(!names.has(def.name), `${tag}: duplicate name`); names.add(def.name);
     const t = cloneState(s);
-    assert.equal(settle(t.board, 'down', t.exit).moves.length, 0, `${tag} has floating blocks`);
+    assert.equal(settle(t.board, 'down').moves.length, 0, `${tag} has floating blocks`);
     assert.equal(findGroups(t.board).length, 0, `${tag} starts with a match`);
     assert.equal(activateHoles(cloneState(s).board), null, `${tag} starts with an active black hole`);
-    assert.ok(!goalMet(s, def.goal), `${tag} is already solved`);
-    if (def.goal !== 'clear') assert.ok(def.exit && s.board.flat().some(b => b && b.t === 'k'), `${tag} needs a core and an exit`);
+    assert.ok(!goalMet(s), `${tag} is already solved`);
+    assert.equal(def.goal, 'clear', `${tag}: only the "clear every block" goal exists`);
+    assert.ok(!('exit' in def) && !def.rows.join(' ').includes('K'), `${tag} still has a core or an exit`);
     assert.equal(def.limit, def.par + 2, `${tag}: limit must be par + 2`);
     // lower bound: an exhaustive BFS (huge state cap, so null really means "impossible") finds nothing shorter
-    assert.strictEqual(solve(stageState(def), def.goal, def.par - 1, 5e6), null, `${tag} is solvable in fewer than par=${def.par}`);
+    assert.strictEqual(solve(stageState(def), 'clear', def.par - 1, 5e6), null, `${tag} is solvable in fewer than par=${def.par}`);
     // upper bound: the stored solution (or a fresh BFS one) has exactly par moves and really reaches the goal
-    const sol = def.sol ? [...def.sol].map(c => D[c]) : solve(stageState(def), def.goal, def.par);
+    const sol = def.sol ? [...def.sol].map(c => D[c]) : solve(stageState(def), 'clear', def.par);
     assert.ok(sol && sol.length === def.par, `${tag} has no ${def.par}-move solution`);
     const r = stageState(def);
     for (const d of sol) assert.ok(resolve(r, d), `${tag}: move ${d} did nothing`);
-    assert.ok(goalMet(r, def.goal), `${tag}: solution does not reach the goal`);
+    assert.ok(goalMet(r), `${tag}: solution does not reach the goal`);
   });
 });
 
@@ -186,16 +175,17 @@ test('chapters cover 1–100 in order, ≤12 stages each, and difficulty rises c
     assert.ok(STAGES[i].par >= STAGES[i - 1].par - (opens ? 2 : 1), `par drops sharply at stage ${i + 1}`);
   }
   assert.ok(STAGES.at(-1).par >= 10);
-  const goals = new Set(STAGES.map(s => s.goal)), types = new Set(STAGES.flatMap(s => s.rows.join(' ').split(/\s+/).map(t => t[0])));
-  for (const g of ['clear', 'rescue', 'both']) assert.ok(goals.has(g));
-  for (const k of ['#', '*', 'o', 'K']) assert.ok(types.has(k), 'block type ' + k + ' is used');
+  const types = new Set(STAGES.flatMap(s => s.rows.join(' ').split(/\s+/).map(t => (t.length === 2 ? 'arrow' : t))));
+  for (const k of ['#', '*', 'o', 'arrow']) assert.ok(types.has(k), 'block type ' + k + ' is used');
+  assert.ok(!types.has('K'), 'no core anywhere');
 });
 
 test('every tutorial step is solvable within its limit', () => {
   for (const s of STEPS) {
-    const st = { board: parseBoard(s.rows), gravity: 'down', exit: parseExit(s.exit), rescued: false };
+    assert.equal(s.goal, 'clear'); assert.ok(!s.rows.join(' ').includes('K'));
+    const st = { board: parseBoard(s.rows), gravity: 'down' };
     assert.equal(findGroups(st.board).length, 0);
-    const sol = solve(st, s.goal, s.limit);
+    const sol = solve(st, 'clear', s.limit);
     assert.ok(sol && sol.length <= s.limit, 'tutorial step unsolvable: ' + s.text);
   }
 });
@@ -278,6 +268,27 @@ test('every block type has a guide card and first appears in a gentle teaching s
     assert.ok(t in first, 'type ' + t + ' appears in some stage');
     assert.ok(STAGES[first[t]].par <= 3, `${INFO[t].name} first appears in stage ${first[t] + 1} with par ${STAGES[first[t]].par}`);
   }
+});
+
+test('the core block is gone from the rules: "K" is not a block any more', () => {
+  assert.throws(() => parseBoard(pad(['. . . . K . . . .'])));
+  assert.equal(goalMet(S(pad(['. . . . * o # . .']))), true, 'only colored blocks have to go');
+});
+
+test('puzzle aids: undo once and hint twice per stage, refilled on (re)start', () => {
+  assert.equal(UNDO_LIMIT, 1); assert.equal(HINT_LIMIT, 2);
+  const a = createAids();
+  assert.ok(a.use('undo')); assert.ok(!a.use('undo')); assert.equal(a.undo, 0);
+  assert.ok(a.use('hint')); assert.ok(a.use('hint')); assert.ok(!a.use('hint')); assert.equal(a.hint, 0);
+  a.reset();
+  assert.deepEqual([a.undo, a.hint], [1, 2]);
+});
+
+test('old saves are cleaned: core removed from seen blocks, stars sanitized and capped to the stage count', () => {
+  const m = migrateSave({ stars: [3, 2, null, 7, -1, 1.5, 1, 2], seen: ['n', 'k', 'w', 'k', 'x'] }, 6);
+  assert.deepEqual(m.stars, [3, 2, 0, 0, 0, 0]);
+  assert.deepEqual(m.seen, ['n', 'w']);
+  assert.deepEqual(migrateSave({ stars: 'junk', seen: null }, 100), { stars: [], seen: [] });
 });
 
 console.log(`\n${n} tests passed`);

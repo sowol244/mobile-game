@@ -7,7 +7,6 @@
 //      'i' ice                                  — falls, breaks when a colored block next to it explodes (or a laser hits it)
 //      'h' black hole                           — falls; once it rests with 3+ colored blocks in the 8 cells around it,
 //                                                 it turns them all into their majority color and collapses (removed)
-//      'k' core                                 — falls, indestructible; leaves the board through the exit gate
 // Gravity is one of 'up' | 'right' | 'down' | 'left'. A gravity change slides every movable block toward that wall.
 
 export const N = 9;
@@ -32,7 +31,7 @@ export const movable = b => !!b && b.t !== 'w';
 
 /* ---------- stage text format ----------
    9 rows of 9 whitespace-separated tokens:
-   .  empty     #  wall      *  ice      o  black hole      K  core
+   .  empty     #  wall      *  ice      o  black hole
    c p g y      normal block (cyan / pink / lime / yellow)
    c^ c> cv c<  arrow block of that color pointing up / right / down / left            */
 const CK = { c: 0, p: 1, g: 2, y: 3 };
@@ -49,7 +48,6 @@ export function parseBoard(rows) {
       if (tk === '#') b[r][c] = mk('w');
       else if (tk === '*') b[r][c] = mk('i');
       else if (tk === 'o') b[r][c] = mk('h');
-      else if (tk === 'K') b[r][c] = mk('k');
       else if (tk.length === 1 && tk in CK) b[r][c] = mk('n', CK[tk]);
       else if (tk.length === 2 && tk[0] in CK && tk[1] in AK) b[r][c] = mk('a', CK[tk[0]], AK[tk[1]]);
       else throw new Error(`bad token "${tk}" at ${r},${c}`);
@@ -62,12 +60,12 @@ export function boardKey(b) {
   let s = '';
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
     const x = b[r][c];
-    s += !x ? '.' : x.t === 'n' ? COLOR_KEYS[x.c] : x.t === 'a' ? COLOR_KEYS[x.c].toUpperCase() + AD[x.d] : x.t === 'w' ? '#' : x.t === 'i' ? '*' : x.t === 'h' ? 'o' : 'K';
+    s += !x ? '.' : x.t === 'n' ? COLOR_KEYS[x.c] : x.t === 'a' ? COLOR_KEYS[x.c].toUpperCase() + AD[x.d] : x.t === 'w' ? '#' : x.t === 'i' ? '*' : 'o';
   }
   return s;
 }
 export function toRows(b) { // inverse of parseBoard (for debugging)
-  return b.map(row => row.map(x => !x ? '.' : x.t === 'n' ? COLOR_KEYS[x.c] : x.t === 'a' ? COLOR_KEYS[x.c] + AD[x.d] : x.t === 'w' ? '#' : x.t === 'i' ? '*' : x.t === 'h' ? 'o' : 'K').join(' '));
+  return b.map(row => row.map(x => !x ? '.' : x.t === 'n' ? COLOR_KEYS[x.c] : x.t === 'a' ? COLOR_KEYS[x.c] + AD[x.d] : x.t === 'w' ? '#' : x.t === 'i' ? '*' : 'o').join(' '));
 }
 
 /* ---------- gravity ---------- */
@@ -86,26 +84,16 @@ export function lineCells(dir, k) {
 export const entryCell = (dir, k) => lineCells(dir, k)[N - 1];
 
 // Slides every movable block toward `dir` until it rests on a wall, the board edge or another block.
-// exit = { r, c, side }: the core block alone passes through that edge cell when gravity is `side`.
-// Mutates board. Returns { moves: [{ id, b, fr, fc, tr, tc, dist, exit? }], exited }
-export function settle(board, dir, exit = null) {
+// Mutates board. Returns { moves: [{ id, b, fr, fc, tr, tc, dist }] }
+export function settle(board, dir) {
   const moves = [];
-  let exited = false;
   for (let k = 0; k < N; k++) {
     const cells = lineCells(dir, k);
     let slot = 0;
-    const gate = !!exit && exit.side === dir && cells[0][0] === exit.r && cells[0][1] === exit.c;
     for (let i = 0; i < N; i++) {
       const [r, c] = cells[i], b = board[r][c];
       if (!b) continue;
       if (b.t === 'w') { slot = i + 1; continue; }
-      if (gate && slot === 0 && b.t === 'k') { // out through the gate
-        board[r][c] = null;
-        const [dr, dc] = DV[dir];
-        moves.push({ id: b.id, b: { ...b }, fr: r, fc: c, tr: exit.r + dr * 2, tc: exit.c + dc * 2, dist: i + 2, exit: true });
-        exited = true;
-        continue;
-      }
       const [tr, tc] = cells[slot];
       if (tr !== r || tc !== c) {
         board[tr][tc] = b; board[r][c] = null;
@@ -114,7 +102,7 @@ export function settle(board, dir, exit = null) {
       slot++;
     }
   }
-  return { moves, exited };
+  return { moves };
 }
 
 /* ---------- matching ---------- */
@@ -170,7 +158,7 @@ export function activateHoles(board) {
 }
 
 /* ---------- explosions ---------- */
-// Removes matched groups; arrows fire lasers (stopped by walls, passing over the core, chaining other arrows);
+// Removes matched groups; arrows fire lasers (stopped by walls, chaining other arrows);
 // ice next to any destroyed colored block breaks. Mutates board.
 export function explode(board, groups) {
   const kill = new Map(); // key -> { r, c, b, why }
@@ -188,7 +176,7 @@ export function explode(board, groups) {
       const o = board[y][x];
       if (o && o.t === 'w') break;
       len++;
-      if (o && o.t !== 'k' && !kill.has(key(y, x))) {
+      if (o && !kill.has(key(y, x))) {
         const v = { r: y, c: x, b: { ...o }, why: 'laser' };
         kill.set(key(y, x), v);
         if (o.t === 'a') q.push(v);
@@ -213,23 +201,22 @@ export function explode(board, groups) {
 // Settles toward `dir`, then loops: black holes → settle → matches (all at once) → explode → settle …
 // Every round of explosions is one more chain step. Mutates state.board.
 // Returns null when the move changes nothing (it does not count as a move), else
-// { steps, chain, cleared, gained, exited } where steps (for animation) are
+// { steps, chain, cleared, gained } where steps (for animation) are
 //   { type:'move', moves, board }  { type:'hole', holes, conv, board }  { type:'boom', chain, cells, lasers, gained, board }
 // opts: { min = 4, mult = 1, force = false, scoring = true }
 export function resolve(state, dir, opts = {}) {
   const min = opts.min || MATCH_MIN, mult = opts.mult || 1;
   const board = state.board, steps = [];
-  const first = settle(board, dir, state.exit);
+  const first = settle(board, dir);
   if (!first.moves.length && !opts.force) return null;
   state.gravity = dir;
-  let exited = first.exited, chain = 0, cleared = 0, gained = 0;
+  let chain = 0, cleared = 0, gained = 0;
   if (first.moves.length) steps.push({ type: 'move', moves: first.moves, board: cloneBoard(board) });
   for (let guard = 0; guard < 100; guard++) {
     const h = activateHoles(board);
     if (h) {
       steps.push({ type: 'hole', ...h, board: cloneBoard(board) });
-      const s = settle(board, dir, state.exit);
-      exited = exited || s.exited;
+      const s = settle(board, dir);
       if (s.moves.length) steps.push({ type: 'move', moves: s.moves, board: cloneBoard(board) });
       continue;
     }
@@ -240,12 +227,10 @@ export function resolve(state, dir, opts = {}) {
     const pts = ex.cells.length * 10 * chain * mult;
     cleared += ex.cells.length; gained += pts;
     steps.push({ type: 'boom', chain, cells: ex.cells, lasers: ex.lasers, groups: groups.length, gained: pts, board: cloneBoard(board) });
-    const s = settle(board, dir, state.exit);
-    exited = exited || s.exited;
+    const s = settle(board, dir);
     if (s.moves.length) steps.push({ type: 'move', moves: s.moves, board: cloneBoard(board) });
   }
-  if (exited) state.rescued = true;
-  return { steps, chain, cleared, gained, exited };
+  return { steps, chain, cleared, gained };
 }
 
 /* ---------- puzzle stages ---------- */
@@ -254,29 +239,21 @@ export function countColor(board) {
   for (const row of board) for (const b of row) if (isColor(b)) n++;
   return n;
 }
-export function goalMet(state, goal) {
-  const clear = countColor(state.board) === 0;
-  if (goal === 'clear') return clear;
-  if (goal === 'rescue') return !!state.rescued;
-  return clear && !!state.rescued; // 'both'
-}
-export function parseExit(s) {
-  if (!s) return null;
-  const [side, k] = s.split(':'); const i = +k;
-  return side === 'down' ? { r: N - 1, c: i, side } : side === 'up' ? { r: 0, c: i, side } : side === 'right' ? { r: i, c: N - 1, side } : { r: i, c: 0, side };
-}
-// A fresh playable state for a stage definition { rows, goal, exit }.
+// Every puzzle has the same goal: no colored block left on the board. (`goal` is kept for old callers: always 'clear'.)
+export const GOAL = 'clear';
+export function goalMet(state) { return countColor(state.board) === 0; }
+// A fresh playable state for a stage definition { rows }.
 export function stageState(def) {
-  return { board: parseBoard(def.rows), gravity: 'down', exit: parseExit(def.exit), rescued: false, moves: 0 };
+  return { board: parseBoard(def.rows), gravity: 'down' };
 }
 export const cloneState = s => ({ ...s, board: cloneBoard(s.board) });
 
 // Breadth-first search over gravity sequences. Returns the shortest list of directions that meets the goal
 // within maxDepth moves; null = proved impossible within maxDepth; undefined = gave up after `limit` states.
 // Moves that change nothing are skipped.
-export function solve(state0, goal, maxDepth = 8, limit = 400000) {
-  if (goalMet(state0, goal)) return [];
-  const seen = new Set([boardKey(state0.board) + (state0.rescued ? '!' : '')]);
+export function solve(state0, goal = GOAL, maxDepth = 8, limit = 400000) {
+  if (goalMet(state0)) return [];
+  const seen = new Set([boardKey(state0.board)]);
   let frontier = [{ s: state0, path: [] }], explored = 0;
   for (let depth = 1; depth <= maxDepth; depth++) {
     const next = [];
@@ -286,9 +263,9 @@ export function solve(state0, goal, maxDepth = 8, limit = 400000) {
         const t = cloneState(s);
         const res = resolve(t, d, { scoring: false });
         if (!res) continue;
-        if (goalMet(t, goal)) return [...path, d];
-        if (goal !== 'rescue' && deadClear(t.board)) continue;
-        const k = boardKey(t.board) + (t.rescued ? '!' : '');
+        if (goalMet(t)) return [...path, d];
+        if (deadClear(t.board)) continue;
+        const k = boardKey(t.board);
         if (seen.has(k)) continue;
         seen.add(k);
         if (++explored > limit) return undefined; // gave up (not proved unsolvable)
@@ -382,7 +359,7 @@ export function crashStart(R, rows = 3) {
       if (!findGroups(b, 3).length) break;
     }
   }
-  return { board: b, gravity: 'down', exit: null, rescued: false };
+  return { board: b, gravity: 'down' };
 }
 // Items. shuffle: recolor every normal block. bomb: remove every block of the most common color.
 export function shuffleColors(board, R) {
@@ -405,3 +382,23 @@ export const FEVER_COMBO = 5, FEVER_TIME = 5;
 // Combo: explosion rounds in a row across moves; a player move with no explosion resets it.
 export function nextCombo(combo, res) { return res && res.chain > 0 ? combo + res.chain : 0; }
 export function fillCount(board) { let n = 0; for (const row of board) for (const b of row) if (b && b.t !== 'w') n++; return n; }
+
+/* ---------- puzzle aids: per-stage limits ---------- */
+// Undo once and hint twice per stage; both refill when the stage starts or restarts.
+export const UNDO_LIMIT = 1, HINT_LIMIT = 2;
+export function createAids() {
+  return {
+    undo: UNDO_LIMIT, hint: HINT_LIMIT,
+    use(kind) { if (this[kind] > 0) { this[kind]--; return true; } return false; },
+    reset() { this.undo = UNDO_LIMIT; this.hint = HINT_LIMIT; },
+  };
+}
+
+/* ---------- saved data migration ---------- */
+// v2 removed the core / exit goal. Old saves may hold 'k' in the seen block list, stars outside 0..3 or past the
+// last stage; clean them so nothing breaks.
+export function migrateSave({ stars, seen }, stageCount) {
+  const st = Array.isArray(stars) ? stars.slice(0, stageCount).map(v => (Number.isInteger(v) && v >= 0 && v <= 3 ? v : 0)) : [];
+  const sn = Array.isArray(seen) ? seen.filter(t => ['n', 'w', 'i', 'a', 'h'].includes(t)) : [];
+  return { stars: st, seen: [...new Set(sn)] };
+}

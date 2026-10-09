@@ -1,5 +1,5 @@
 // First-play tutorial: four tiny boards played with the real rules. Each step is cleared like a puzzle stage
-// (goal within `limit` moves); running out of moves resets the step with a nudge.
+// (break every colored block within `limit` moves); running out of moves resets the step with a nudge.
 const E = '. . . . . . . . .';
 const pad = rows => [...Array(9 - rows.length).fill(E), ...rows];
 
@@ -20,8 +20,8 @@ export const STEPS = [
     rows: pad(['. p . . . . . . .', '. c . . . o c c .']),
   },
   {
-    text: '<b>코어</b>를 주황색 <b>출구</b>로 내보내세요. 오른쪽으로, 그다음 위로!',
-    goal: 'rescue', exit: 'up:8', limit: 3,
-    rows: pad(['# # # # # # # # .', E, E, '. . . . . . . . .', E, E, 'K . . . . . . . .']),
+    text: '<b>벽</b>은 움직이지 않아 블록을 가로막아요. 벽을 피해 <b>위로</b> 돌아가 보세요!',
+    goal: 'clear', limit: 3,
+    rows: pad(['. . . . # . . . .', '. . . . # . . . .', 'p . . p # p . . p']),
   },
 ];
