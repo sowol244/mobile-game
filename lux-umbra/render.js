@@ -7,7 +7,7 @@
 //   → particles, sign bubbles, vignette.
 // World drawing uses tile units: the canvas transform maps 1 unit to one tile.
 
-import { castRay, lightSources, torchOrigin, tileAt, pointLight } from './game.js';
+import { castRay, lightSources, torchOrigin, torchLit, tileAt, pointLight } from './game.js';
 import { COL } from './config.js';
 import { drawPlayer, drawStatue, drawCrate } from './art.js';
 
@@ -477,8 +477,8 @@ export function createRenderer(canvas) {
     const p = s.p;
     if (!p.dead) {
       const c = RGB[s.fl.col];
-      drawPlayer(ctx, p.x + p.w / 2, p.y + p.h, { face: p.face, aim: s.fl.aim, on: s.fl.on, walk: walkPhase, air: !p.onGround, t, col: c });
-      if (!s.fl.on) {
+      drawPlayer(ctx, p.x + p.w / 2, p.y + p.h, { face: p.face, aim: s.fl.aim, on: torchLit(s), walk: walkPhase, air: !p.onGround, t, col: c });
+      if (!torchLit(s)) {
         // faint aim hint while the torch is off
         const o = torchOrigin(s);
         ctx.strokeStyle = 'rgba(255,230,180,0.22)'; ctx.lineWidth = 0.035; ctx.setLineDash([0.08, 0.12]);
@@ -623,7 +623,7 @@ export function createRenderer(canvas) {
     drawActors(s, t, srcs);
     drawFog(s, t, vx0, vy0, vx1, vy1);
     // bright torch core on top of everything
-    if (s.fl.on && !p.dead) {
+    if (torchLit(s) && !p.dead) {
       const o = torchOrigin(s), c = RGB[s.fl.col];
       ctx.globalCompositeOperation = 'lighter';
       const hx = o.x + Math.cos(s.fl.aim) * 0.42 + 0.05 * p.face, hy = o.y + Math.sin(s.fl.aim) * 0.42 - 0.07;

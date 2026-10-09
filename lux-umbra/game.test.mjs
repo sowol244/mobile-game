@@ -231,4 +231,33 @@ for (const L of LEVELS) {
   });
 }
 
+// Same solutions, played the phone way: the torch is switched on once and every "off" is the held 깜빡 button.
+test('all stages also clear using only the hold-to-darken 깜빡 control', () => {
+  for (const L of LEVELS) {
+    const s = createGame(L);
+    const next = driver(s, SOLUTIONS[L.id], { blink: true });
+    for (let k = 0; k < 120 / STEP && !s.cleared; k++) step(s, next(), STEP);
+    assert.ok(s.cleared && s.deaths === 0 && s.shard.got && s.t <= L.par, `${L.id} with 깜빡: cleared=${s.cleared} deaths=${s.deaths}`);
+  }
+});
+
+test('landing assist: a block that appears just after you sank past its top still catches you', () => {
+  const s = mk(['#######', '#.....#', '#..P..#', '#.....#', '#.LLL.#', '#.....#', '#^^^^^#', '#######']);
+  // fall in the dark, switch the light on a moment after the feet passed the block top
+  run(s, {}, 0.01);
+  while (s.p.y + s.p.h < 4.12) step(s, {}, STEP);
+  run(s, { lightSet: true, aim: Math.PI / 2 }, 0.3);
+  assert.ok(s.p.onGround && Math.abs(s.p.y + s.p.h - 4) < 1e-6 && s.deaths === 0);
+});
+
+test('blink: holding 깜빡 darkens a lit torch, letting go lights it again', () => {
+  const s = mk(['#######', '#.....#', '#P..S.#', '#######']);
+  run(s, { lightSet: true, aim: 0 }, 0.05);
+  assert.equal(isSolid(s, 4, 2), false);
+  run(s, { dark: true }, 0.05);
+  assert.equal(isSolid(s, 4, 2), true);
+  run(s, { dark: false }, 0.05);
+  assert.equal(isSolid(s, 4, 2), false);
+});
+
 console.log(`\n${n} tests passed`);

@@ -11,8 +11,8 @@ export const PHYS = {
   accGround: 70,
   accAir: 45,
   push: 2.6,         // walking speed while pushing a crate
-  coyote: 0.09,
-  buffer: 0.13,
+  coyote: 0.11,
+  buffer: 0.15,
   pw: 0.6, ph: 0.9,  // player box
   cw: 0.96,          // crate width (height is a full tile so its top lines up with the floor grid)
   sw: 0.8, sh: 1.5,  // statue box

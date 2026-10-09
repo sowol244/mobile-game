@@ -25,7 +25,7 @@ function load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(k
 function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* private mode: play on without saving */ } }
 
 const view = createRenderer(canvas);
-const input = createInput({ stage, left: $('left'), right: $('right'), jump: $('jump'), torch: torchBtn, knob });
+const input = createInput({ stage, left: $('left'), right: $('right'), jump: $('jump'), blink: $('blink'), torch: torchBtn, knob });
 
 let state = 'title';      // title | play | paused | clear
 let game = null, idx = 0, demo = null, bot = null;
@@ -302,6 +302,7 @@ function frame(now) {
   if (game) {
     const on = game.fl.on && state === 'play';
     torchBtn.classList.toggle('lit', on);
+    torchBtn.classList.toggle('dim', on && game.fl.dark);
     torchBtn.classList.toggle('red', game.fl.col === COL.r);
     torchBtn.classList.toggle('blue', game.fl.col === COL.b);
     knob.style.transform = `rotate(${game.fl.aim}rad)`;

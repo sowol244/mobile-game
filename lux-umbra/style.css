@@ -115,14 +115,18 @@ button.go.ghost { background: transparent; color: var(--accent); border: 1px sol
 #banner.on { opacity: 1; }
 
 /* thumb controls */
-#pad { flex: none; height: 104px; display: flex; justify-content: space-between; align-items: center; gap: 10px; touch-action: none; }
+#pad { flex: none; height: 146px; display: flex; justify-content: space-between; align-items: center; gap: 10px; touch-action: none; }
 #dpad { display: flex; flex: 1 1 0; min-width: 0; max-width: 190px; height: 84px; gap: 8px; touch-action: none; }
 #acts { display: flex; align-items: center; gap: 10px; flex: none; touch-action: none; }
 .pbtn { flex: 1; border: 0; border-radius: 22px; background: var(--btn); color: var(--hud); font-family: var(--kr); font-size: 28px; touch-action: none; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(160, 180, 255, 0.14); }
 .pbtn.on { background: var(--btn-on); }
 .pbtn:focus-visible { outline: 3px solid var(--hud); outline-offset: 3px; }
 #jump, #torch { flex: none; border-radius: 50%; font-size: 18px; }
+#thumb { display: flex; flex-direction: column; align-items: center; gap: 6px; touch-action: none; }
 #jump { width: 90px; height: 90px; }
+#blink { flex: none; width: 90px; height: 46px; border-radius: 23px; font-size: 16px; background: rgba(110, 90, 220, 0.22); box-shadow: inset 0 0 0 2px rgba(154, 124, 255, 0.45); }
+#blink.on { background: rgba(20, 12, 50, 0.95); box-shadow: inset 0 0 0 2px #9a7cff, 0 0 18px rgba(154, 124, 255, 0.55); }
+#torch.dim { opacity: 0.55; }
 #torch { position: relative; width: 82px; height: 82px; font-size: 15px; background: rgba(255, 210, 122, 0.1); box-shadow: inset 0 0 0 2px rgba(255, 210, 122, 0.35); }
 #torch b { font-weight: 400; position: relative; z-index: 1; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
 #torch.lit { background: rgba(255, 210, 122, 0.32); box-shadow: inset 0 0 0 2px rgba(255, 225, 160, 0.95), 0 0 22px rgba(255, 205, 110, 0.6); }
@@ -139,9 +143,10 @@ button.go.ghost { background: transparent; color: var(--accent); border: 1px sol
   #stage { grid-area: stage; }
   #pad { display: contents; }
   #dpad { grid-area: dpad; align-self: end; width: 150px; height: 80px; max-width: none; }
-  #acts { grid-area: acts; align-self: end; flex-direction: column; gap: 8px; }
-  #jump { width: 80px; height: 80px; }
-  #torch { width: 72px; height: 72px; }
+  #acts { grid-area: acts; align-self: end; flex-direction: column; gap: 6px; }
+  #jump { width: 78px; height: 78px; }
+  #blink { width: 78px; height: 42px; }
+  #torch { width: 64px; height: 64px; }
   #overlay { padding: 10px; }
   #overlay h1 { font-size: 30px; }
   .panel { gap: 8px; }

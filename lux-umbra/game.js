@@ -69,7 +69,7 @@ export function createGame(def) {
     signs: lv.signs, checks: lv.checks.map(c => ({ ...c, on: false })), doors: lv.doors,
     zones: (def.zones || []).map(z => ({ x: z.x, y: z.y, w: z.w, h: z.h, col: COL[z.color || 'w'], g: z.g || null, on: z.on ?? true })),
     groups: { ...(def.groups || {}) },
-    p: null, fl: { on: false, aim: LIGHT.defaultAim, col: COL.w },
+    p: null, fl: { on: false, dark: false, aim: LIGHT.defaultAim, col: COL.w },
     crates: lv.crates.map(c => ({ x: c.x + (1 - PHYS.cw) / 2, y: c.y, w: PHYS.cw, h: 1, vx: 0, vy: 0, hx: c.x, hy: c.y })),
     statues: lv.statues.map(m => ({ x: m.x + (1 - PHYS.sw) / 2, y: m.y + 1 - PHYS.sh, w: PHYS.sw, h: PHYS.sh, vy: 0, vx: 0, awake: false, face: -1, walk: 0 })),
     shard: lv.shard ? { ...lv.shard, got: false } : null,
@@ -186,7 +186,7 @@ export function lightSources(s) {
   const out = [];
   for (const L of s.lamps) if (L.g ? s.groups[L.g] : L.on) out.push(L);
   for (const z of s.zones) if (z.g ? s.groups[z.g] : z.on) out.push({ kind: 'zone', ...z });
-  if (s.fl.on && !s.p.dead && !s.cleared) {
+  if (torchLit(s) && !s.p.dead && !s.cleared) {
     const o = torchOrigin(s);
     out.push({ kind: 'beam', x: o.x, y: o.y, dir: s.fl.aim, half: LIGHT.flashHalf, range: LIGHT.flashRange, col: s.fl.col, torch: true });
     out.push({ kind: 'radial', x: o.x, y: o.y, range: LIGHT.halo, col: s.fl.col, torch: true, halo: true });
@@ -221,6 +221,9 @@ function reflect(s, out) {
     front = next;
   }
 }
+
+// The torch shines when it is switched on and the 깜빡 (blink) control isn't held.
+export const torchLit = s => s.fl.on && !s.fl.dark;
 
 export const torchOrigin = s => ({ x: s.p.x + s.p.w / 2, y: s.p.y + 0.35 });
 
@@ -258,6 +261,20 @@ function bodies(s) {
   return out;
 }
 
+// Landing assist: a block that appears just after the hero's feet sank past its top still catches them
+// (about 0.12 s of falling, at most 0.65 tile), as long as there is room to stand on it.
+function catchPlayer(s, x, y) {
+  const p = s.p;
+  if (p.dead || p.vy <= 0) return false;
+  const depth = p.y + p.h - y;
+  if (depth <= 0 || depth > Math.min(0.65, p.vy * 0.12 + 0.05)) return false;
+  const lifted = { x: p.x, y: y - p.h, w: p.w, h: p.h };
+  if (tileHits(s, lifted).length) return false;
+  if ([...s.crates, ...s.statues].some(b => overlap(b, lifted))) return false;
+  p.y = lifted.y; p.vy = 0; p.onGround = true; p.coyote = PHYS.coyote;
+  return true;
+}
+
 function updateLight(s, initial = false) {
   const srcs = lightSources(s), bs = bodies(s);
   for (const i of s.reactive) {
@@ -268,7 +285,10 @@ function updateLight(s, initial = false) {
     const want = wants(c, m);
     if (want && !s.solid[i]) {
       const box = { x, y, w: 1, h: 1 };
-      if (!bs.some(b => overlap(b, box))) { s.solid[i] = 1; if (!initial) s.events.push({ type: 'solid', x, y, c }); }
+      const inside = bs.filter(b => overlap(b, box));
+      if (!inside.length || (!initial && inside.length === 1 && inside[0] === s.p && catchPlayer(s, x, y))) {
+        s.solid[i] = 1; if (!initial) s.events.push({ type: 'solid', x, y, c });
+      }
     } else if (!want && s.solid[i]) { s.solid[i] = 0; if (!initial) s.events.push({ type: 'ghost', x, y, c }); }
   }
   for (const m of s.statues) {
@@ -461,10 +481,11 @@ export function step(s, inp, dt) {
     if (l.timer <= 0) { l.timer = 0; for (const g of l.g) s.groups[g] = !s.groups[g]; s.events.push({ type: 'leverBack', x: l.x, y: l.y }); }
   }
   // torch
-  const was = s.fl.on;
+  const was = torchLit(s);
   if (inp.toggle) s.fl.on = !s.fl.on;
   if (inp.lightSet === true || inp.lightSet === false) s.fl.on = inp.lightSet;
-  if (s.fl.on !== was) s.events.push({ type: s.fl.on ? 'torchOn' : 'torchOff' });
+  s.fl.dark = !!inp.dark;
+  if (torchLit(s) !== was) s.events.push({ type: torchLit(s) ? 'torchOn' : 'torchOff' });
   if (typeof inp.aim === 'number') {
     s.fl.aim = wrapAng(inp.aim);
     const f = Math.cos(s.fl.aim) >= 0 ? 1 : -1;
@@ -483,7 +504,7 @@ export function step(s, inp, dt) {
 }
 
 export function anyLightOn(s) {
-  if (s.fl.on) return true;
+  if (torchLit(s)) return true;
   for (const L of [...s.lamps, ...s.zones]) if (L.g && s.groups[L.g]) return true;
   return false;
 }

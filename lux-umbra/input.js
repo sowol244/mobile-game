@@ -1,14 +1,14 @@
 // Controls.
-//   Touch: ◀ ▶ on the left; on the right 점프 and the 손전등 button.
+//   Touch: ◀ ▶ on the left; on the right 손전등, 점프, and 깜빡 (above 점프: the light is off only while it is held).
 //          손전등: a quick tap switches the torch on/off; press and drag aims it (and switches it on).
 //          The aim stays where you left it and flips with you when you turn around.
-//   Keyboard: ←→ / A D move, Space / ↑ / W jump, F / J torch, Q / E turn the aim, R checkpoint, Esc pause.
+//   Keyboard: ←→ / A D move, Space / ↑ / W jump, F / J torch, hold Shift / C = 깜빡, Q / E turn the aim, R checkpoint, Esc pause.
 //   Mouse: the torch points at the cursor while the mouse is over the game; click toggles the torch.
 
 const DRAG_MIN = 12;   // px before a press on the torch button counts as aiming
 const TAP_MS = 280;
 
-export function createInput({ stage, left, right, jump, torch, knob }) {
+export function createInput({ stage, left, right, jump, blink, torch, knob }) {
   const st = {
     enabled: false,
     l: false, r: false, jumpHeld: false,
@@ -34,7 +34,39 @@ export function createInput({ stage, left, right, jump, torch, knob }) {
     ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => el.addEventListener(n, up));
     el.addEventListener('contextmenu', e => e.preventDefault());
   }
-  hold(left, 'l'); hold(right, 'r'); hold(jump, 'jumpHeld');
+  hold(left, 'l'); hold(right, 'r');
+
+  // Right thumb: 점프 and 깜빡 share one zone, so a thumb can press 점프 and slide up onto 깜빡
+  // (the jump keeps its full height) or press 깜빡 directly. 깜빡 = light off only while held.
+  const thumbs = new Map(); // pointerId → { zone: 'jump' | 'blink' | null, jump: held since it touched 점프 }
+  const zoneAt = e => {
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if (el && (el === blink || blink.contains(el))) return 'blink';
+    if (el && (el === jump || jump.contains(el))) return 'jump';
+    return null;
+  };
+  const syncThumbs = () => {
+    let dark = false, held = false, onJump = false;
+    for (const t of thumbs.values()) { if (t.zone === 'blink') dark = true; if (t.jump) held = true; if (t.zone === 'jump') onJump = true; }
+    st.thumbDark = dark; st.jumpHeld = held;
+    flag(blink, dark); flag(jump, onJump);
+  };
+  const enter = (t, zone) => {
+    if (zone === 'jump' && t.zone !== 'jump' && !t.jump) { st.q.jumpPress = true; t.jump = true; }
+    t.zone = zone; syncThumbs();
+  };
+  for (const el of [jump, blink]) {
+    el.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      try { el.setPointerCapture(e.pointerId); } catch { /* old browsers */ }
+      const t = { zone: null, jump: false }; thumbs.set(e.pointerId, t);
+      enter(t, el === jump ? 'jump' : 'blink');
+    });
+    el.addEventListener('pointermove', e => { const t = thumbs.get(e.pointerId); if (t) { const z = zoneAt(e); if (z && z !== t.zone) enter(t, z); } });
+    const up = e => { if (thumbs.delete(e.pointerId)) syncThumbs(); };
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => el.addEventListener(n, up));
+    el.addEventListener('contextmenu', e => e.preventDefault());
+  }
 
   // torch button: tap = toggle, drag = aim
   let tp = null;
@@ -70,6 +102,7 @@ export function createInput({ stage, left, right, jump, torch, knob }) {
     ' ': 'jump', ArrowUp: 'jump', w: 'jump', W: 'jump', z: 'jump', Z: 'jump',
     f: 'torch', F: 'torch', j: 'torch', J: 'torch', x: 'torch', X: 'torch',
     q: 'aimUp', Q: 'aimUp', e: 'aimDown', E: 'aimDown', ArrowDown: 'aimDown', s: 'aimDown', S: 'aimDown',
+    Shift: 'dark', c: 'dark', C: 'dark',
   };
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') { if (st.enabled && st.onPause) st.onPause(); return; }
@@ -84,7 +117,7 @@ export function createInput({ stage, left, right, jump, torch, knob }) {
     if (k === 'aimUp' || k === 'aimDown') st.mouseOn = false;
   });
   window.addEventListener('keyup', e => { const k = KEYS[e.key]; if (k) st.keys.delete(k); });
-  window.addEventListener('blur', () => { st.keys.clear(); st.l = st.r = st.jumpHeld = false; [left, right, jump].forEach(el => flag(el, false)); });
+  window.addEventListener('blur', () => { st.keys.clear(); thumbs.clear(); st.l = st.r = st.jumpHeld = st.thumbDark = false; [left, right, jump, blink].forEach(el => flag(el, false)); });
 
   // mouse aim (only real mice, never touch)
   stage.addEventListener('pointermove', e => {
@@ -105,7 +138,7 @@ export function createInput({ stage, left, right, jump, torch, knob }) {
     const mx = (st.r || k.has('r') ? 1 : 0) - (st.l || k.has('l') ? 1 : 0);
     const inp = {
       mx, jump: st.jumpHeld || k.has('jump'),
-      jumpPress: st.q.jumpPress, toggle: st.q.toggle, lightSet: st.q.lightSet,
+      jumpPress: st.q.jumpPress, toggle: st.q.toggle, lightSet: st.q.lightSet, dark: st.thumbDark || k.has('dark'),
       aimRot: (k.has('aimDown') ? 1 : 0) - (k.has('aimUp') ? 1 : 0),
     };
     if (st.stickAim != null) inp.aim = st.stickAim;
@@ -113,6 +146,6 @@ export function createInput({ stage, left, right, jump, torch, knob }) {
     return inp;
   };
   st.consume = () => { st.q.jumpPress = false; st.q.toggle = false; st.q.lightSet = undefined; };
-  st.reset = () => { st.consume(); st.keys.clear(); st.l = st.r = st.jumpHeld = false; st.stickAim = null; tp = null; [left, right, jump, torch].forEach(el => flag(el, false)); };
+  st.reset = () => { st.consume(); st.keys.clear(); thumbs.clear(); st.l = st.r = st.jumpHeld = st.thumbDark = false; st.stickAim = null; tp = null; [left, right, jump, blink, torch].forEach(el => flag(el, false)); };
   return st;
 }

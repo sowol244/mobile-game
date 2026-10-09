@@ -8,12 +8,21 @@ import { clamp } from './game.js';
 const DEG = Math.PI / 180;
 export const onGround = s => s.p.onGround;
 
-export function makeBot(s) {
+// blink: play like a phone player — switch the torch on once, then hold 깜빡 (dark) instead of switching it off.
+export function makeBot(s, { blink = false } = {}) {
   const b = {
     s, aim: null, // degrees, held while set
+    blink, dark: false,
     cx: () => s.p.x + s.p.w / 2,
     feet: () => s.p.y + s.p.h,
-    inp(extra = {}) { return { ...(b.aim == null ? {} : { aim: b.aim * DEG }), ...extra }; },
+    inp(extra = {}) {
+      const e = { ...extra };
+      if (b.blink && 'lightSet' in e) {
+        if (e.lightSet === false) { b.dark = true; delete e.lightSet; }
+        else if (e.lightSet === true) { b.dark = false; if (s.fl.on) delete e.lightSet; }
+      }
+      return { ...(b.aim == null ? {} : { aim: b.aim * DEG }), ...(b.blink ? { dark: b.dark } : {}), ...e };
+    },
     *wait(t) { for (let k = 0; k < Math.round(t / STEP); k++) yield b.inp(); },
     // walk to x (player centre); slows down near the target
     *go(x, tol = 0.1, maxT = 12) {
@@ -55,8 +64,8 @@ export function makeBot(s) {
 }
 
 // Drive a solution: returns a function giving the next input each step (or {} when done).
-export function driver(s, solution) {
-  const b = makeBot(s);
+export function driver(s, solution, opts) {
+  const b = makeBot(s, opts);
   const it = solution(b);
   let done = false;
   return () => {
