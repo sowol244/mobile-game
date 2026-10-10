@@ -242,7 +242,7 @@
   }
 
   function reset() {
-    ship = { x: W / 2, y: H - 90, vx: 0, vy: 0, r: 13 };
+    ship = { x: W / 2, y: H - 90, vx: 0, vy: 0, r: 13, hit: 4 };   // hit: only the cockpit window can be hurt
     bullets = []; ebullets = []; enemies = []; items = []; parts = []; rings = []; floats = [];
     score = 0; lives = 3; power = 1; bombs = 2; inv = 1.2; hitFlash = 0; flash = 0; fireCd = 0; missileCd = 0;
     tP = 12; pend = []; dying = 0; shake = 0; debris = []; blasts = []; totalT = 0; minuteScores = []; newMin = []; curMin = 0; banner = null; bannerQ = []; toast = null;
@@ -709,12 +709,12 @@
     // ---- enemies vs ship
     for (const e of enemies) {
       if (e.dead) continue;
-      if (!dying && Math.hypot(e.x - ship.x, e.y - ship.y) < e.r * 0.85 + ship.r * 0.8) {
+      if (!dying && Math.hypot(e.x - ship.x, e.y - ship.y) < e.r * 0.85 + ship.hit) {
         if (e.k === 'coin') { e.dead = true; score += 10; beep(880, 0.08); explode(e.x, e.y, '#ffc94d', 6); }
         else if (inv <= 0) { hurt(); if (e.k === 'rock' || e.k === 'scout') killEnemy(e, true); }
       }
     }
-    for (const b of ebullets) if (!dying && Math.hypot(b.x - ship.x, b.y - ship.y) < b.r + ship.r * 0.7) { b.dead = true; hurt(); }
+    for (const b of ebullets) if (!dying && Math.hypot(b.x - ship.x, b.y - ship.y) < b.r + ship.hit) { b.dead = true; hurt(); }
 
     // ---- items
     for (const it of items) {
