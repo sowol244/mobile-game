@@ -60,6 +60,14 @@
   #atk { width: 80px; height: 80px; background: rgba(255, 93, 122, 0.3); }
   #atk.on { background: rgba(255, 93, 122, 0.75); }
   #jump { width: 92px; height: 92px; }
+  /* bomb button: only while the hero has bombs; everything else shrinks a little so the d-pad keeps its room on a 390 px phone */
+  #bomb { flex: none; width: 54px; height: 54px; border-radius: 50%; background: rgba(255, 178, 60, 0.3); flex-direction: column; font-size: 12px; line-height: 1.1; gap: 1px; }
+  #bomb b { font-weight: 400; font-size: 15px; color: var(--accent); }
+  #bomb.on { background: rgba(255, 178, 60, 0.75); }
+  #pad.hasbomb #atk { width: 66px; height: 66px; }
+  #pad.hasbomb #jump { width: 80px; height: 80px; }
+  #pad.hasbomb #acts { gap: 6px; }
+  #pad.hasbomb #dpad { height: 76px; }
   /* shop: one row per item (icon, name + what it does, price button); goes 3-across when the stage is short (landscape) */
   #pShop h1 { font-size: 30px; }
   #shopCoins { font-family: var(--pixel); font-size: 13px !important; color: var(--accent) !important; }
@@ -118,11 +126,12 @@
         <h1>게임 설명</h1>
         <ul class="helplist">
           <li><b>이동·점프</b> ◀ ▶로 달리고, 점프를 오래 누르면 더 높이 뛰어요. (PC: 방향키·스페이스)</li>
-          <li><b>칼</b> 몬스터를 베요. 밟아도 소용없고 닿으면 체력이 줄어요. (PC: Z / X)</li>
+          <li><b>칼</b> 몬스터를 베요. 닿으면 체력이 줄어요. (PC: Z / X)</li>
           <li><b>장애물</b> 가시·톱날·구덩이는 점프로 넘어요. 불기둥은 빛나면 곧 솟아요.</li>
           <li><b>탐험</b> 금 간 벽은 칼로 부숴요. 덩굴·사다리는 점프로 오르고 칼로 내려가요.</li>
           <li><b>갈림길</b> 위는 발판과 코인, 아래는 몬스터와 동굴. 곧 다시 만나요.</li>
-          <li><b>아이템</b> 상점 문 앞에서 점프나 칼로 들어가요. 상자와 상점의 물건은 매번 달라요.</li>
+          <li><b>아이템</b> 상점 문 앞에서 점프나 칼로 들어가요. 물건은 매번 달라요.</li>
+          <li><b>폭탄</b> 있을 때만 폭탄 버튼이 떠요. 눌러서 던져요. (PC: B)</li>
           <li><b>보스</b> GOAL 앞 보스를 쓰러뜨리면 스테이지 끝! <b>!</b> 신호를 보고 피하세요.</li>
           <li><b>목표</b> 하트를 모두 잃으면 게임 오버. 스테이지를 깨면 하트 1개 회복, 모두 5스테이지.</li>
         </ul>
@@ -149,6 +158,7 @@
       <button class="pbtn" id="right" type="button" aria-label="오른쪽">▶</button>
     </div>
     <div id="acts">
+      <button class="pbtn" id="bomb" type="button" hidden aria-label="폭탄"><span>폭탄</span><b id="bombN">x0</b></button>
       <button class="pbtn" id="atk" type="button">칼</button>
       <button class="pbtn" id="jump" type="button">점프</button>
     </div>
@@ -481,7 +491,7 @@
     wings:    { name: '날개 신발', price: 10, w: 3, cw: 3, desc: '30초 동안 공중에서 한 번 더 뛰어요.' },
     boots:    { name: '바람 장화', price: 6, w: 4, cw: 3, desc: '30초 동안 더 빨리 달려요.' },
     star:     { name: '무적 별', price: 12, w: 3, cw: 2, desc: '8초 동안 무적! 닿는 몬스터가 쓰러져요.' },
-    bomb:     { name: '폭탄 세 개', price: 8, w: 3, cw: 3, desc: '칼을 휘두르면 폭탄을 던져요. 금 간 벽도 부숴요.' },
+    bomb:     { name: '폭탄 세 개', price: 8, w: 3, cw: 3, desc: '버튼으로 던져요. 금 간 벽도 부숴요.' },
     doubler:  { name: '코인 두 배', price: 10, w: 3, cw: 2, desc: '이 스테이지 동안 코인이 두 배로 들어와요.' },
     life:     { name: '목숨 하나', price: 18, w: 1, cw: 1, desc: '쓰러지면 한 번, 하트 가득 다시 일어나요.' },
     key:      { name: '비밀 열쇠', price: 8, w: 0, cw: 0, desc: '잠긴 문을 열어요.' },
@@ -563,7 +573,7 @@
   function startStage(i) {
     stageIdx = i; buildLevel(i);
     p = newPlayer(); p.inv = 0.8; camX = 0; lastSafe = { x: p.x, y: p.y }; state = 'play'; goalT = 0; deadT = 0;
-    banner = { txt: 'STAGE ' + (i + 1), sub: THEMES[i].name, t: 2.4, dur: 2.4, color: '#ffd23f' };
+    banner = { txt: 'STAGE ' + (i + 1), sub: '', t: 1.6, dur: 1.6, color: '#ffd23f' };
     updateHud();
   }
   function newGame() { score = 0; coinCount = 0; resetItems(); startStage(0); }
@@ -618,7 +628,6 @@
   function tryAttack() {
     if (state !== 'play' || p.swing > 0 || p.cd > 0) return false;
     p.swing = SWING; p.swingId++; sfx('slash');
-    if (bombs > 0) { bombs--; bombsList.push({ x: p.x + p.w / 2 - 4 + p.face * 6, y: p.y, w: 8, h: 8, vx: p.face * 150 + p.vx * 0.3, vy: -260, t: 0 }); }   // 폭탄: thrown with the swing
     if (waveT > 0) { // 검기: the swing also throws a flying wave that shares the swing's id, so one swing never hits the same monster twice
       waveOn = true;
       slashes.push({ id: p.swingId, x: p.face > 0 ? p.x + p.w : p.x - 16, y: p.y - 2, w: 16, h: 18, vx: p.face * 260, t: 0 });
@@ -626,6 +635,10 @@
     return true;
   }
 
+  function throwBomb() { // its own button: a bomb is a limited resource, so the swing never spends one
+    if (state !== 'play' || bombs <= 0 || p.auto || p.climbing) return;
+    bombs--; bombsList.push({ x: p.x + p.w / 2 - 4 + p.face * 6, y: p.y, w: 8, h: 8, vx: p.face * 150 + p.vx * 0.3, vy: -260, t: 0 }); sfx('slash'); updateHud();
+  }
   function swordBox() { return p.face > 0 ? { x: p.x + p.w - 3, y: p.y - 5, w: 27, h: p.h + 5 } : { x: p.x - 24, y: p.y - 5, w: 27, h: p.h + 5 }; }
 
   function useShield() { // a shield soaks up the next lost heart, whatever took it
@@ -647,7 +660,7 @@
 
   function die() {
     if (state !== 'play') return;
-    if (lives > 0) { lives--; hp = maxHp; p.inv = 2.5; pops.push({ x: p.x + 6, y: p.y - 10, t: 0, text: '다시 일어났어요!' }); sfx('heal'); updateHud(); return; }   // 목숨 하나
+    if (lives > 0) { lives--; hp = maxHp; p.inv = 2.5; pops.push({ x: p.x + 6, y: p.y - 10, t: 0, text: '부활!' }); sfx('heal'); updateHud(); return; }   // 목숨 하나
     hp = 0; state = 'dead'; deadT = 0; p.vx = 0; p.vy = -420; sfx('die'); updateHud();
   }
 
@@ -927,14 +940,14 @@
     for (const e of enemies) if (e.minion && !e.dead) { e.dead = true; e.vy = -200; e.vx = 0; }
     shots = [];
     b.gates.forEach(g => { g.to = 0; }); b.autoT = 1.6;
-    banner = { txt: 'BOSS CLEAR!', sub: '교행이가 GOAL로 가요', t: 2.4, dur: 2.4, color: '#7dff9a' }; sfx('gate');
+    sfx('gate');
   }
   function stepBoss(dt) {
     const b = boss, gy = b.gy, px = p.x + p.w / 2, bx = b.x + b.w / 2, half = b.hp <= b.maxHp / 2;
     const go = m => { b.mode = m; b.mt = 0; };
     b.t += dt; b.mt += dt; b.flashT = Math.max(0, b.flashT - dt); b.clinkT = Math.max(0, b.clinkT - dt);
     if (b.dead) { b.deadT += dt; b.vy += GRAV * dt; b.y += b.vy * dt; b.hidden = false; return; }
-    if (half && !b.phase2) { b.phase2 = true; banner = { txt: '화났어요!', sub: b.name, t: 1.4, dur: 1.4, color: '#ff5d7a' }; sfx('boss'); }
+    if (half && !b.phase2) { b.phase2 = true; banner = { txt: '분노!', sub: '', t: 1.0, dur: 1.0, color: '#ff5d7a' }; sfx('boss'); }
     const toward = () => Math.sign(px - bx) || b.face;
     const fall = (x, delay) => shots.push({ kind: b.kind === 'beetle' ? 'rock' : 'icicle', x: clamp(x, b.lo + 6, b.hi - 6) - 6, y: gy - 9 * T, w: 12, h: 14, vx: 0, vy: 0, t: -delay, gy });
     if (b.kind === 'slime') {
@@ -1112,7 +1125,7 @@
     // first time near a ladder or vine: say how to climb it (once per device)
     if (!hint && !hintSeen) {
       const c = Math.floor((p.x + p.w / 2) / T), r = Math.floor((p.y + 8) / T);
-      if ([c - 1, c, c + 1].some(x => grid[r]?.[x] === 12)) { hint = { txt: '점프로 올라가요 · 칼로 내려가요', t: 3.5 }; hintSeen = true; try { localStorage.setItem('gyo-climb-hint', '1'); } catch (e) {} }
+      if ([c - 1, c, c + 1].some(x => grid[r]?.[x] === 12)) { hint = { txt: '점프로 오르기', t: 3 }; hintSeen = true; try { localStorage.setItem('gyo-climb-hint', '1'); } catch (e) {} }
     }
     if (hint) { hint.t -= dt; if (hint.t <= 0) hint = null; }
 
@@ -1153,7 +1166,7 @@
     if (p.x + p.w / 2 >= GOALX + 8) { // passed the GOAL sign
       state = 'goal'; goalT = 0;
       const bonus = 500 * (stageIdx + 1) + hp * 300; score += bonus; sfx('win'); updateHud();
-      banner = { txt: stageIdx === STAGES.length - 1 ? 'ALL CLEAR!' : 'STAGE CLEAR!', sub: '보너스 +' + bonus, t: 2.2, dur: 2.2, color: '#7dff9a' };
+      banner = { txt: stageIdx === STAGES.length - 1 ? 'ALL CLEAR!' : 'STAGE CLEAR!', sub: '+' + bonus, t: 2.2, dur: 2.2, color: '#7dff9a' };
       return;
     }
 
@@ -1177,8 +1190,8 @@
       const lock = touches({ x: p.x - 2, y: p.y + 2, w: p.w + 4, h: p.h - 4 }, 11);
       if (lock && keyCount > 0) {
         keyCount--; for (let r = 0; r < ROWS; r++) if (grid[r][lock[0]] === 11) grid[r][lock[0]] = 0;
-        miniDirty = true; sfx('door'); pops.push({ x: lock[0] * T + 8, y: lock[1] * T - 12, t: 0, text: '철컥!' });
-      } else if (lock && doorHintT <= 0) { doorHintT = 1.5; pops.push({ x: lock[0] * T + 8, y: lock[1] * T - 12, t: 0, text: '열쇠가 필요해요' }); }
+        miniDirty = true; sfx('door');
+      } else if (lock && doorHintT <= 0) { doorHintT = 1.5; pops.push({ x: lock[0] * T + 8, y: lock[1] * T - 12, t: 0, text: '열쇠 필요' }); }
     }
     if (boss) {
       if (!boss.on && !boss.dead && p.x > (boss.x0 + 4) * T) startBoss();
@@ -1265,6 +1278,7 @@
   /* ---------- HUD / screens ---------- */
   const pad = (n, l) => String(Math.max(0, Math.floor(n))).padStart(l, '0');
   function updateHud() {
+    const bb = $('bomb'); bb.hidden = !(bombs > 0 && state !== 'title'); $('bombN').textContent = 'x' + bombs; $('pad').classList.toggle('hasbomb', !bb.hidden);
     hud.score.textContent = pad(score, 6);
     hud.coins.textContent = 'x' + pad(coinCount, 2);
     hud.stg.textContent = (stageIdx + 1) + '/' + STAGES.length;
@@ -1332,13 +1346,12 @@
   function buy(id) {
     if (state !== 'shop' || !shopStock.includes(id) || why(id)) return false;
     coinCount -= priceOf(id); giveItem(id);
-    shopNote.textContent = ITEMS[id].name + ' 샀어요!';
     sfx(id === 'heart' ? 'heal' : 'buy'); updateHud(); renderShop();
     return true;
   }
   function openShop() {
     state = 'shop'; ['left', 'right', 'jump', 'attack'].forEach(k => press(k, false));
-    shopNote.textContent = '어서 와요! 코인으로 물건을 사 가세요.'; buildShop(); renderShop();
+    shopNote.textContent = ''; buildShop(); renderShop();
     panel('shop'); overlay.hidden = false; overlay.scrollTop = 0;
   }
   function closeShop() {
@@ -1354,11 +1367,11 @@
   }
   function gameOver() {
     state = 'over'; lastEntry = addTop(Math.floor(score), (stageIdx + 1) + '스테이지');
-    show('게임 오버', `${stageIdx + 1}스테이지에서 쓰러졌어요.<br>코인 ${coinCount}개를 모았어요.`, pad(score, 6) + '점', '다시 하기');
+    show('게임 오버', `${stageIdx + 1}스테이지에서 쓰러졌어요.`, pad(score, 6) + '점', '다시 하기');
   }
   function win() {
     state = 'win'; lastEntry = addTop(Math.floor(score), '전체 클리어');
-    show('모험 완료!', `교행이가 ${STAGES.length}개의 스테이지를 모두 지났어요.<br>체력 ${'♥'.repeat(hp)} · 코인 ${coinCount}개`, pad(score, 6) + '점', '다시 하기');
+    show('모험 완료!', `${'♥'.repeat(hp)} · 코인 ${coinCount}개`, pad(score, 6) + '점', '다시 하기');
   }
 
   /* ---------- drawing ---------- */
@@ -1615,9 +1628,9 @@
     const b = boss, t = 2.2 - b.intro, a = Math.max(0, Math.min(1, t / 0.3, b.intro / 0.3)), bar = H * 0.13 * a;
     R(0, 0, W, bar, '#000'); R(0, H - bar, W, bar, '#000');
     ctx.save(); ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffd23f'; ctx.font = '16px Jua, sans-serif'; ctx.fillText(b.place, W / 2, H * 0.36);
-    ctx.shadowColor = '#ff3050'; ctx.shadowBlur = 16; ctx.fillStyle = '#fff'; ctx.font = '34px Jua, sans-serif'; ctx.fillText(b.name, W / 2 + (1 - Math.min(1, t / 0.4)) * 40, H * 0.36 + 34);
-    ctx.shadowBlur = 0; ctx.fillStyle = '#ff5d7a'; ctx.font = '10px "Press Start 2P", monospace'; ctx.fillText('BOSS', W / 2, H * 0.36 + 64);
+    
+    ctx.shadowColor = '#ff3050'; ctx.shadowBlur = 16; ctx.fillStyle = '#fff'; ctx.font = '34px Jua, sans-serif'; ctx.fillText(b.name, W / 2 + (1 - Math.min(1, t / 0.4)) * 40, H * 0.4);
+    ctx.shadowBlur = 0; ctx.fillStyle = '#ff5d7a'; ctx.font = '10px "Press Start 2P", monospace'; ctx.fillText('BOSS', W / 2, H * 0.4 + 32);
     ctx.restore();
   }
   // minimap: the whole stage squeezed into a slim strip at the top of the play area
@@ -1805,7 +1818,6 @@
     if (shield > 0) chip('shield', 'x' + shield);
     if (waveT > 0) chip('wave', waveOn ? Math.ceil(waveT) + '초' : '준비');
     if (keyCount > 0) chip('key', 'x' + keyCount);
-    if (bombs > 0) chip('bomb', 'x' + bombs);
     if (starT > 0) chip('star', Math.ceil(starT) + '초');
     if (wingT > 0) chip('wings', Math.ceil(wingT) + '초');
     if (bootT > 0) chip('boots', Math.ceil(bootT) + '초');
@@ -2057,7 +2069,7 @@
       const age = banner.dur - banner.t, a = Math.min(1, age / 0.2, banner.t / 0.5), k = 1 + 0.18 * (1 - Math.min(1, age / 0.25));
       ctx.save(); ctx.translate(W / 2, H * 0.28); ctx.scale(k, k); ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.shadowColor = banner.color; ctx.shadowBlur = 14; ctx.fillStyle = banner.color; ctx.font = '36px Jua, sans-serif'; ctx.fillText(banner.txt, 0, 0);
-      ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.font = '18px Jua, sans-serif'; ctx.fillText(banner.sub, 0, 34);
+      ctx.shadowBlur = 0; if (banner.sub) { ctx.fillStyle = '#fff'; ctx.font = '18px Jua, sans-serif'; ctx.fillText(banner.sub, 0, 34); }
       ctx.restore();
     }
   }
@@ -2081,9 +2093,10 @@
     sc = Math.min(W / (16 * T), H / (ROWS * T));
   }
 
-  const BTN = { left: 'left', right: 'right', jump: 'jump', attack: 'atk' };
+  const BTN = { left: 'left', right: 'right', jump: 'jump', attack: 'atk', bomb: 'bomb' };
   function press(key, on) {
     if (on && (key === 'jump' || key === 'attack') && atDoor()) { openShop(); return; }   // at the shop door these buttons mean "go in", never jump or swing
+    if (key === 'bomb') { $('bomb').classList.toggle('on', on); if (on) throwBomb(); return; }
     input[key] = on; $(BTN[key]).classList.toggle('on', on);
     if (on && p) { if (key === 'jump') p.jumpBuf = 0.12; if (key === 'attack') p.atkBuf = 0.14; }
   }
@@ -2093,16 +2106,16 @@
     ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => b.addEventListener(n, () => press(key, false)));
     b.addEventListener('contextmenu', e => e.preventDefault());
   }
-  ['left', 'right', 'jump', 'attack'].forEach(bindBtn);
+  ['left', 'right', 'jump', 'attack', 'bomb'].forEach(bindBtn);
 
-  const keyMap = { ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', ArrowUp: 'jump', w: 'jump', ' ': 'jump', z: 'attack', x: 'attack', j: 'attack' };
+  const keyMap = { ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', ArrowUp: 'jump', w: 'jump', ' ': 'jump', z: 'attack', x: 'attack', j: 'attack', b: 'bomb', c: 'bomb' };
   window.addEventListener('keydown', e => {
     if (state === 'shop' && e.key === 'Escape') { closeShop(); return; }
     const k = keyMap[e.key]; if (!k || state === 'shop') return; e.preventDefault();
-    if (!input[k]) press(k, true);
+    if (k === 'bomb' ? !e.repeat : !input[k]) press(k, true);
   });
   window.addEventListener('keyup', e => { const k = keyMap[e.key]; if (k) press(k, false); });
-  window.addEventListener('blur', () => { ['left', 'right', 'jump', 'attack'].forEach(k => press(k, false)); });
+  window.addEventListener('blur', () => { ['left', 'right', 'jump', 'attack', 'bomb'].forEach(k => press(k, false)); });
 
   // Two thumbs on the screen (d-pad + jump/sword) must never start the browser's pinch zoom.
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(n => document.addEventListener(n, e => e.preventDefault()));
@@ -2135,7 +2148,7 @@
     god(on) { godMode = !!on; }, setHp(n) { hp = n; updateHud(); }, addScore(n) { score += n; }, warp(x, row) { p.x = x * T; p.y = (row ?? 13 - STAGES[stageIdx].H[Math.floor(x)]) * T - p.h; p.plat = null; p.vx = 0; p.vy = 0; camX = Math.max(0, Math.min(COLS * T - W / sc, p.x - (W / sc) * 0.4)); },
     gotoStage(i) { overlay.hidden = true; startStage(i); }, coinList() { return coinsList.map(c => [c.x, c.y, c.got]); }, pos() { return [p.x, p.y]; }, sawList() { return saws.map(w => [w.x, w.y]); }, stages() { return STAGES.map(S => ({ cols: S.cols, goal: S.goal, maxH: Math.max(...S.H.filter(v => v !== undefined)), pits: S.pits.size })); },
     info(i = stageIdx) { const S = STAGES[i]; return { cols: S.cols, goal: S.goal, H: S.H, pits: [...S.pits], spikes: S.spikes, saws: S.saws, signs: S.signs, shop: S.shop, boss: S.boss, mons: S.mons, coins: S.coins, chests: S.chests, keys: S.keys, movers: S.movers, cracks: S.cracks, caves: S.caves, segs: S.segs }; },
-    world() { return { chests: chests.map(c => ({ x: c.x, y: c.y, what: c.what, open: c.open })), keys: keyItems.map(k => ({ x: k.x, y: k.y, got: k.got })), keyCount, cracks: crackList.map(g => ({ x: g.x, r: g.r, broken: g.broken })), movers: movers.map(m => ({ x: m.x, y: m.y, w: m.w, ddx: m.ddx, ddy: m.ddy })), atDoor: atDoor(), doorX: shop && shop.x + 2.5 * T, intro: boss ? boss.intro : 0, jets: jets.map(j => ({ x: j.x, y: j.y, phase: jetPhase(j), left: jetLeft(j), cyc: (jetClock + JET_PER - j.ph) % JET_PER })), shop: shopStock.slice(), autoT: boss ? boss.autoT : 0, gates: boss ? boss.gates.map(g => ({ col: g.col, k: g.k, to: g.to })) : [] }; },
+    world() { return { bombsInFlight: bombsList.length, chests: chests.map(c => ({ x: c.x, y: c.y, what: c.what, open: c.open })), keys: keyItems.map(k => ({ x: k.x, y: k.y, got: k.got })), keyCount, cracks: crackList.map(g => ({ x: g.x, r: g.r, broken: g.broken })), movers: movers.map(m => ({ x: m.x, y: m.y, w: m.w, ddx: m.ddx, ddy: m.ddy })), atDoor: atDoor(), doorX: shop && shop.x + 2.5 * T, intro: boss ? boss.intro : 0, jets: jets.map(j => ({ x: j.x, y: j.y, phase: jetPhase(j), left: jetLeft(j), cyc: (jetClock + JET_PER - j.ph) % JET_PER })), shop: shopStock.slice(), autoT: boss ? boss.autoT : 0, gates: boss ? boss.gates.map(g => ({ col: g.col, k: g.k, to: g.to })) : [] }; },
     setKeys(n) { keyCount = n; }, bossHp(n) { if (boss) boss.hp = n; }, give(id) { giveItem(id); }, resetHint() { hintSeen = false; hint = null; try { localStorage.removeItem('gyo-climb-hint'); } catch (e) {} }, setStock(a) { shopStock = a; },
     shotList() { return shots.map(s => ({ kind: s.kind, x: s.x, y: s.y, w: s.w, h: s.h, t: s.t, vx: s.vx, vy: s.vy, tx: s.tx })); },
     items: ITEMS, openShop() { openShop(); }, closeShop() { closeShop(); }, buy, setCoins(n) { coinCount = n; updateHud(); }, hurt(x) { hurtPlayer(x ?? p.x + 20); }, hitBoss(n) { if (boss && boss.on) for (let i = 0; i < n; i++) hitBoss(1, p.x + p.w / 2 + (boss.mode === 'stun' ? 0 : -boss.face * 999)); }, clearMons() { enemies = []; }, clearHazards() { saws = []; },
