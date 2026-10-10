@@ -3,7 +3,7 @@
 // The world is a tile grid (1 unit = 1 tile, y grows downward). Light comes from
 //   · lamps   : fixed point lights ('radial') or spotlights ('beam'), switched by levers through groups
 //   · zones   : room lights, a rectangle lit evenly (no shadows), switched the same way
-//   · the torch: the player's flashlight cone plus a small halo around the player
+//   · the torch: the player's flashlight cone, plus a halo around the player while inside fog
 // Rock and crates stop light; coloured glass tints it. Every light-sensitive tile asks "which colours reach me?"
 // and becomes solid or not from that answer. A tile never turns solid on top of a body standing in it — it waits.
 
@@ -189,7 +189,7 @@ export function lightSources(s) {
   if (torchLit(s) && !s.p.dead && !s.cleared) {
     const o = torchOrigin(s);
     out.push({ kind: 'beam', x: o.x, y: o.y, dir: s.fl.aim, half: LIGHT.flashHalf, range: LIGHT.flashRange, col: s.fl.col, torch: true, dyn: true });
-    out.push({ kind: 'radial', x: o.x, y: o.y, range: LIGHT.halo, col: s.fl.col, torch: true, halo: true, dyn: true });
+    if (inFog(s, o.x, o.y)) out.push({ kind: 'radial', x: o.x, y: o.y, range: LIGHT.fogHalo, col: s.fl.col, torch: true, halo: true, dyn: true });
   }
   if (s.mirrors.length) reflect(s, out);
   return out;
