@@ -253,14 +253,27 @@ export function createRenderer(canvas) {
   }
 
   // ---------- background ----------
+  // one mood per chapter: sky gradient, far/near silhouette colours, share of pillars (vs spires), mote colour
+  const THEMES = [
+    { sky: ['#060a17', '#0c1532', '#151f42'], sil: ['#0f1934', '#0a1128'], pil: 0.5, mote: '170,200,255' },  // night forest
+    { sky: ['#0a0716', '#170f33', '#241a4a'], sil: ['#1a1238', '#110b28'], pil: 0.3, mote: '190,170,255' },  // violet dusk
+    { sky: ['#06100f', '#0d2224', '#173538'], sil: ['#10292b', '#0a1c1e'], pil: 0.85, mote: '160,240,220' }, // teal ruins
+    { sky: ['#110a06', '#26150b', '#3a2414'], sil: ['#2a1a10', '#1c1109'], pil: 0.6, mote: '255,200,140' },  // lamp-lit amber
+    { sky: ['#14060c', '#2a0e1e', '#1a1442'], sil: ['#2a1028', '#1a0a1c'], pil: 0.4, mote: '255,150,170' },  // red and blue
+    { sky: ['#050c16', '#0b2036', '#12344e'], sil: ['#0e2a40', '#08192a'], pil: 0.9, mote: '180,230,255' },  // glass halls
+    { sky: ['#0b0b0d', '#1a1a20', '#2a2a32'], sil: ['#202026', '#141418'], pil: 0.95, mote: '210,210,220' }, // stone gallery
+    { sky: ['#0b1014', '#1c252c', '#36424a'], sil: ['#2a343c', '#1c242a'], pil: 0.2, mote: '220,230,240', mist: true }, // fog
+  ];
   function drawBackground(s, t) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const th = THEMES[s.def.ch] || THEMES[0];
     const grd = ctx.createLinearGradient(0, 0, 0, H);
-    grd.addColorStop(0, '#060a17'); grd.addColorStop(0.6, '#0c1532'); grd.addColorStop(1, '#151f42'); // cold, a little foggy low down
+    grd.addColorStop(0, th.sky[0]); grd.addColorStop(0.6, th.sky[1]); grd.addColorStop(1, th.sky[2]);
     ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
-    // parallax silhouettes: far pillars and near trees
+    // parallax silhouettes: far pillars and near trees; each stage varies their height and mix
     const seed = [...s.def.id].reduce((a, c) => a * 31 + c.charCodeAt(0), 7);
-    for (const [par, col, base, hgt] of [[0.18, '#0f1934', 0.78, 0.5], [0.4, '#0a1128', 0.86, 0.38]]) {
+    const tall = 0.75 + 0.5 * hash(seed + 3), pil = clamp(th.pil + (hash(seed + 4) - 0.5) * 0.3, 0, 1);
+    for (const [par, col, base, hgt] of [[0.18, th.sil[0], 0.78, 0.5 * tall], [0.4, th.sil[1], 0.86, 0.38 * tall]]) {
       ctx.fillStyle = col;
       const span = 3.2 * T, off = -(cam.x * T * par) % span;
       const i0 = Math.floor((cam.x * T * par) / span);
@@ -269,13 +282,18 @@ export function createRenderer(canvas) {
         const x = off + i * span + r * span * 0.5, h = H * hgt * (0.45 + r * 0.7), w = T * (0.4 + r * 0.9);
         const yb = H * base - cam.y * T * par * 0.3 + H * 0.3;
         ctx.beginPath();
-        if (r < 0.5) { ctx.rect(x, yb - h, w, h + H); ctx.moveTo(x - w * 0.4, yb - h); ctx.lineTo(x + w * 1.4, yb - h); ctx.lineTo(x + w * 1.4, yb - h + T * 0.25); ctx.lineTo(x - w * 0.4, yb - h + T * 0.25); }
+        if (r < pil) { ctx.rect(x, yb - h, w, h + H); ctx.moveTo(x - w * 0.4, yb - h); ctx.lineTo(x + w * 1.4, yb - h); ctx.lineTo(x + w * 1.4, yb - h + T * 0.25); ctx.lineTo(x - w * 0.4, yb - h + T * 0.25); }
         else { ctx.moveTo(x, yb + H); ctx.lineTo(x + w * 0.35, yb - h); ctx.lineTo(x + w * 0.65, yb - h); ctx.lineTo(x + w, yb + H); }
         ctx.fill();
       }
     }
+    if (th.mist) { // low mist bank
+      const mg = ctx.createLinearGradient(0, H * 0.45, 0, H);
+      mg.addColorStop(0, 'rgba(200,215,225,0)'); mg.addColorStop(1, 'rgba(200,215,225,0.16)');
+      ctx.fillStyle = mg; ctx.fillRect(0, H * 0.45, W, H * 0.55);
+    }
     // floating motes
-    ctx.fillStyle = 'rgba(170,200,255,0.25)';
+    ctx.fillStyle = `rgba(${th.mote},0.25)`;
     for (let i = 0; i < 26; i++) {
       const r1 = hash(seed + i * 3), r2 = hash(seed + i * 5 + 1);
       const x = ((r1 * W + t * (6 + r2 * 10)) % W + W) % W, y = ((r2 * H - t * (3 + r1 * 6)) % H + H) % H;

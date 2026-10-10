@@ -1,6 +1,6 @@
 // Rule checks and stage solvability for 룩스 앤 움브라. Run: node lux-umbra/game.test.mjs
 import assert from 'node:assert/strict';
-import { LEVELS, CHAPTERS } from './levels.js';
+import { LEVELS, CHAPTERS, LEVELS_VERSION, resetOldSave } from './levels.js';
 import { SOLUTIONS } from './solutions.js';
 import { createGame, step, isSolid, tileLight, starsFor, castRay } from './game.js';
 import { driver } from './bot.js';
@@ -270,6 +270,46 @@ test('blink: holding 깜빡 darkens a lit torch, letting go lights it again', ()
   assert.equal(isSolid(s, 4, 2), true);
   run(s, { dark: false }, 0.05);
   assert.equal(isSolid(s, 4, 2), false);
+});
+
+// ---------- variety ----------
+const SHAPES = ['journey', 'climb', 'descent', 'zigzag', 'hub', 'loop', 'compact'];
+test('every stage has a shape tag, and no two stages in a row share one', () => {
+  LEVELS.forEach((L, i) => {
+    assert.ok(SHAPES.includes(L.shape), `${L.id} shape ${L.shape}`);
+    if (i && LEVELS[i - 1].ch === L.ch) assert.notEqual(L.shape, LEVELS[i - 1].shape, `${LEVELS[i - 1].id} and ${L.id} are both ${L.shape}`);
+  });
+});
+
+// A room's fingerprint is its tile pattern inside its box, mirrored to face right; lamp ids, the shard, the start,
+// checkpoints and signs don't count. The same template may appear at most 3 times in the whole game.
+const MIRROR = { '/': '\\', '\\': '/', '{': '}', '}': '{' };
+const roomPrint = (L, [, x, y, w, h, dir]) => L.rows.slice(y, y + h).map(r => {
+  const s = r.slice(x, x + w).replace(/[0-9]/g, '1').replace(/[oPC?]/g, '.');
+  return dir < 0 ? [...s].reverse().map(c => MIRROR[c] || c).join('') : s;
+}).join('\n');
+test('no room template is used more than 3 times', () => {
+  const uses = new Map();
+  for (const L of LEVELS) for (const box of L.rooms) {
+    const k = roomPrint(L, box); uses.set(k, [...(uses.get(k) || []), `${L.id}:${box[0]}`]);
+  }
+  for (const list of uses.values()) assert.ok(list.length <= 3, `template used ${list.length} times: ${list.join(' ')}`);
+});
+
+test('a save from another stage set is wiped (settings kept); a current one is kept', () => {
+  const mem = init => { const m = new Map(Object.entries(init)); return { m, getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; };
+  const old = { 'lux-progress': '{"1-1":{"s":[true,true,true],"best":9}}', 'lux-top': '[{"stage":"1-1","time":9,"stars":3}]', 'lux-mute': '1' };
+  for (const ver of [undefined, '2']) {
+    const st = mem(ver ? { ...old, 'lux-levels': ver } : old);
+    assert.equal(resetOldSave(st), true);
+    assert.equal(st.getItem('lux-progress'), null); assert.equal(st.getItem('lux-top'), null);
+    assert.equal(st.getItem('lux-mute'), '1'); assert.equal(st.getItem('lux-levels'), String(LEVELS_VERSION));
+    assert.equal(resetOldSave(st), false, 'only once');
+  }
+  const cur = mem({ ...old, 'lux-levels': String(LEVELS_VERSION) });
+  assert.equal(resetOldSave(cur), false);
+  assert.equal(cur.getItem('lux-progress'), old['lux-progress']); assert.equal(cur.getItem('lux-top'), old['lux-top']);
+  assert.equal(resetOldSave(mem({})), false, 'a new player sees no notice');
 });
 
 console.log(`\n${n} tests passed`);

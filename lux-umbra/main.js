@@ -1,7 +1,7 @@
 // 룩스 앤 움브라 — entry point: menus, stage select, the frame loop, HUD, results, local ranking.
 // Rules live in game.js, drawing in render.js/art.js, controls in input.js, sound in sound.js.
 
-import { LEVELS, CHAPTERS } from './levels.js';
+import { LEVELS, CHAPTERS, resetOldSave } from './levels.js';
 import { SOLUTIONS } from './solutions.js';
 import { createGame, step, starsFor, anyLightOn, torchOrigin, retry } from './game.js';
 import { driver } from './bot.js';
@@ -30,8 +30,10 @@ const input = createInput({ stage, left: $('left'), right: $('right'), jump: $('
 
 let state = 'title';      // title | play | paused | clear
 let game = null, idx = 0, demo = null, bot = null;
-// { '1-1': { s: [clear, shard, time], best: seconds } }. Saves from older builds are kept by stage id;
-// anything malformed or for a stage that no longer exists is dropped instead of crashing the menus.
+// { '1-1': { s: [clear, shard, time], best: seconds } }. A save from an older stage set is wiped first (once, with a
+// notice); anything malformed is dropped instead of crashing the menus.
+let saveWiped = false;
+try { saveWiped = resetOldSave(localStorage); } catch { /* storage blocked: nothing saved to wipe */ }
 let progress = cleanProgress(load(KEY_PROG, {}));
 function cleanProgress(p) {
   const out = {}, ids = new Set(LEVELS.map(L => L.id));
@@ -352,6 +354,7 @@ window.addEventListener('pointerdown', () => unlock(), { once: true });
 
 resize();
 showTitle();
+if (saveWiped) msgEl.textContent = '스테이지가 새로 바뀌어 기록을 초기화했어요';
 requestAnimationFrame(frame);
 
 // ---------- test hook (automation; harmless in normal play) ----------
