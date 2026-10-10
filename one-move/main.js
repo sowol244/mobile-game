@@ -8,6 +8,7 @@ import { LESSONS, INTROS } from './tutorial.js';
 
 const $ = id => document.getElementById(id);
 const sound = createSound();
+let B = null; // BETA: beta.js, loaded at the bottom; stays null when the beta files are absent
 const store = {
   get(k, d) { try { const v = localStorage.getItem('onemove-' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('onemove-' + k, JSON.stringify(v)); } catch (e) {} },
@@ -28,7 +29,7 @@ const pending = new Map();
 function local(msg) {
   if (msg.type === 'daily') return dailyStage(msg.day);
   const s = msg.state;
-  const r = solve({ n: s.n, codes: new Uint8Array(s.codes), target: s.target, goal: s.goal }, { maxDepth: s.maxDepth, maxStates: 600000 });
+  const r = solve({ n: s.n, codes: new Uint8Array(s.codes), target: s.target, goal: s.goal, opts: s.opts /* BETA */ }, { maxDepth: s.maxDepth, maxStates: 600000 });
   return r && { depth: r.depth, path: r.path, aborted: !!r.aborted };
 }
 function work(msg) {
@@ -184,6 +185,7 @@ function hud() {
   $('restart').disabled = inTut || st.moves === 0;
 }
 function setHeader() {
+  if (B && B.header()) return; // BETA
   const d = cur.def;
   if (mode === 'tutorial') $('stageName').innerHTML = '튜토리얼<small>기본 규칙</small>';
   else if (cur.index < 0) { const dt = new Date(cur.day * 864e5); $('stageName').innerHTML = `오늘의 퍼즐<small>${dt.getUTCMonth() + 1}월 ${dt.getUTCDate()}일</small>`; }
@@ -209,6 +211,7 @@ function toast(text, ms = 1500) {
 /* ---------- game flow ---------- */
 function showPanel(id) {
   for (const p of ['title', 'offer', 'help', 'records', 'select']) $(p).hidden = p !== id;
+  if (B) B.hidePanels(id); // BETA
   if (id) $('result').hidden = true;
 }
 function loadDef(def) {
@@ -217,6 +220,7 @@ function loadDef(def) {
   document.querySelectorAll('.confetti').forEach(c => c.remove());
   history = []; selId = 0; hintMove = null;
   buildCells(); layoutBoard();
+  if (B) B.markCells(boardEl, st); // BETA
 }
 function startStage(index) {
   cur = { def: STAGES[index], index };
@@ -227,8 +231,8 @@ function startStage(index) {
   const id = STAGES[index].id, seen = store.get('seen', {});
   if (INTROS[id] && !seen[id]) { toast(INTROS[id], 3600); seen[id] = 1; store.set('seen', seen); }
 }
-function startDef(def, day) {
-  cur = { def, index: -1, day };
+function startDef(def, day, extra /* BETA */) {
+  cur = { def, index: -1, day, ...extra /* BETA */ };
   mode = 'play'; tut = null; $('coach').hidden = true;
   hints = HINTS; hintMap = new Map();
   showPanel(null); $('result').hidden = true;
@@ -264,7 +268,8 @@ function attempt(i, d) {
   if (ev.merged) sound.merge(Math.log2(ev.value)); else sound.move();
   if (ev.opened.length) setTimeout(() => { sound.gate(); toast('문이 열렸어요!'); }, 120);
   if (ev.locked) setTimeout(() => sound.lock(), 110);
-  sync(ev); hud(); drawMarks();
+  if (!(ev.chain && B && B.chain(ev, history[history.length - 1]))) sync(ev); /* BETA: chain moves animate in beta.js */
+  hud(); drawMarks();
   if (mode === 'tutorial') { tutStep(); return; }
   if (ev.win) { mode = 'result'; drawMarks(); setTimeout(() => finish(true), 520); }
   else if (st.moves >= st.limit || !legalMoves(st).length) { mode = 'result'; drawMarks(); setTimeout(() => finish(false), 420); }
@@ -286,6 +291,7 @@ function blocked(i, d, reason) {
   if (mode === 'tutorial') coach(msg, 'warn'); else toast(msg);
 }
 function finish(win) {
+  if (B && B.finish(win)) return; // BETA
   const d = cur.def;
   lastResult = { win };
   $('result').hidden = false;
@@ -343,7 +349,7 @@ async function hint() {
   if (!mv) {
     hintBusy = true; toast('생각 중…', 4000);
     const snapshot = st;
-    const r = await work({ type: 'solve', state: { n: st.n, codes: Array.from(st.codes), target: st.target, goal: st.goal, maxDepth: st.limit - st.moves } });
+    const r = await work({ type: 'solve', state: { n: st.n, codes: Array.from(st.codes), target: st.target, goal: st.goal, opts: st.opts /* BETA */, maxDepth: st.limit - st.moves } });
     hintBusy = false;
     if (snapshot !== st || mode !== 'play') { toast(''); $('toast').classList.add('fade'); return; }
     if (!r || r.error) { toast('이대로는 깰 수 없어요. 되돌리거나 다시 해 보세요.', 2600); return; }
@@ -568,7 +574,11 @@ function cycle(step = 1) {
 }
 
 /* ---------- buttons ---------- */
-$('start').addEventListener('click', () => { sound.unlock(); if (tutorialDone()) showSelect(); else showPanel('offer'); });
+$('start').addEventListener('click', () => {
+  sound.unlock();
+  if (B) { B.showModes(); return; } // BETA
+  if (tutorialDone()) showSelect(); else showPanel('offer');
+});
 $('tutYes').addEventListener('click', () => { sound.unlock(); startTutorial(true); });
 $('tutNo').addEventListener('click', () => { store.set('tut', 1); showSelect(); });
 $('howto').addEventListener('click', showHelp);
@@ -578,18 +588,20 @@ $('rank').addEventListener('click', () => showRecords(showTitle));
 $('recBack').addEventListener('click', () => (panelBack || showTitle)());
 $('selBack').addEventListener('click', showTitle);
 $('daily').addEventListener('click', () => { sound.unlock(); playDaily(); });
-$('toSelect').addEventListener('click', () => { if (mode === 'tutorial') { tut = null; $('coach').hidden = true; } showSelect(); });
+$('toSelect').addEventListener('click', () => { if (B && B.back()) return; /* BETA */ if (mode === 'tutorial') { tut = null; $('coach').hidden = true; } showSelect(); });
 $('cskip').addEventListener('click', () => endTutorial());
 $('undo').addEventListener('click', undo);
 $('hint').addEventListener('click', hint);
 $('restart').addEventListener('click', () => restart(false));
 $('rNext').addEventListener('click', () => {
+  if (B && B.next()) return; // BETA
   if (!lastResult) return;
   if (lastResult.next === 'next') startStage(cur.index + 1);
   else if (lastResult.next === 'select') showSelect();
   else { mode = 'play'; $('result').hidden = true; restart(false); }
 });
 $('rRetry').addEventListener('click', () => {
+  if (B && B.retry()) return; // BETA
   if (lastResult && lastResult.win) { mode = 'play'; $('result').hidden = true; restart(false); }
   else if (lastResult && lastResult.canUndo) undo();
   else showSelect();
@@ -612,6 +624,18 @@ new ResizeObserver(() => layoutBoard()).observe(stageEl);
 cur = { def: STAGES[0], index: 0 };
 loadDef(STAGES[0]); setHeader(); hud();
 showTitle();
+
+// BETA:begin
+const betaApi = {
+  $, store, sound, toast, confetti, boardEl, showPanel, showSelect, showTitle, tutorialDone, startDef, loadDef, attempt, sync, hud, drawMarks, restart, undo,
+  xy, canUndo: () => history.length > 0 && undos > 0,
+  showHint(i, d) { hintMove = [i, d]; selId = st.ids[i]; sound.hint(); drawMarks(); },
+  get st() { return st; }, set st(v) { st = v; },
+  get mode() { return mode; }, set mode(v) { mode = v; },
+  get cur() { return cur; }, get hinted() { return hinted; }, set lastResult(v) { lastResult = v; },
+};
+import('./beta.js').then(m => { B = m; m.init(betaApi); }).catch(() => {});
+// BETA:end
 
 // Test hook for automated checks; harmless in normal play.
 window.__onemove = {

@@ -21,12 +21,14 @@ export const valueOf = c => 2 ** expOf(c);
 export const kindOf = c => (c === EMPTY ? 'empty' : c === WALL ? 'wall' : isGate(c) ? 'gate' : c < PIN ? 'num' : c < ONCE ? 'pin' : 'once');
 export const movable = c => isNum(c) && (c < PIN || c >= ONCE);
 const log2 = v => Math.round(Math.log2(v));
+export const ext = { chain: null, win: null }; // BETA hook: beta-rules.js fills this in; it stays null in the normal game
 
 /* ---------- stage parsing ---------- */
 // Tokens: "." empty, "#" wall, "g8" gate opened by an 8, "4" tile, "4p" pinned 4, "4o" once-tile 4.
 export function parseToken(t) {
   if (t === '.') return EMPTY;
   if (t === '#') return WALL;
+  if (t === 'k') return NUM; // BETA marked tile (value 1) for the exit goal
   const m = /^(g?)(\d+)([po]?)$/.exec(t);
   if (!m) throw new Error('bad token ' + t);
   const e = log2(+m[2]);
@@ -37,6 +39,7 @@ export function parseToken(t) {
 export function tokenOf(c) {
   if (c === EMPTY) return '.';
   if (c === WALL) return '#';
+  if (c === NUM) return 'k'; // BETA
   if (isGate(c)) return 'g' + valueOf(c);
   return valueOf(c) + (c >= ONCE ? 'o' : c >= PIN ? 'p' : '');
 }
@@ -51,6 +54,7 @@ export function parseStage(def) {
   return {
     n, codes, ids, target: log2(def.target), goal: def.goal ? def.goal[0] * n + def.goal[1] : -1,
     limit: def.limit, moves: 0,
+    opts: def.opts || null, // BETA options: { chain: true, goal: {...} }
   };
 }
 export const cloneState = s => ({ ...s, codes: s.codes.slice(), ids: s.ids.slice() });
@@ -58,7 +62,7 @@ export const boardRows = s => Array.from({ length: s.n }, (_, r) => Array.from(s
 
 /* ---------- moving ---------- */
 // Returns null when blocked, otherwise { to, merged, exp, opened: [gate indices], locked } and writes the new board to out.
-export function moveCodes(codes, n, i, d, out) {
+export function moveCodes(codes, n, i, d, out, opts) { // BETA (opts)
   const c = codes[i];
   if (!movable(c)) return null;
   const r = (i / n) | 0, col = i % n, r2 = r + DIRS[d][0], c2 = col + DIRS[d][1];
@@ -66,6 +70,7 @@ export function moveCodes(codes, n, i, d, out) {
   const j = r2 * n + c2, t = codes[j];
   let merged = false, e = c & 15, locked = false;
   const opened = [];
+  let chain = null; // BETA
   if (t === EMPTY) {
     out.set(codes);
     out[i] = EMPTY;
@@ -76,8 +81,9 @@ export function moveCodes(codes, n, i, d, out) {
     e += 1; merged = true;
     out[j] = (t & ~15) + e; // the merged tile keeps the target cell's kind (normal / pinned / once)
     for (let k = 0; k < out.length; k++) if (isGate(out[k]) && out[k] - 2 === e) { out[k] = EMPTY; opened.push(k); }
+    if (opts && opts.chain && ext.chain) chain = ext.chain(out, n, j, opened); // BETA
   } else return null;
-  return { to: j, merged, exp: e, opened, locked };
+  return { to: j, merged, exp: e, opened, locked, chain }; // BETA (chain)
 }
 // Why a move is blocked (for the shake + coach text): 'fixed' | 'edge' | 'wall' | 'gate' | 'diff' | null (= allowed)
 export function blockReason(s, i, d) {
@@ -95,26 +101,28 @@ export function blockReason(s, i, d) {
 // tile it merged into (that tile id survives).
 export function applyMove(s, i, d) {
   const out = new Uint8Array(s.codes.length);
-  const r = moveCodes(s.codes, s.n, i, d, out);
+  const r = moveCodes(s.codes, s.n, i, d, out, s.opts); // BETA (opts)
   if (!r) return null;
   const ids = s.ids.slice(), id = ids[i], into = r.merged ? ids[r.to] : 0;
   ids[i] = 0;
   if (!r.merged) ids[r.to] = id;
+  const chain = (r.chain || []).map(c => { const cid = ids[c.cell]; ids[c.cell] = 0; return { ...c, id: cid }; }); // BETA
   const removed = r.opened.map(k => ids[k]);
   for (const k of r.opened) ids[k] = 0;
   const state = { ...s, codes: out, ids, moves: s.moves + 1 };
-  return { state, ev: { from: i, to: r.to, dir: d, id, into, merged: r.merged, value: 2 ** r.exp, opened: r.opened, removed, locked: r.locked, win: isWin(state) } };
+  return { state, ev: { from: i, to: r.to, dir: d, id, into, merged: r.merged, value: 2 ** r.exp, opened: r.opened, removed, locked: r.locked, win: isWin(state), chain: chain.length ? chain : undefined } }; // BETA (chain)
 }
-export function isWinCodes(codes, target, goal) {
+export function isWinCodes(codes, target, goal, opts) { // BETA (opts)
+  if (opts && opts.goal && ext.win) return ext.win(codes, opts); // BETA
   if (goal >= 0) return isNum(codes[goal]) && (codes[goal] & 15) === target;
   for (let k = 0; k < codes.length; k++) if (isNum(codes[k]) && (codes[k] & 15) === target) return true;
   return false;
 }
-export const isWin = s => isWinCodes(s.codes, s.target, s.goal);
+export const isWin = s => isWinCodes(s.codes, s.target, s.goal, s.opts); // BETA (opts)
 export const isOut = s => !isWin(s) && s.moves >= s.limit;
 export function legalMoves(s) {
   const res = [], out = new Uint8Array(s.codes.length);
-  for (let i = 0; i < s.codes.length; i++) if (movable(s.codes[i])) for (let d = 0; d < 4; d++) if (moveCodes(s.codes, s.n, i, d, out)) res.push([i, d]);
+  for (let i = 0; i < s.codes.length; i++) if (movable(s.codes[i])) for (let d = 0; d < 4; d++) if (moveCodes(s.codes, s.n, i, d, out, s.opts /* BETA */)) res.push([i, d]);
   return res;
 }
 
@@ -130,8 +138,8 @@ function dead(codes, target, goal) {
 }
 // Returns { depth, path: [[i, d], ...], states } | { aborted: true, states } | null (no solution within maxDepth).
 export function solve(s, { maxDepth = 60, maxStates = 3e6 } = {}) {
-  const { n, target, goal } = s, len = n * n;
-  if (isWinCodes(s.codes, target, goal)) return { depth: 0, path: [], states: 1 };
+  const { n, target, goal, opts } = s, len = n * n; // BETA (opts)
+  if (isWinCodes(s.codes, target, goal, opts /* BETA */)) return { depth: 0, path: [], states: 1 };
   const key = c => String.fromCharCode.apply(null, c);
   const parent = new Map([[key(s.codes), null]]);
   let frontier = [s.codes];
@@ -139,16 +147,16 @@ export function solve(s, { maxDepth = 60, maxStates = 3e6 } = {}) {
   for (let depth = 1; depth <= maxDepth && frontier.length; depth++) {
     const next = [];
     for (const codes of frontier) {
-      if (dead(codes, target, goal)) continue;
+      if (!(opts && opts.goal) && dead(codes, target, goal)) continue; // BETA (opts)
       const pk = key(codes);
       for (let i = 0; i < len; i++) {
         if (!movable(codes[i])) continue;
         for (let d = 0; d < 4; d++) {
-          if (!moveCodes(codes, n, i, d, out)) continue;
+          if (!moveCodes(codes, n, i, d, out, opts)) continue; // BETA (opts)
           const k = key(out);
           if (parent.has(k)) continue;
           parent.set(k, [pk, i, d]);
-          if (isWinCodes(out, target, goal)) {
+          if (isWinCodes(out, target, goal, opts /* BETA */)) {
             const path = [];
             for (let cur = k; parent.get(cur); cur = parent.get(cur)[0]) { const p = parent.get(cur); path.push([p[1], p[2]]); }
             return { depth, path: path.reverse(), states: parent.size };

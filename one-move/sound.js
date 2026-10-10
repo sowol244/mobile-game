@@ -37,6 +37,7 @@ export function createSound() {
     lock() { tone(note(-3), 0.06, { type: 'square', vol: 0.03 }); tone(note(4), 0.05, { type: 'square', vol: 0.025, delay: 0.05 }); },
     gate() { [0, 4, 7, 12].forEach((s, i) => tone(note(s + 5), 0.12, { type: 'triangle', vol: 0.045, delay: i * 0.04 })); },
     undo() { tone(note(7), 0.08, { type: 'triangle', vol: 0.04, slide: 0.75 }); },
+    chain(k) { [0, 4, 7, 12].forEach((x, i) => tone(note(x + 2 * k + 7), 0.13, { type: 'triangle', vol: 0.05, delay: i * 0.035 })); }, // BETA
     hint() { tone(note(12), 0.12, { type: 'sine', vol: 0.05 }); tone(note(19), 0.14, { type: 'sine', vol: 0.04, delay: 0.08 }); },
     win(perfect) {
       const seq = perfect ? [0, 4, 7, 12, 16, 19, 24] : [0, 4, 7, 12];

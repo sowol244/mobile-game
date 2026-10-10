@@ -221,6 +221,7 @@
   }
   @media (prefers-reduced-motion: reduce) { .tile, .tile .n { transition: none; } .arrow::before { animation: none; } }
 </style>
+<link rel="stylesheet" href="beta.css"> <!-- BETA -->
 </head>
 <body>
 <div id="app">
@@ -231,7 +232,9 @@
     <button class="chip" id="mute" type="button" aria-pressed="false">소리 켜짐</button>
   </div>
   <div id="info">
-    <div class="card" id="goalCard"><small>목표</small><div id="goalTile" class="tile" data-e="4">16</div><div id="goalWhere" hidden>★ 칸에서</div></div>
+    <div class="card" id="goalCard"><small>목표</small><div id="goalTile" class="tile" data-e="4">16</div><div id="goalWhere" hidden>★ 칸에서</div>
+      <div id="betaWhere" hidden></div> <!-- BETA -->
+    </div>
     <div class="card" id="movesCard"><small>남은 이동</small><div class="big" id="moves">12<span>/12</span></div></div>
     <div class="card" id="starsCard"><small>최고 기록</small><div id="liveStars">★★★</div><div class="row" id="cuts"></div></div>
   </div>
@@ -258,6 +261,7 @@
       <p id="rMsg"></p>
       <div class="btns">
         <button class="btn primary" id="rNext" type="button">다음 단계</button>
+        <button class="btn" id="rReplay" type="button" hidden>최소 이동 풀이 보기</button> <!-- BETA -->
         <div class="row3">
           <button class="btn" id="rRetry" type="button">다시 하기</button>
           <button class="btn" id="rRank" type="button">순위 보기</button>
@@ -319,6 +323,55 @@
     <button id="daily" type="button"><span><b>오늘의 퍼즐</b><small id="dailySub">매일 새로운 한 판</small></span><span class="go" id="dailyGo">도전</span></button>
     <div id="chapters" style="display:contents"></div>
   </div>
+
+  <!-- BETA:begin -->
+  <div class="panel" id="modes" hidden>
+    <div class="center">
+      <h2>모드 선택</h2>
+      <div class="modes">
+        <button class="mode" id="modeNormal" type="button"><span class="mi"><span class="tile" data-e="3"><span class="n">8</span></span></span><span><b>정식</b><small>41개 스테이지, 매일 퍼즐</small></span></button>
+        <button class="mode beta" id="modeBeta" type="button"><span class="mi"><svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></span><span><b>개발중 (beta)</b><small>연쇄 합치기와 새 목표</small></span></button>
+      </div>
+      <div class="btns"><button class="btn" id="modesBack" type="button">처음으로</button></div>
+    </div>
+  </div>
+
+  <!-- GATE:begin -->
+  <div class="panel" id="betaGate" hidden>
+    <div class="center">
+      <svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      <h2>개발중 (beta)</h2>
+      <div class="dots" id="gateDots"><i></i><i></i><i></i><i></i></div>
+      <p class="lead" id="gateMsg">비밀번호 4자리</p>
+      <div class="keypad" id="keypad">
+        <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+        <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+        <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+        <span></span><button type="button" data-k="0">0</button><button type="button" class="k" data-k="back" aria-label="지우기">지움</button>
+      </div>
+      <div class="btns"><button class="btn" id="gateBack" type="button">뒤로</button></div>
+    </div>
+  </div>
+  <!-- GATE:end -->
+
+  <div class="panel" id="betaSelect" hidden>
+    <div class="head"><button class="chip" id="bsBack" type="button">뒤로</button><h2>개발중 (beta)</h2><span class="tot" id="bsTot">★ 0</span></div>
+    <p class="note">합치면 옆의 같은 숫자도 이어서 합쳐져요.</p>
+    <div id="bsChapters" style="display:contents"></div>
+  </div>
+
+  <div class="panel" id="betaIntro" hidden>
+    <div class="center">
+      <div class="introIcon" id="introIcon"></div>
+      <h2 id="introTitle"></h2>
+      <p class="introText" id="introText"></p>
+      <div class="btns"><button class="btn primary" id="introGo" type="button">시작</button><button class="btn" id="introBack" type="button">뒤로</button></div>
+    </div>
+  </div>
+
+  <div id="betaShield" hidden></div>
+  <div id="betaReplay" hidden><span id="brText"></span><span class="brb"><button id="brAgain" type="button" hidden>다시 보기</button><button id="brClose" type="button">닫기</button></span></div>
+  <!-- BETA:end -->
 
   <div id="busy" hidden>준비 중…</div>
 </div>
