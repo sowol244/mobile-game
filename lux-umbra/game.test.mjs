@@ -90,6 +90,15 @@ test('inside fog the torch still has a halo around you', () => {
   assert.equal(isSolid(s, 3, 3), true, 'the halo holds the block under you even when aimed up');
 });
 
+test('a beam grazing the block under you does not make you shake: after a couple of bounces you fall', () => {
+  const s = mk(['###########', '#.........#', '#..P......#', '#.LLLLLLL.#', '#.........#', '#.........#', '#.........#', '###########']);
+  run(s, { lightSet: true, aim: Math.PI / 2 }, 0.5);
+  let rev = 0, prev = s.p.y, dir = 0;
+  for (let k = 0; k < 90; k++) { step(s, { aim: 0.17 }, STEP); const d = Math.sign(s.p.y - prev); if (d && dir && d !== dir) rev++; if (d) dir = d; prev = s.p.y; }
+  assert.ok(rev <= 4, `bounced ${rev} direction changes`);
+  assert.ok(s.p.y > 4, 'ends up falling through to the floor');
+});
+
 test('rock and crates stop light; a crate casts a shadow', () => {
   const s = mk(['##########', '#.......P#', '#1.K..SS.#', '##########'], { lamps: { 1: { kind: 'beam', dir: 0, spread: 10, range: 12 } } });
   run(s, {}, 0.02);

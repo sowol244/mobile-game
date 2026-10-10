@@ -73,7 +73,7 @@ export function createGame(def) {
     crates: lv.crates.map(c => ({ x: c.x + (1 - PHYS.cw) / 2, y: c.y, w: PHYS.cw, h: 1, vx: 0, vy: 0, hx: c.x, hy: c.y })),
     statues: lv.statues.map(m => ({ x: m.x + (1 - PHYS.sw) / 2, y: m.y + 1 - PHYS.sh, w: PHYS.sw, h: PHYS.sh, vy: 0, vx: 0, awake: false, face: -1, walk: 0, hx: m.x, hy: m.y })),
     shard: lv.shard ? { ...lv.shard, got: false } : null,
-    t: 0, deaths: 0, cleared: false, events: [], snap: null, startPos: lv.start,
+    t: 0, deaths: 0, cleared: false, events: [], snap: null, startPos: lv.start, ghostT: new Float32Array(w * h).fill(-9), ghostN: new Uint8Array(w * h), shakeTile: -1, shakeUntil: -1,
   };
   for (let i = 0; i < w * h; i++) if (REACTIVE.has(lv.tiles[i])) s.reactive.push(i);
   s.mirrorAt = new Map(s.mirrors.map(m => [m.i, m]));
@@ -263,12 +263,14 @@ function bodies(s) {
 }
 
 // Landing assist: a block that appears just after the hero's feet sank past its top still catches them
-// (about 0.12 s of falling, at most 0.65 tile), as long as there is room to stand on it.
+// (about 0.12 s of falling, at most 0.65 tile), as long as there is room to stand on it. Not for a block that has just gone
+// dark under you three times in a row: that is a beam grazing it as you sink, and lifting you each time made you shake.
 function catchPlayer(s, x, y) {
   const p = s.p;
   if (p.dead || p.vy <= 0) return false;
   const depth = p.y + p.h - y;
   if (depth <= 0 || depth > Math.min(0.65, p.vy * 0.12 + 0.05)) return false;
+  if (s.shakeTile === y * s.w + x && s.t < s.shakeUntil) return false;
   const lifted = { x: p.x, y: y - p.h, w: p.w, h: p.h };
   if (tileHits(s, lifted).length) return false;
   if ([...s.crates, ...s.statues].some(b => overlap(b, lifted))) return false;
@@ -312,7 +314,14 @@ function updateLight(s, initial = false) {
       if (!inside.length || (!initial && inside.length === 1 && inside[0] === s.p && catchPlayer(s, x, y))) {
         s.solid[i] = 1; if (!initial) s.events.push({ type: 'solid', x, y, c });
       }
-    } else if (!want && s.solid[i]) { s.solid[i] = 0; if (!initial) s.events.push({ type: 'ghost', x, y, c }); }
+    } else if (!want && s.solid[i]) {
+      s.solid[i] = 0; if (!initial) s.events.push({ type: 'ghost', x, y, c });
+      if (overlap(s.p, { x, y: y - 0.06, w: 1, h: 1.06 })) { // it was holding you; three times in a row, 0.4 s apart or less = shaking
+        s.ghostN[i] = s.t - s.ghostT[i] < 0.4 ? s.ghostN[i] + 1 : 1;
+        if (s.ghostN[i] >= 3) { s.shakeTile = i; s.shakeUntil = s.t + 0.6; }
+        s.ghostT[i] = s.t;
+      }
+    }
   }
   for (const m of s.statues) {
     const cx = m.x + m.w / 2;
