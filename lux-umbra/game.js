@@ -22,7 +22,7 @@ const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h 
 export function parseLevel(def) {
   const rows = def.rows, h = rows.length, w = Math.max(...rows.map(r => r.length));
   const tiles = new Array(w * h).fill('.');
-  const out = { w, h, tiles, start: null, crates: [], statues: [], shard: null, levers: [], lenses: [], signs: [], checks: [], lamps: [], doors: [], mirrors: [] };
+  const out = { w, h, tiles, start: null, crates: [], statues: [], shards: [], secret: [], levers: [], lenses: [], signs: [], checks: [], lamps: [], doors: [], mirrors: [] };
   let li = 0, ni = 0, si = 0;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const c = rows[y][x] || '#';
@@ -32,10 +32,11 @@ export function parseLevel(def) {
       if (c === 'P') out.start = { x, y };
       else if (c === 'K') out.crates.push({ x, y });
       else if (c === 'M') out.statues.push({ x, y });
-      else if (c === 'o') out.shard = { x, y };
+      else if (c === 'o') out.shards.push({ x, y });
       continue;
     }
     tiles[i] = c;
+    if (c === 'G') { tiles[i] = 'L'; out.secret.push(i); } // a light block that doesn't show itself until it is lit
     if (c === '=') { const d = (def.levers || [])[li++] || 'a'; out.levers.push({ x, y, g: typeof d === 'string' ? d : d.g, time: typeof d === 'string' ? 0 : d.t || 0 }); }
     else if (c in MIRROR) out.mirrors.push({ x, y, i, state: MIRROR[c], turn: c === '{' || c === '}' });
     else if (c === '%') out.lenses.push({ x, y, col: (def.lenses || [])[ni++] || 'w' });
@@ -72,10 +73,11 @@ export function createGame(def) {
     p: null, fl: { on: false, dark: false, aim: LIGHT.defaultAim, col: COL.w },
     crates: lv.crates.map(c => ({ x: c.x + (1 - PHYS.cw) / 2, y: c.y, w: PHYS.cw, h: 1, vx: 0, vy: 0, hx: c.x, hy: c.y })),
     statues: lv.statues.map(m => ({ x: m.x + (1 - PHYS.sw) / 2, y: m.y + 1 - PHYS.sh, w: PHYS.sw, h: PHYS.sh, vy: 0, vx: 0, awake: false, face: -1, walk: 0, hx: m.x, hy: m.y })),
-    shard: lv.shard ? { ...lv.shard, got: false } : null,
+    shards: lv.shards.map(q => ({ ...q, got: false })), secret: new Uint8Array(w * h),
     t: 0, deaths: 0, cleared: false, events: [], snap: null, startPos: lv.start,
   };
   for (let i = 0; i < w * h; i++) if (REACTIVE.has(lv.tiles[i])) s.reactive.push(i);
+  for (const i of lv.secret) s.secret[i] = 1;
   s.mirrorAt = new Map(s.mirrors.map(m => [m.i, m]));
   // fog: rectangles from the level data plus 'f' tiles. Nothing but your own halo reaches into it.
   s.fog = new Uint8Array(w * h);
@@ -132,7 +134,7 @@ export function isSolid(s, x, y) {
 function isOpaque(s, x, y) {
   if (x < 0 || x >= s.w || y < 0 || y >= s.h) return true;
   const i = y * s.w + x, c = s.tiles[i];
-  return c === '#' || s.fog[i] === 1 || c in MIRROR || (c === 'H' && !s.reveal[i]);
+  return c === '#' || c === 'x' || s.fog[i] === 1 || c in MIRROR || (c === 'H' && !s.reveal[i]);
 }
 
 // Lamps on rails slide back and forth (smoothly) with the clock.
@@ -474,9 +476,9 @@ function interact(s) {
       s.events.push({ type: 'check', x: c.x, y: c.y });
     }
   }
-  if (s.shard && !s.shard.got) {
-    const dx = p.x + p.w / 2 - (s.shard.x + 0.5), dy = p.y + p.h / 2 - (s.shard.y + 0.5);
-    if (Math.abs(dx) < 0.65 && Math.abs(dy) < 0.8) { s.shard.got = true; s.events.push({ type: 'shard', x: s.shard.x, y: s.shard.y }); }
+  for (const q of s.shards) if (!q.got) {
+    const dx = p.x + p.w / 2 - (q.x + 0.5), dy = p.y + p.h / 2 - (q.y + 0.5);
+    if (Math.abs(dx) < 0.65 && Math.abs(dy) < 0.8) { q.got = true; s.events.push({ type: 'shard', x: q.x, y: q.y }); }
   }
   const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
   for (const d of s.doors) {
@@ -532,9 +534,9 @@ export function anyLightOn(s) {
   return false;
 }
 
-// Stars for a finished run: clear, shard, time at or under par.
+// Stars: one per light shard taken (three to a stage). Clearing the stage itself is what unlocks the next one.
 export function starsFor(s) {
-  return [true, !!(s.shard && s.shard.got), s.t <= (s.def.par || 60)];
+  return [0, 1, 2].map(k => !!(s.shards[k] && s.shards[k].got));
 }
 
 // For drawing: walk a ray from (x,y) at angle a up to maxD; returns colour segments [{d0,d1,col}].

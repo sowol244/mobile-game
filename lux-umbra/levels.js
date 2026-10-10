@@ -8,6 +8,7 @@
 //   %  lens stand (sets the torch colour from `lenses`)
 //   ?  sign (text from `signs`)            C  checkpoint
 //   P  player   K  crate   M  stone statue   o  light shard (★)
+//   x  false rock: looks like rock, you walk through it (hidden routes)     G  hidden light block: a light block with no outline until it is lit
 //   /  \  mirror (fixed)      {  }  mirror that turns when touched     f  fog: walkable, stops light
 //   1-9 fixed lamp, settings in `lamps` (kind 'radial' | 'beam', dir° 0=right 90=down, spread°, range, color, g=group)
 // `zones` are room lights: a rectangle lit evenly while its group is on.
@@ -36,7 +37,7 @@ export const CHAPTERS = [
 
 // Bump when the stages are rebuilt: saves from another stage set are wiped (stars, best times, unlocks, ranking),
 // settings such as 'lux-mute' are kept. Returns true when there was an old record to wipe.
-export const LEVELS_VERSION = 3;
+export const LEVELS_VERSION = 4;
 export function resetOldSave(store) {
   if (store.getItem('lux-levels') === String(LEVELS_VERSION)) return false;
   const had = store.getItem('lux-progress') !== null || store.getItem('lux-top') !== null;

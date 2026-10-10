@@ -30,7 +30,7 @@ const input = createInput({ stage, left: $('left'), right: $('right'), jump: $('
 
 let state = 'title';      // title | play | paused | clear
 let game = null, idx = 0, demo = null, bot = null;
-// { '1-1': { s: [clear, shard, time], best: seconds } }. A save from an older stage set is wiped first (once, with a
+// { '1-1': { s: [shard 1, shard 2, shard 3], best: seconds } }: a stage is cleared once it has an entry; stars are shards. A save from an older stage set is wiped first (once, with a
 // notice); anything malformed is dropped instead of crashing the menus.
 let saveWiped = false;
 try { saveWiped = resetOldSave(localStorage); } catch { /* storage blocked: nothing saved to wipe */ }
@@ -40,9 +40,8 @@ function cleanProgress(p) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) return out;
   for (const [id, v] of Object.entries(p)) {
     if (!ids.has(id) || !v || typeof v !== 'object') continue;
-    const st = Array.isArray(v.s) ? [0, 1, 2].map(k => !!v.s[k]) : [true, false, false];
-    st[0] = true;
-    const best = Number.isFinite(v.best) && v.best > 0 ? v.best : LEVELS.find(L => L.id === id).par;
+    const st = Array.isArray(v.s) ? [0, 1, 2].map(k => !!v.s[k]) : [false, false, false];
+    const best = Number.isFinite(v.best) && v.best > 0 ? v.best : 99;
     out[id] = { s: st, best };
   }
   return out;
@@ -219,7 +218,7 @@ function finishStage() {
   const stars = document.createElement('div'); stars.className = 'stars';
   st.forEach(g => { const e = document.createElement(g ? 'b' : 'span'); e.textContent = '★'; stars.append(e); });
   const why = document.createElement('div'); why.className = 'why';
-  [['클리어', true], ['빛 조각', st[1]], [`${fmt(game.t)} / 기준 ${fmt(L.par)}`, st[2]]].forEach(([t, ok]) => { const s = document.createElement('span'); s.textContent = (ok ? '✓ ' : '· ') + t; if (ok) s.className = 'ok'; why.append(s); });
+  [['클리어', true], [`빛 조각 ${n}/3`, n === 3], [fmt(game.t), false]].forEach(([t, ok]) => { const s = document.createElement('span'); s.textContent = (ok ? '✓ ' : '· ') + t; if (ok) s.className = 'ok'; why.append(s); });
   finalEl.append(stars, why);
   if (isNew && prev) { const nw = document.createElement('div'); nw.className = 'new'; nw.textContent = '최고 기록!'; finalEl.append(nw); }
   finalEl.hidden = false;
@@ -235,13 +234,13 @@ function paintHud() {
   let key;
   if (state === 'play' || state === 'paused' || state === 'clear') {
     const L = LEVELS[idx];
-    key = `${L.id}|${game.shard && game.shard.got}|${Math.floor(game.t)}`;
+    const got = game.shards.filter(q => q.got).length;
+    key = `${L.id}|${got}|${Math.floor(game.t)}`;
     if (key === hudCache) return; hudCache = key;
     hud.stage.textContent = `${L.id} · ${CHAPTERS[L.ch].name}`; hud.name.textContent = L.name;
     hud.shardLabel.textContent = '빛 조각';
-    const got = game.shard && game.shard.got;
-    hud.shard.textContent = got ? '◆' : '◇'; hud.shard.classList.toggle('got', !!got);
-    hud.timeLabel.textContent = `기준 ${fmt(L.par)}`; hud.time.textContent = fmt(game.t);
+    hud.shard.textContent = `${got}/3`; hud.shard.classList.toggle('got', got > 0);
+    hud.timeLabel.textContent = '시간'; hud.time.textContent = fmt(game.t);
   } else {
     key = `menu|${totalStars()}`;
     if (key === hudCache) return; hudCache = key;
@@ -266,7 +265,7 @@ function events() {
       case 'land': sfx.land(); break;
       case 'die': sfx.die(); break;
       case 'respawn': sfx.respawn(); break;
-      case 'shard': sfx.shard(); banner('빛 조각!', 0.9); break;
+      case 'shard': sfx.shard(); banner(`빛 조각 ${game.shards.filter(q => q.got).length}/3`, 0.9); break;
       case 'check': sfx.check(); break;
       case 'reveal': sfx.reveal(); break;
       case 'wake': sfx.wake(); break;
@@ -370,10 +369,10 @@ window.__lux = {
   solve(i) {
     const s = createGame(LEVELS[i]), next = driver(s, SOLUTIONS[LEVELS[i].id]);
     for (let k = 0; k < 120 / STEP && !s.cleared; k++) { step(s, next(), STEP); s.events.length = 0; }
-    return { id: LEVELS[i].id, cleared: s.cleared, deaths: s.deaths, shard: !!(s.shard && s.shard.got), t: Math.round(s.t * 10) / 10 };
+    return { id: LEVELS[i].id, cleared: s.cleared, deaths: s.deaths, shards: s.shards.filter(q => q.got).length, t: Math.round(s.t * 10) / 10 };
   },
   stepSim(n) { for (let k = 0; k < n; k++) { step(game, {}, STEP); events(); } },
-  unlockAll() { LEVELS.forEach(L => { if (!progress[L.id]) progress[L.id] = { s: [true, false, false], best: L.par }; }); save(KEY_PROG, progress); },
+  unlockAll() { LEVELS.forEach(L => { if (!progress[L.id]) progress[L.id] = { s: [false, false, false], best: 99 }; }); save(KEY_PROG, progress); },
   resetProgress() { progress = {}; save(KEY_PROG, {}); save(KEY_TOP, []); },
   progress: () => progress,
   // the home-screen icon, drawn with the game's own art

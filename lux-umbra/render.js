@@ -40,6 +40,7 @@ export function createRenderer(canvas) {
   const rimTmp = document.createElement('canvas'), rctx = rimTmp.getContext('2d');
   let W = 300, H = 300, dpr = 1, T = 30;
   const cam = { x: 0, y: 0, ready: false };
+  let fakes = [];
   let layer = null, warm = null, layerKey = '', vig = null, layerPx = 1;
   let fade = null, fadeFor = null;
   let parts = [];
@@ -65,7 +66,9 @@ export function createRenderer(canvas) {
   }
 
   // ---------- static rock layer, rendered once per level / size ----------
-  function solidStatic(s, x, y) { const c = tileAt(s, x, y); return c === '#' || c === 'H'; }
+  function solidStatic(s, x, y) { const c = tileAt(s, x, y); return c === '#' || c === 'H' || c === 'x'; }
+  // false rock looks like rock but is not the edge of anything: its neighbours draw a rim towards it, which reads as a seam
+  const edgeSolid = (s, x, y) => solidStatic(s, x, y) && tileAt(s, x, y) !== 'x';
   function buildLayer(s) {
     // long stages: keep each layer under ~6M pixels (phones refuse bigger canvases); it is scaled up when drawn
     const px = Math.min(T * dpr, Math.sqrt(6e6 / (s.w * s.h)));
@@ -75,6 +78,8 @@ export function createRenderer(canvas) {
     warm = document.createElement('canvas'); warm.width = cw; warm.height = ch;
     const g = layer.getContext('2d'), wg = warm.getContext('2d');
     g.setTransform(px, 0, 0, px, 0, 0); wg.setTransform(px, 0, 0, px, 0, 0);
+    const falseRock = []; for (let i = 0; i < s.w * s.h; i++) if (s.tiles[i] === 'x') falseRock.push(i);
+    fakes = falseRock;
     // rock mass
     g.fillStyle = '#04050a';
     for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) if (solidStatic(s, x, y)) g.fillRect(x - 0.01, y - 0.01, 1.02, 1.02);
@@ -82,8 +87,8 @@ export function createRenderer(canvas) {
     for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) {
       if (!solidStatic(s, x, y)) continue;
       const seed = (y * 977 + x * 131) | 0;
-      const up = !solidStatic(s, x, y - 1) && y > 0, dn = !solidStatic(s, x, y + 1) && y < s.h - 1;
-      const lf = !solidStatic(s, x - 1, y) && x > 0, rt = !solidStatic(s, x + 1, y) && x < s.w - 1;
+      const up = !edgeSolid(s, x, y - 1) && y > 0, dn = !edgeSolid(s, x, y + 1) && y < s.h - 1;
+      const lf = !edgeSolid(s, x - 1, y) && x > 0, rt = !edgeSolid(s, x + 1, y) && x < s.w - 1;
       g.lineCap = 'round';
       if (up) {
         g.strokeStyle = 'rgba(96,128,210,0.55)'; g.lineWidth = 0.05;
@@ -109,6 +114,16 @@ export function createRenderer(canvas) {
       }
       if (lf) { g.strokeStyle = 'rgba(80,110,190,0.4)'; g.lineWidth = 0.035; g.beginPath(); g.moveTo(x + 0.02, y); g.lineTo(x + 0.02, y + 1); g.stroke(); wg.fillStyle = 'rgba(255,220,160,0.8)'; wg.fillRect(x, y, 0.06, 1); }
       if (rt) { g.strokeStyle = 'rgba(80,110,190,0.4)'; g.lineWidth = 0.035; g.beginPath(); g.moveTo(x + 0.98, y); g.lineTo(x + 0.98, y + 1); g.stroke(); wg.fillStyle = 'rgba(255,220,160,0.8)'; wg.fillRect(x + 0.94, y, 0.06, 1); }
+    }
+    // false rock: a hairline crack and a few lighter grains
+    for (const i of falseRock) {
+      const x = i % s.w, y = (i / s.w) | 0, seed = (y * 977 + x * 131) | 0;
+      g.strokeStyle = 'rgba(120,150,225,0.3)'; g.lineWidth = 0.03; g.beginPath();
+      let cx = x + 0.3 + hash(seed) * 0.4; g.moveTo(cx, y + 0.05);
+      for (let k = 1; k <= 4; k++) { cx += (hash(seed + k) - 0.5) * 0.3; g.lineTo(cx, y + 0.05 + k * 0.22); }
+      g.stroke();
+      g.fillStyle = 'rgba(140,165,230,0.28)';
+      for (let k = 0; k < 3; k++) g.fillRect(x + 0.1 + hash(seed + 20 + k) * 0.8, y + 0.1 + hash(seed + 30 + k) * 0.8, 0.04, 0.04);
     }
     // spikes
     for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) {
@@ -239,10 +254,10 @@ export function createRenderer(canvas) {
       grd.addColorStop(0, 'rgba(255,190,110,0.45)'); grd.addColorStop(1, 'rgba(255,190,110,0)');
       lctx.fillStyle = grd; lctx.fillRect(c.x - 1.5, c.y - 1.5, 4, 4);
     }
-    if (s.shard && !s.shard.got) {
-      const grd = lctx.createRadialGradient(s.shard.x + 0.5, s.shard.y + 0.5, 0.05, s.shard.x + 0.5, s.shard.y + 0.5, 1.2);
+    for (const q of s.shards) if (!q.got) {
+      const grd = lctx.createRadialGradient(q.x + 0.5, q.y + 0.5, 0.05, q.x + 0.5, q.y + 0.5, 1.2);
       grd.addColorStop(0, 'rgba(255,250,220,0.5)'); grd.addColorStop(1, 'rgba(255,250,220,0)');
-      lctx.fillStyle = grd; lctx.fillRect(s.shard.x - 1, s.shard.y - 1, 3, 3);
+      lctx.fillStyle = grd; lctx.fillRect(q.x - 1, q.y - 1, 3, 3);
     }
     lctx.globalCompositeOperation = 'source-over';
     // bloom: a tiny copy, stretched back up
@@ -355,12 +370,31 @@ export function createRenderer(canvas) {
       const x = i % s.w, y = (i / s.w) | 0, c = s.tiles[i];
       if (c === 'H' || x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
       const a = fade[i];
-      if (a < 0.99) { ctx.globalAlpha = 1 - a; ctx.drawImage(sp[c + 0], x, y, 1, 1); }
+      if (s.secret[i] && a < 0.99) { // a hidden light block: only a faint outline and a twinkle until the beam finds it
+        ctx.globalAlpha = (1 - a) * 0.13; ctx.drawImage(sp.L0, x, y, 1, 1);
+        ctx.globalAlpha = (1 - a) * (0.25 + 0.35 * Math.sin(t * 2.2 + hash(i) * 9)); ctx.fillStyle = '#ffe6ae';
+        ctx.fillRect(x + 0.2 + hash(i + 1) * 0.6, y + 0.2 + hash(i + 2) * 0.6, 0.05, 0.05);
+      } else if (a < 0.99) { ctx.globalAlpha = 1 - a; ctx.drawImage(sp[c + 0], x, y, 1, 1); }
       if (a > 0.01) { ctx.globalAlpha = a; ctx.drawImage(sp[c + 1], x, y, 1, 1); }
     }
     ctx.globalAlpha = 1;
   }
 
+
+  // grains of dust drifting down out of false rock
+  function drawDust(vx0, vy0, vx1, vy1, t) {
+    ctx.fillStyle = '#9fb4e6';
+    for (const i of fakes) {
+      const x = i % lastS.w, y = (i / lastS.w) | 0;
+      if (x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
+      for (let k = 0; k < 2; k++) {
+        const ph = (t * 0.32 + hash(i * 3 + k) * 3) % 1;
+        ctx.globalAlpha = 0.5 * Math.sin(ph * Math.PI);
+        ctx.fillRect(x + 0.15 + hash(i * 5 + k) * 0.7, y + 1 + ph * 0.9, 0.045, 0.045);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
 
   // ---------- props ----------
   function drawProps(s, t, srcs) {
@@ -481,8 +515,8 @@ export function createRenderer(canvas) {
       ctx.fillText('?', g.x + 0.5, g.y + 0.29);
     }
     // shard
-    if (s.shard && !s.shard.got) {
-      const x = s.shard.x + 0.5, y = s.shard.y + 0.5 + Math.sin(t * 2.4) * 0.08, w = 0.2 * Math.abs(Math.cos(t * 1.8)) + 0.05;
+    for (const q of s.shards) if (!q.got) {
+      const x = q.x + 0.5, y = q.y + 0.5 + Math.sin(t * 2.4) * 0.08, w = 0.2 * Math.abs(Math.cos(t * 1.8)) + 0.05;
       ctx.fillStyle = '#fffbe6'; ctx.shadowColor = '#fff2b0'; ctx.shadowBlur = 16;
       ctx.beginPath(); ctx.moveTo(x, y - 0.3); ctx.lineTo(x + w, y); ctx.lineTo(x, y + 0.3); ctx.lineTo(x - w, y); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
     }
@@ -639,6 +673,7 @@ export function createRenderer(canvas) {
     ctx.fillRect(-60, -60, 60, s.h + 120); ctx.fillRect(s.w, -60, 60, s.h + 120); ctx.fillRect(0, -60, s.w, 60); ctx.fillRect(0, s.h, s.w, 60);
     const vx0 = Math.floor(cx) - 1, vy0 = Math.floor(cy) - 1, vx1 = Math.ceil(cx + W / T) + 1, vy1 = Math.ceil(cy + H / T) + 1;
     drawBlocks(s, t, vx0, vy0, vx1, vy1);
+    drawDust(vx0, vy0, vx1, vy1, t);
     drawProps(s, t, srcs);
     drawActors(s, t, srcs);
     drawFog(s, t, vx0, vy0, vx1, vy1);

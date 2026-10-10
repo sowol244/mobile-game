@@ -1,7 +1,7 @@
 // Rule checks and stage solvability for 룩스 앤 움브라. Run: node lux-umbra/game.test.mjs
 import assert from 'node:assert/strict';
 import { LEVELS, CHAPTERS, LEVELS_VERSION, resetOldSave } from './levels.js';
-import { SOLUTIONS } from './solutions.js';
+import { SOLUTIONS, MAIN_SOLUTIONS } from './solutions.js';
 import { createGame, step, isSolid, tileLight, starsFor, castRay } from './game.js';
 import { driver } from './bot.js';
 import { STEP, COL } from './config.js';
@@ -33,21 +33,21 @@ test('only each chapter\'s first stage teaches (has signs); stages 2-10 have non
   }
 });
 
-test('every stage is rectangular, has one start, a door, a shard and only known tiles', () => {
+test('every stage is rectangular, has one start, a door, three shards and only known tiles', () => {
   for (const L of LEVELS) {
     const w = L.rows[0].length;
     L.rows.forEach((r, y) => assert.equal(r.length, w, `${L.id} row ${y}`));
     const all = L.rows.join('');
     assert.equal(all.split('P').length - 1, 1, `${L.id} start`);
     assert.ok(/[DH]/.test(all), `${L.id} door`);
-    assert.equal(all.split('o').length - 1, 1, `${L.id} shard`);
-    assert.match(all, /^[#.LSRBrb^vDH=%?CPKMo1-9f/\\{}]+$/, `${L.id} tiles`);
+    assert.equal(all.split('o').length - 1, 3, `${L.id} shards`);
+    assert.match(all, /^[#.LSRBrb^vDH=%?CPKMo1-9f/\\{}xG]+$/, `${L.id} tiles`);
     assert.equal(all.split('?').length - 1, (L.signs || []).length, `${L.id} signs`);
     assert.equal(all.split('=').length - 1, (L.levers || []).length, `${L.id} levers`);
     assert.equal(typeof L.solve, 'function', `${L.id} solve`);
     assert.equal(all.split('%').length - 1, (L.lenses || []).length, `${L.id} lenses`);
     for (const d of all.match(/[1-9]/g) || []) assert.ok(L.lamps && L.lamps[d], `${L.id} lamp ${d}`);
-    assert.ok(L.par > 0 && L.name && SOLUTIONS[L.id], `${L.id} par/name/solution`);
+    assert.ok(L.name && MAIN_SOLUTIONS[L.id] && SOLUTIONS[L.id], `${L.id} name/solutions`);
     // closed on the sides and top so nobody walks off the map
     assert.ok(L.rows.every(r => r[0] === '#'), `${L.id} left wall`);
     assert.ok(/^#+$/.test(L.rows[0]), `${L.id} ceiling`);
@@ -205,18 +205,25 @@ test('lamps on rails move with the clock', () => {
   assert.ok(Math.abs(s.lamps[0].x - (x0 + 6)) < 0.05);
 });
 
-test('stars: clear, shard, par time', () => {
+test('stars are the light shards taken, one to three', () => {
   const s = createGame(LEVELS[0]);
-  s.t = 10; s.shard.got = true;
+  assert.equal(s.shards.length, 3);
+  assert.deepEqual(starsFor(s), [false, false, false]);
+  s.shards[0].got = true; s.shards[2].got = true;
+  assert.deepEqual(starsFor(s), [true, false, true]);
+  s.shards.forEach(q => { q.got = true; });
   assert.deepEqual(starsFor(s), [true, true, true]);
-  s.t = 999; s.shard.got = false;
-  assert.deepEqual(starsFor(s), [true, false, false]);
 });
 
-test('첫 불빛 cannot be crossed without the torch', () => {
-  const s = createGame(byName('첫 불빛'));
-  run(s, { mx: 1 }, 2.5);
-  assert.ok(s.deaths >= 1);
+test('a light bridge over spikes cannot be crossed without the torch', () => {
+  const rows = ['###########', '#.........#', '#P........#', '##LLLLLL###', '##^^^^^^###', '###########'];
+  const dark = mk(rows);
+  run(dark, { mx: 1 }, 2.5);
+  assert.ok(dark.deaths >= 1);
+  const lit = mk(rows);
+  run(lit, { lightSet: true, aim: 0.5, mx: 1 }, 2.5);
+  assert.equal(lit.deaths, 0);
+  assert.ok(lit.p.x > 8);
 });
 
 test('상자 그림자: near the lamp the crate shadow is a wall, at the edge a thin bridge', () => {
@@ -230,27 +237,51 @@ test('상자 그림자: near the lamp the crate shadow is a wall, at the edge a 
   assert.equal(isSolid(s, x + 18, F - 1), true, 'thin shadow bridge');
 });
 
-// ---------- every stage is solvable ----------
+// ---------- every stage is solvable: the main path takes one shard, the full route all three ----------
+const play = (L, sol, opts) => {
+  const s = createGame(L), next = driver(s, sol, opts);
+  for (let k = 0; k < 120 / STEP && !s.cleared; k++) step(s, next(), STEP);
+  return s;
+};
 for (const L of LEVELS) {
-  test(`stage ${L.id} ${L.name}: scripted solution clears it, no deaths, shard taken`, () => {
-    const s = createGame(L);
-    const next = driver(s, SOLUTIONS[L.id]);
-    for (let k = 0; k < 120 / STEP && !s.cleared; k++) step(s, next(), STEP);
-    assert.equal(s.cleared, true, `${L.id} not cleared`);
-    assert.equal(s.deaths, 0, `${L.id} deaths`);
-    assert.equal(s.shard.got, true, `${L.id} shard`);
-    assert.ok(s.t <= L.par, `${L.id} bot time ${s.t.toFixed(1)} > par ${L.par}`);
+  test(`stage ${L.id} ${L.name}: main path clears with one shard, the full route with all three, no deaths`, () => {
+    const m = play(L, MAIN_SOLUTIONS[L.id]), f = play(L, SOLUTIONS[L.id]);
+    assert.ok(m.cleared && m.deaths === 0, `${L.id} main path cleared=${m.cleared} deaths=${m.deaths}`);
+    assert.equal(starsFor(m).filter(Boolean).length, 1, `${L.id} main path shards`);
+    assert.ok(f.cleared && f.deaths === 0, `${L.id} full route cleared=${f.cleared} deaths=${f.deaths}`);
+    assert.deepEqual(starsFor(f), [true, true, true], `${L.id} full route shards`);
   });
 }
 
 // Same solutions, played the phone way: the torch is switched on once and every "off" is the held 깜빡 button.
-test('all stages also clear using only the hold-to-darken 깜빡 control', () => {
-  for (const L of LEVELS) {
-    const s = createGame(L);
-    const next = driver(s, SOLUTIONS[L.id], { blink: true });
-    for (let k = 0; k < 120 / STEP && !s.cleared; k++) step(s, next(), STEP);
-    assert.ok(s.cleared && s.deaths === 0 && s.shard.got && s.t <= L.par, `${L.id} with 깜빡: cleared=${s.cleared} deaths=${s.deaths}`);
+test('all stages also clear using only the hold-to-darken 깜빡 control, main path and full route', () => {
+  for (const L of LEVELS) for (const [sol, want] of [[MAIN_SOLUTIONS[L.id], 1], [SOLUTIONS[L.id], 3]]) {
+    const s = play(L, sol, { blink: true });
+    assert.ok(s.cleared && s.deaths === 0 && starsFor(s).filter(Boolean).length === want, `${L.id} with 깜빡 (${want} shards): cleared=${s.cleared} deaths=${s.deaths}`);
   }
+});
+
+test('false rock is walked through and stops light; a hidden light block is solid only while lit', () => {
+  const s = mk(['#######', '#P....#', '#..x..#', '#######']);
+  assert.equal(isSolid(s, 3, 2), false);
+  assert.equal(castRay(s, 1.5, 2.5, 0, 6).length > 0 && castRay(s, 1.5, 2.5, 0, 6).at(-1).d1 < 2, true, 'false rock stops the beam like rock');
+  const g = mk(['#######', '#P....#', '#.....#', '#..G..#', '#######']);
+  assert.equal(g.secret[3 * 7 + 3], 1);
+  assert.equal(isSolid(g, 3, 3), false);
+  run(g, { lightSet: true, aim: Math.PI / 4 }, 0.1);
+  assert.equal(isSolid(g, 3, 3), true);
+});
+
+test('shards 2 and 3 are behind the gimmicks: the main path never takes them and every stage has two hidden rooms', () => {
+  const kinds = new Set();
+  for (const L of LEVELS) {
+    const gm = L.rooms.filter(r => r[0].startsWith('gm_'));
+    assert.equal(gm.length, 2, `${L.id} hidden rooms`);
+    gm.forEach(r => kinds.add(r[0]));
+    const got = play(L, MAIN_SOLUTIONS[L.id]).shards.filter(q => q.got).length;
+    assert.equal(got, 1, `${L.id} main path took ${got} shards`);
+  }
+  assert.ok(kinds.size >= 8, `${kinds.size} gimmick kinds`);
 });
 
 test('landing assist: a block that appears just after you sank past its top still catches you', () => {
@@ -299,7 +330,7 @@ test('no room template is used more than 3 times', () => {
 test('a save from another stage set is wiped (settings kept); a current one is kept', () => {
   const mem = init => { const m = new Map(Object.entries(init)); return { m, getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; };
   const old = { 'lux-progress': '{"1-1":{"s":[true,true,true],"best":9}}', 'lux-top': '[{"stage":"1-1","time":9,"stars":3}]', 'lux-mute': '1' };
-  for (const ver of [undefined, '2']) {
+  for (const ver of [undefined, '2', '3']) {
     const st = mem(ver ? { ...old, 'lux-levels': ver } : old);
     assert.equal(resetOldSave(st), true);
     assert.equal(st.getItem('lux-progress'), null); assert.equal(st.getItem('lux-top'), null);
