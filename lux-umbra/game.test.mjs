@@ -76,29 +76,6 @@ test('the torch cone only reaches where it is aimed (and the halo around you)', 
   assert.equal(isSolid(s, 7, 6), true, 'aimed down at it');
 });
 
-test('no halo outside fog: the floor under your feet stays lit only while the torch is aimed at it, with no flicker', () => {
-  const s = mk(['#######', '#.....#', '#..P..#', '#.LLL.#', '#######']);
-  run(s, { lightSet: true, aim: Math.PI / 2 }, 0.5);
-  assert.equal(isSolid(s, 3, 3), true, 'aimed down: the block lights and holds you');
-  assert.ok(s.p.onGround, 'standing on it');
-  for (let k = 0; k < 12; k++) { run(s, { aim: -Math.PI / 2 }, 0.05); assert.equal(isSolid(s, 3, 3), false, `aimed up, still dark after ${k + 1} steps`); }
-});
-
-test('inside fog the torch still has a halo around you', () => {
-  const s = mk(['#######', '#.....#', '#..P..#', '#.LLL.#', '#.....#', '#######'], { fog: [{ x: 1, y: 1, w: 5, h: 3 }] });
-  run(s, { lightSet: true, aim: -Math.PI / 2 }, 0.5);
-  assert.equal(isSolid(s, 3, 3), true, 'the halo holds the block under you even when aimed up');
-});
-
-test('a beam grazing the block under you does not make you shake: after a couple of bounces you fall', () => {
-  const s = mk(['###########', '#.........#', '#..P......#', '#.LLLLLLL.#', '#.........#', '#.........#', '#.........#', '###########']);
-  run(s, { lightSet: true, aim: Math.PI / 2 }, 0.5);
-  let rev = 0, prev = s.p.y, dir = 0;
-  for (let k = 0; k < 90; k++) { step(s, { aim: 0.17 }, STEP); const d = Math.sign(s.p.y - prev); if (d && dir && d !== dir) rev++; if (d) dir = d; prev = s.p.y; }
-  assert.ok(rev <= 4, `bounced ${rev} direction changes`);
-  assert.ok(s.p.y > 4, 'ends up falling through to the floor');
-});
-
 test('rock and crates stop light; a crate casts a shadow', () => {
   const s = mk(['##########', '#.......P#', '#1.K..SS.#', '##########'], { lamps: { 1: { kind: 'beam', dir: 0, spread: 10, range: 12 } } });
   run(s, {}, 0.02);
@@ -132,7 +109,7 @@ test('a lens stand recolours the torch', () => {
 test('a block never materialises inside a body; it waits until the body leaves', () => {
   const s = mk(['#######', '#.....#', '#..P..#', '#.LLL.#', '#.....#', '#######']);
   s.p.y = 3.0; // standing inside the light blocks
-  run(s, { lightSet: true, aim: Math.PI }, 0.02); // beam to the left: the halo alone no longer reaches the neighbour
+  run(s, { lightSet: true, aim: Math.PI / 2 }, 0.02);
   assert.equal(isSolid(s, 3, 3), false);
   assert.equal(isSolid(s, 2, 3), true, "the neighbour materialises");
 });

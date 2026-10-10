@@ -23,7 +23,7 @@ export const PHYS = {
 export const LIGHT = {
   flashRange: 7.5,
   flashHalf: 0.33,   // half-angle of the hand torch cone (rad)
-  fogHalo: 1.45,     // radius lit around the player while the torch is on and the player is inside fog (nothing else reaches into fog)
+  halo: 1.45,        // radius lit around the player while the torch is on
   defaultAim: 0.18,  // slightly downward when facing right
 };
 
