@@ -87,6 +87,8 @@ export function createSound() {
         tone(f * 2, 0.12, { type: 'sine', vol: 0.02, delay: 0.03 + i * 0.05 });
       }
     },
+    // 라인 크래시: a bright zip along the line, then a rising chime
+    line() { hiss(0.32, { vol: 0.1, type: 'bandpass', f0: 500, f1: 7000, q: 3, attack: 0.22 }); [0, 7, 12, 19].forEach((n, i) => tone(note(n + 12), 0.16, { type: 'triangle', vol: 0.05, delay: 0.05 + i * 0.05 })); },
     laser() { tone(1800, 0.28, { type: 'sawtooth', vol: 0.035, slide: 0.15 }); hiss(0.25, { vol: 0.05, type: 'bandpass', f0: 5000, f1: 800, q: 4 }); },
     ice() { hiss(0.09, { vol: 0.08, type: 'highpass', f0: 5000, q: 1 }); tone(3200, 0.05, { type: 'square', vol: 0.015, delay: 0.02 }); },
     hole() { tone(500, 0.5, { type: 'sine', vol: 0.08, slide: 0.15 }); tone(760, 0.45, { type: 'triangle', vol: 0.03, slide: 0.2, delay: 0.05 }); hiss(0.5, { vol: 0.05, f0: 2400, f1: 200, q: 5, attack: 0.2 }); },

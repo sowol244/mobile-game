@@ -4,6 +4,8 @@ import {
   N, DIRS, parseBoard, toRows, settle, findGroups, explode, activateHoles, resolve, stageState, goalMet, solve, cloneState,
   starsFor, rng, planWave, spawnWave, blockedLines, crashStart, entryCell, nextCombo, FEVER_COMBO, colorBomb, commonColor,
   shuffleColors, fillCount, deadClear, crashLevel, spawnInterval, boardKey, mk, createAids, UNDO_LIMIT, HINT_LIMIT, migrateSave,
+  fullLines, LINE_BONUS, BLOCK_LEVELS, typesAtLevel, randomBlock, waveSize, hasBoom, unjam, darkMove, needsShake, STUCK_LIMIT, STUCK_FILL,
+  DAILY_TILTS, DAILY_FREE, dailyLevel, moveScore, createDaily, dailyTilt, cloneBoard,
 } from './logic.js';
 import { STAGES, CHAPTERS } from './stages.js';
 import { STEPS } from './tutorial.js';
@@ -216,7 +218,7 @@ test('crash: planned waves are deterministic per seed (daily challenge) and ramp
   const a = rng(20261008), b = rng(20261008);
   const wa = planWave(a, 5).map(w => [w.k, w.b.t, w.b.c]), wb = planWave(b, 5).map(w => [w.k, w.b.t, w.b.c]);
   assert.deepEqual(wa, wb);
-  assert.ok(spawnInterval(1) > spawnInterval(6) && spawnInterval(50) >= 1);
+  assert.ok(spawnInterval(1) > spawnInterval(6) && spawnInterval(50) === 0.7, 'the ramp ends at a 0.7 s floor');
   assert.equal(crashLevel(0), 1); assert.equal(crashLevel(41), 3);
   for (let i = 0; i < 50; i++) { const w = planWave(a, 8); assert.equal(new Set(w.map(x => x.k)).size, w.length); }
 });
@@ -289,6 +291,230 @@ test('old saves are cleaned: core removed from seen blocks, stars sanitized and 
   assert.deepEqual(m.stars, [3, 2, 0, 0, 0, 0]);
   assert.deepEqual(m.seen, ['n', 'w']);
   assert.deepEqual(migrateSave({ stars: 'junk', seen: null }, 100), { stars: [], seen: [] });
+});
+
+/* ---------- endless / daily rework ---------- */
+const alt = (len, a = 'c', b = 'p') => Array.from({ length: len }, (_, i) => (i % 2 ? b : a)).join(' ');
+const LN = { lines: true };
+
+test('line crash: a full row pops under vertical gravity (with a bonus), a full column under horizontal gravity', () => {
+  const st = S(pad([alt(9)]));
+  const res = resolve(st, 'down', { ...LN, force: true });
+  assert.equal(res.chain, 1); assert.equal(res.cleared, 9);
+  assert.equal(res.gained, 9 * 10 + LINE_BONUS);
+  assert.deepEqual(res.steps.find(x => x.type === 'boom').lines, [{ axis: 'row', k: 8 }]);
+  assert.equal(fillCount(st.board), 0);
+  const col = S(Array.from({ length: 9 }, (_, i) => (i % 2 ? 'p' : 'c') + ' . . . . . . . .'), { gravity: 'left' });
+  const r2 = resolve(col, 'left', { ...LN, force: true });
+  assert.deepEqual(r2.steps.find(x => x.type === 'boom').lines, [{ axis: 'col', k: 0 }]);
+  assert.equal(fillCount(col.board), 0);
+});
+
+test('line crash: two rows at once pay the bonus twice; puzzle rules (no lines option) are untouched', () => {
+  const two = S(pad([alt(9, 'p', 'c'), alt(9)]));
+  const r = resolve(two, 'down', { ...LN, force: true });
+  assert.equal(r.cleared, 18); assert.equal(r.gained, 18 * 10 + 2 * LINE_BONUS);
+  const puzzle = S(pad([alt(9)]));
+  const rp = resolve(puzzle, 'down', { force: true });
+  assert.equal(rp.chain, 0); assert.equal(fillCount(puzzle.board), 9, 'without the lines option nothing pops');
+});
+
+test('line crash: only lines ACROSS gravity pop, so the overflow line can still be lost - and one tilt escapes it', () => {
+  const rows = Array.from({ length: 9 }, (_, i) => `. . . . ${i % 2 ? 'p' : 'c'} . . . .`);
+  const st = S(rows);
+  assert.deepEqual(blockedLines(st.board, 'down', [{ k: 4 }]), [4], 'the full column blocks its entry cell');
+  assert.equal(fullLines(st.board, 'down').length, 0, 'a column along gravity does not pop');
+  assert.ok(resolve(st, 'down', { ...LN, force: true }).chain === 0 && fillCount(st.board) === 9);
+  const escape = resolve(st, 'left', LN);
+  assert.ok(escape && escape.chain === 1 && fillCount(st.board) === 0, 'tilting sideways turns it into a full line that pops');
+});
+
+test('line crash: walls never complete a line, a popped arrow still fires, and a pop can start a chain', () => {
+  const w = S(pad(['c p c p # p c p c']));
+  assert.equal(fullLines(w.board, 'down').length, 0);
+  const arrow = S(pad(['g', 'y', 'c^ p c p c p c p c'].map(r => (r.length === 1 ? r + ' . . . . . . . .' : r))));
+  const ra = resolve(arrow, 'down', { ...LN, force: true });
+  assert.ok(ra.steps.find(x => x.type === 'boom').lasers.length >= 1);
+  assert.equal(fillCount(arrow.board), 0, 'the laser took the blocks above it');
+  // pop → the pink block above falls onto three pinks → 4 pinks → second round
+  const chain = S(pad(['. . . . . . . . p', '. . . . . . . . p', 'c p c p c p c p g']));
+  chain.board[8][8] = mk('n', 1); chain.board[8][7] = mk('n', 1); chain.board[8][6] = mk('n', 1);
+  const rc = resolve(chain, 'down', { ...LN, force: true });
+  assert.ok(rc.chain >= 1);
+});
+
+test('block ladder: a new type joins about every 3 levels and nothing shows up before its level', () => {
+  const order = Object.entries(BLOCK_LEVELS).sort((a, b) => a[1] - b[1]);
+  assert.deepEqual(order.map(x => x[0]), ['n', 'a', 'i', 'h']);
+  for (let i = 1; i < order.length; i++) { const gap = order[i][1] - order[i - 1][1]; assert.ok(gap >= 2 && gap <= 3, `gap ${gap}`); }
+  assert.deepEqual(typesAtLevel(1), ['n']); assert.deepEqual(typesAtLevel(3), ['n', 'a']); assert.deepEqual(typesAtLevel(12), ['n', 'a', 'i', 'h']);
+  const R = rng(5);
+  for (let lv = 1; lv <= 12; lv++) {
+    const seen = new Set(), allowed = typesAtLevel(lv);
+    for (let i = 0; i < 3000; i++) seen.add(randomBlock(R, lv).t);
+    for (const t of seen) assert.ok(allowed.includes(t), `level ${lv} produced ${t}`);
+    for (const t of allowed) assert.ok(seen.has(t), `level ${lv} never produced ${t}`);
+  }
+  for (const lv of [1, 4, 9]) for (let i = 0; i < 40; i++) assert.ok(waveSize(lv, R) >= 1 && waveSize(lv, R) <= 6);
+});
+
+test('stuck guard: a crowded board with nothing to pop is shaken up after 3 dark moves and ends calm', () => {
+  const rows = Array.from({ length: 9 }, (_, r) => Array.from({ length: 9 }, (_, c) => (r >= 5 && c < 8 ? 'cpgy'[(r + 2 * c) % 4] : '.')).join(' '));
+  const st = S(rows);
+  assert.ok(fillCount(st.board) >= STUCK_FILL); assert.equal(findGroups(st.board).length, 0);
+  assert.ok(!hasBoom(st, LN), 'the board really has no exploding tilt');
+  let dark = 0;
+  for (let i = 0; i < STUCK_LIMIT; i++) { assert.ok(!needsShake(dark, st, LN)); dark = darkMove(dark, st, LN); }
+  assert.equal(dark, STUCK_LIMIT); assert.ok(needsShake(dark, st, LN));
+  const res = unjam(st, rng(3), LN);
+  assert.ok(res && res.chain >= 1 && res.steps[0].type === 'shuffle');
+  assert.ok(!needsShake(dark, st, LN), 'after the shake the board is no longer stuck');
+  assert.equal(darkMove(5, S(pad(['c p c p . . . . .'])), LN), 0, 'a nearly empty board never counts as stuck');
+  assert.equal(unjam(S(pad(['c p . . . . . . .'])), rng(1), LN), null, 'too few blocks: nothing to do');
+});
+
+// A bot that plays the endless rules in simulated time (acts every `turn` seconds, `eps` random tilts).
+function playCrash(seed, eps, turn, cap = 300) {
+  const R = rng(seed), Ri = rng(seed ^ 0x5bd1e995), P = rng(seed * 7 + 3), st = crashStart(R, 3);
+  let wave = planWave(R, 1), t = 0, next = spawnInterval(1) + 1.2, moveT = turn, dark = 0, streak = 0, maxStreak = 0, over = false;
+  const out = { lineClears: 0, perpFull: 0, helps: 0 };
+  const count = r => { for (const x of r.steps) if (x.lines && x.lines.length) out.lineClears += x.lines.length; };
+  const shake = () => { if (needsShake(dark, st, LN)) { const h = unjam(st, Ri, LN); if (h) { out.helps++; count(h); } } };
+  while (t < cap) {
+    t += 0.1;
+    if (t >= moveT) {
+      moveT += turn;
+      const cand = DIRS.filter(d => d !== st.gravity), boom = hasBoom(st, LN);
+      if (fillCount(st.board) >= STUCK_FILL && !boom) maxStreak = Math.max(maxStreak, ++streak); else streak = 0;
+      if (fullLines(st.board, st.gravity).length) out.perpFull++;
+      let pick = cand[P.int(3)];
+      if (P() >= eps) { let best = -1; for (const d of cand) { const r = resolve(cloneState(st), d, LN); if (r && r.cleared > best) { best = r.cleared; pick = d; } } }
+      dark = darkMove(dark, st, LN);
+      const r = resolve(st, pick, LN); if (r) count(r);
+      shake();
+    }
+    if (t >= next) {
+      const r = spawnWave(st, wave, LN);
+      if (r.overflow) { over = true; break; }
+      count(r); wave = planWave(R, 1 + Math.floor(t / 20)); next = t + spawnInterval(1 + Math.floor(t / 20));
+      shake();
+    }
+  }
+  return { ...out, maxStreak, over, time: t };
+}
+
+test('endless bot games: lines pop, no board is ever locked by a full line, the stuck guard keeps streaks at 3 or less', () => {
+  let lineClears = 0, perp = 0, worst = 0, ends = 0;
+  for (let seed = 1; seed <= 24; seed++) for (const [eps, turn] of [[0.2, 1], [0.6, 2]]) {
+    const g = playCrash(seed, eps, turn, 240);
+    lineClears += g.lineClears; perp += g.perpFull; worst = Math.max(worst, g.maxStreak); ends += g.over ? 1 : 0;
+  }
+  assert.ok(lineClears > 100, 'lines get cleared all the time');
+  assert.equal(perp, 0, 'a full line across gravity never survives a move');
+  assert.ok(worst <= STUCK_LIMIT, `a streak of ${worst} dark moves`);
+  assert.ok(ends >= 30, 'the ramp still ends games (not endless for a fast bot)');
+});
+
+const sigOf = w => JSON.stringify(w.map(x => [x.k, x.b.t, x.b.c, x.b.d]));
+function playDaily(seed, eps, P) {
+  const g = createDaily(seed), waves = {};
+  let counted = 0, calls = 0;
+  while (!g.over && calls++ < 800) {
+    const cand = DIRS.filter(d => d !== g.state.gravity);
+    let pick = cand[P.int(3)];
+    if (P() >= eps) { let best = -1; for (const d of cand) { const r = resolve(cloneState(g.state), d, LN); if (r && r.cleared > best) { best = r.cleared; pick = d; } } }
+    const w = g.wave, n0 = g.n, r = dailyTilt(g, pick);
+    if (r && !r.free) counted++;
+    if (g.n > n0) waves[n0] = sigOf(w);
+  }
+  return { g, counted, waves };
+}
+
+test(`daily: ${DAILY_TILTS} tilts, dead tilts are free, the game ends at zero and then nothing moves`, () => {
+  assert.equal(DAILY_TILTS, 30);
+  for (let seed = 1; seed <= 60; seed++) for (const eps of [0.2, 1]) {
+    const { g, counted } = playDaily(seed, eps, rng(seed + 11));
+    assert.ok(g.over, `seed ${seed}: never ended`);
+    assert.equal(g.left, 0); assert.equal(counted, DAILY_TILTS, `seed ${seed}: ${counted} counted tilts`);
+    assert.equal(g.used, DAILY_TILTS);
+    assert.equal(dailyTilt(g, DIRS.find(d => d !== g.state.gravity)), null, 'no tilt after the end');
+  }
+  const g = createDaily(7);
+  const dead = g.state.gravity; // tilting the way gravity already points moves nothing
+  assert.equal(dailyTilt(g, dead), null); assert.equal(g.left, DAILY_TILTS);
+});
+
+test('daily: everyone gets the same waves, whatever they do, and the block types follow the wave number', () => {
+  const a = playDaily(20261010, 0.2, rng(1)), b = playDaily(20261010, 1, rng(2)), c = playDaily(20261010, 0.5, rng(3));
+  const shared = Math.min(...[a, b, c].map(x => Object.keys(x.waves).length));
+  assert.ok(shared >= 10);
+  for (let i = 0; i < shared; i++) assert.ok(a.waves[i] === b.waves[i] && b.waves[i] === c.waves[i], `wave ${i} differs between players`);
+  assert.notEqual(playDaily(20261011, 0.2, rng(1)).waves[0], a.waves[0], 'a different day has different waves');
+  assert.equal(dailyLevel(0), 1); assert.equal(dailyLevel(29), 10);
+  assert.ok(typesAtLevel(dailyLevel(29)).length === 4, 'all four block types show up within one daily');
+  const early = createDaily(3);
+  assert.ok(early.wave.every(w => w.b.t === 'n'), 'the first wave is plain colors');
+});
+
+test('daily: a combo of 5 gives 3 free tilts (no wave, double points); an empty board never stalls; blocks over a taken entry cell are dropped', () => {
+  const g = createDaily(9);
+  g.state.board = parseBoard(pad(['p . y . . . . . g', 'c c c . . . . . c'])); g.state.gravity = 'down';
+  g.combo = 4;
+  const r = dailyTilt(g, 'right');
+  assert.ok(r && r.tilt.chain === 1 && !r.spawn, 'no wave while the free tilts start');
+  assert.equal(g.free, DAILY_FREE); assert.equal(g.left, DAILY_TILTS - 1);
+  for (const d of ['left', 'up', 'down']) { const x = dailyTilt(g, d); assert.ok(x && x.free && !x.spawn); }
+  assert.equal(g.free, 0); assert.equal(g.left, DAILY_TILTS - 1, 'free tilts cost nothing'); assert.equal(g.combo, 0);
+  assert.ok(dailyTilt(g, g.state.gravity === 'right' ? 'left' : 'right') && g.left === DAILY_TILTS - 2, 'the next one costs again');
+  // clearing everything brings the next wave at once
+  const e = createDaily(10);
+  e.state.board = parseBoard(pad(['c c c . . . . . c'])); e.state.gravity = 'down';
+  const x = dailyTilt(e, 'right');
+  assert.ok(x.spawn && fillCount(e.state.board) > 0, 'a wave lands on the emptied board');
+  // a full line along gravity: blocks over taken entry cells are dropped instead of ending the game
+  const f = createDaily(11);
+  f.state.board = parseBoard(Array.from({ length: 9 }, (_, i) => `. . . . ${i % 2 ? 'p' : 'c'} . . . .`)); f.state.gravity = 'down';
+  f.wave = [{ k: 4, b: mk('n', 2) }, { k: 1, b: mk('n', 3) }];
+  const sp = spawnWave(f.state, f.wave, { ...LN, skipBlocked: true });
+  assert.ok(!sp.overflow && fillCount(f.state.board) === 10, 'only the unblocked block came in');
+});
+
+// Oracle bot: looks `depth` tilts ahead using the exact upcoming waves (what a player plans with the preview).
+function oracleBest(g, W, depth) {
+  if (depth === 0 || g.over) return g.score;
+  let b = g.score;
+  for (const d of DIRS) {
+    if (d === g.state.gravity) continue;
+    const c = { ...g, state: cloneState(g.state), Rs: rng(1), wave: W[g.n] };
+    if (!dailyTilt(c, d)) continue;
+    c.wave = W[c.n]; b = Math.max(b, oracleBest(c, W, depth - 1));
+  }
+  return b;
+}
+function playOracle(seed, depth) {
+  const g = createDaily(seed), Rs = rng(seed), W = []; crashStart(Rs, 3);
+  for (let i = 0; i < 40; i++) W.push(planWave(Rs, dailyLevel(i)));
+  const P = rng(seed + 3);
+  for (let calls = 0; !g.over && calls < 600; calls++) {
+    const cand = DIRS.filter(d => d !== g.state.gravity); let pick = cand[P.int(3)], best = -1;
+    if (depth) for (const d of cand) {
+      const c = { ...g, state: cloneState(g.state), Rs: rng(1), wave: g.wave };
+      if (!dailyTilt(c, d)) continue;
+      c.wave = W[c.n]; const v = oracleBest(c, W, depth - 1); if (v > best) { best = v; pick = d; }
+    }
+    dailyTilt(g, pick);
+  }
+  return g.score;
+}
+
+test('daily scoring: combos multiply points, endless scoring is unchanged, and planning ahead pays', () => {
+  const res = { gained: 400, chain: 2 };
+  assert.equal(moveScore(res, 1, true), 400); assert.equal(moveScore(res, 5, true), 800); assert.ok(moveScore(res, 9, true) > moveScore(res, 5, true));
+  assert.equal(moveScore(res, 3), 400 + 3 * 20, 'endless: points + 20 per combo step');
+  assert.equal(moveScore({ gained: 0, chain: 0 }, 5, true), 0);
+  let rnd = 0, plan = 0;
+  for (let seed = 1; seed <= 12; seed++) { rnd += playOracle(seed, 0); plan += playOracle(seed, 3); }
+  assert.ok(plan > rnd * 1.3, `looking 3 tilts ahead (${Math.round(plan / 12)}) should clearly beat random play (${Math.round(rnd / 12)})`);
 });
 
 console.log(`\n${n} tests passed`);

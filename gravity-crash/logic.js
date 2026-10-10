@@ -197,13 +197,31 @@ export function explode(board, groups) {
   return { cells, lasers };
 }
 
+/* ---------- line crash ---------- */
+export const LINE_BONUS = 100;
+// Completely filled lines that lie across gravity (rows for up/down, columns for left/right) pop on their own.
+// Lines along gravity are the overflow lines: they never pop, so the game can still be lost.
+export function fullLines(board, dir) {
+  const rows = dir === 'up' || dir === 'down', out = [];
+  for (let k = 0; k < N; k++) {
+    const cells = [];
+    for (let i = 0; i < N; i++) {
+      const r = rows ? k : i, c = rows ? i : k;
+      if (!board[r][c] || board[r][c].t === 'w') break;
+      cells.push([r, c]);
+    }
+    if (cells.length === N) out.push({ axis: rows ? 'row' : 'col', k, cells });
+  }
+  return out;
+}
+
 /* ---------- one full gravity move ---------- */
 // Settles toward `dir`, then loops: black holes → settle → matches (all at once) → explode → settle …
 // Every round of explosions is one more chain step. Mutates state.board.
 // Returns null when the move changes nothing (it does not count as a move), else
 // { steps, chain, cleared, gained } where steps (for animation) are
 //   { type:'move', moves, board }  { type:'hole', holes, conv, board }  { type:'boom', chain, cells, lasers, gained, board }
-// opts: { min = 4, mult = 1, force = false, scoring = true }
+// opts: { min = 4, mult = 1, force = false, lines = false }  lines: full lines across gravity pop (endless / daily only)
 export function resolve(state, dir, opts = {}) {
   const min = opts.min || MATCH_MIN, mult = opts.mult || 1;
   const board = state.board, steps = [];
@@ -220,13 +238,17 @@ export function resolve(state, dir, opts = {}) {
       if (s.moves.length) steps.push({ type: 'move', moves: s.moves, board: cloneBoard(board) });
       continue;
     }
-    const groups = findGroups(board, min);
+    let groups = findGroups(board, min), lines = [];
+    if (!groups.length && opts.lines) {
+      lines = fullLines(board, dir);
+      if (lines.length) groups = [{ cells: lines.flatMap(l => l.cells) }];
+    }
     if (!groups.length) break;
     chain++;
     const ex = explode(board, groups);
-    const pts = ex.cells.length * 10 * chain * mult;
+    const pts = (ex.cells.length * 10 + lines.length * LINE_BONUS) * chain * mult;
     cleared += ex.cells.length; gained += pts;
-    steps.push({ type: 'boom', chain, cells: ex.cells, lasers: ex.lasers, groups: groups.length, gained: pts, board: cloneBoard(board) });
+    steps.push({ type: 'boom', chain, cells: ex.cells, lasers: ex.lasers, groups: groups.length, gained: pts, lines: lines.map(({ axis, k }) => ({ axis, k })), board: cloneBoard(board) });
     const s = settle(board, dir);
     if (s.moves.length) steps.push({ type: 'move', moves: s.moves, board: cloneBoard(board) });
   }
@@ -305,14 +327,22 @@ export function rng(seed) { // mulberry32
 export const dailySeed = (d = new Date()) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
 
 export const crashLevel = elapsed => 1 + Math.floor(elapsed / 20);
-export const spawnInterval = level => Math.max(1.05, 3.3 - 0.2 * (level - 1));
-export const waveSize = (level, R) => Math.min(4, 1 + Math.floor((level + 1) / 3) + (R() < 0.35 ? 1 : 0) - (level < 2 ? 1 : 0)) || 1;
+// Pace tuned with the bot simulation: with line pops a fast bot outlived the old ramp (waves of 4, 1.05 s).
+export const spawnInterval = level => Math.max(0.7, 3.3 - 0.3 * (level - 1));
+export const waveSize = (level, R) => Math.min(6, 1 + Math.floor((level + 1) / 3) + (R() < 0.35 ? 1 : 0) - (level < 2 ? 1 : 0)) || 1;
 
+// Endless / daily: a new block type joins about every 3 levels. (Walls are left out: a wall that falls in from the
+// ceiling never moves again, so it would block that line for the rest of the game.)
+export const BLOCK_LEVELS = { n: 1, a: 3, i: 6, h: 9 };
+export const typesAtLevel = level => Object.keys(BLOCK_LEVELS).filter(t => level >= BLOCK_LEVELS[t]);
 export function randomBlock(R, level) {
   const x = R();
-  if (level >= 2 && x < 0.035) return mk('h');
-  if (x < 0.10) return mk('a', R.int(COLORS), DIRS[R.int(4)]);
-  if (level >= 3 && x < 0.16) return mk('i');
+  let acc = 0;
+  for (const [t, p] of [['h', 0.04], ['i', 0.09], ['a', 0.10]]) {
+    if (level < BLOCK_LEVELS[t]) continue;
+    acc += p;
+    if (x < acc) return t === 'a' ? mk('a', R.int(COLORS), DIRS[R.int(4)]) : mk(t);
+  }
   return mk('n', R.int(COLORS));
 }
 // Next wave: distinct line indices along the ceiling + the blocks that will come in there.
@@ -325,9 +355,13 @@ export function planWave(R, level) {
 export const blockedLines = (board, dir, wave) => wave.filter(w => { const [r, c] = entryCell(dir, w.k); return !!board[r][c]; }).map(w => w.k);
 
 // Drops the wave in from the ceiling. Returns { overflow } or a resolve() result (with a leading spawn move step).
+// opts.skipBlocked: blocks whose entry cell is taken are dropped instead of ending the game (daily).
 export function spawnWave(state, wave, opts = {}) {
   const dir = state.gravity;
-  if (blockedLines(state.board, dir, wave).length) return { overflow: true };
+  const blocked = blockedLines(state.board, dir, wave);
+  if (opts.skipBlocked) wave = wave.filter(w => !blocked.includes(w.k));
+  else if (blocked.length) return { overflow: true };
+  if (!wave.length) return { steps: [], chain: 0, cleared: 0, gained: 0 };
   const enter = [];
   for (const w of wave) { const [r, c] = entryCell(dir, w.k); state.board[r][c] = { ...w.b }; enter.push({ id: w.b.id, r, c }); }
   const res = resolve(state, dir, { ...opts, force: true });
@@ -377,11 +411,105 @@ export function colorBomb(board, color) {
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (isColor(board[r][c]) && board[r][c].c === color && board[r][c].t === 'n') g.push([r, c]);
   return g.length ? explode(board, [{ color, cells: g }]) : null;
 }
+// Stuck guard (endless). A tilt is useful when it sets something off (a match or a full line).
+export function hasBoom(state, opts = {}) {
+  for (const d of DIRS) {
+    if (d === state.gravity) continue;
+    const r = resolve(cloneState(state), d, opts);
+    if (r && r.chain > 0) return true;
+  }
+  return false;
+}
+// Recolors the normal blocks (like the shuffle item) until the board pops something at once and ends calm: a tilt
+// that can pop more, or no longer crowded. Mutates state and returns the resolve result (steps start with a 'shuffle' step), or null when
+// it cannot (too few blocks).
+export function unjam(state, R, opts = {}, tries = 60) {
+  let fallback = null;
+  for (let i = 0; i < tries; i++) {
+    const t = cloneState(state);
+    shuffleColors(t.board, R);
+    const shuffled = cloneBoard(t.board);
+    const res = resolve(t, t.gravity, { ...opts, force: true });
+    if (res.chain === 0) continue;
+    res.steps.unshift({ type: 'shuffle', board: shuffled });
+    if (fillCount(t.board) < STUCK_FILL || hasBoom(t, opts)) { state.board = t.board; return res; }
+    fallback = fallback || { t, res };
+  }
+  if (!fallback) return null;
+  state.board = fallback.t.board;
+  return fallback.res;
+}
+// Stuck guard (endless). darkMove runs on the board the player is about to tilt and counts the moves in a row made
+// from a crowded board where no tilt can set anything off (it resets only when the player faces a board that can).
+// needsShake is asked after every move and every wave: once STUCK_LIMIT dark moves are used up, a crowded board with
+// nothing to pop is shaken up (unjam) before the next move. With few blocks, waiting for a wave is normal play.
+export const STUCK_LIMIT = 3, STUCK_FILL = 30;
+export function darkMove(count, state, opts = {}) {
+  return fillCount(state.board) >= STUCK_FILL && !hasBoom(state, opts) ? count + 1 : 0;
+}
+export function needsShake(count, state, opts = {}) {
+  return count >= STUCK_LIMIT && fillCount(state.board) >= STUCK_FILL && !hasBoom(state, opts);
+}
+
 // Fever: a combo of 5 explosion rounds in a row.
 export const FEVER_COMBO = 5, FEVER_TIME = 5;
 // Combo: explosion rounds in a row across moves; a player move with no explosion resets it.
 export function nextCombo(combo, res) { return res && res.chain > 0 ? combo + res.chain : 0; }
 export function fillCount(board) { let n = 0; for (const row of board) for (const b of row) if (b && b.t !== 'w') n++; return n; }
+
+/* ---------- 오늘의 크래시: 30 tilts, the same waves for everyone ---------- */
+export const DAILY_TILTS = 30, DAILY_FREE = 3;
+// The wave number sets the block types (not the player's moves), so everyone sees the same blocks.
+export const dailyLevel = wave => 1 + Math.floor(wave / 3);
+// Points for one resolved move. Endless: explosion points + 20 per combo step.
+// Daily: explosion points × (1 + 0.25 per combo step after the first), so long combos and line crashes pay.
+// (Bot check: a random player averages ~1700; looking 2 / 3 / 4 tilts ahead with the visible waves gets ~1800 / 2500 / 3200.)
+export function moveScore(res, combo, daily = false) {
+  if (!res.gained) return 0;
+  return daily ? Math.round(res.gained * (1 + 0.25 * Math.max(0, combo - 1))) : res.gained + (res.chain > 0 ? combo * 20 : 0);
+}
+export function createDaily(seed) {
+  const Rs = rng(seed);
+  const state = crashStart(Rs, 3);
+  return { state, Rs, wave: planWave(Rs, dailyLevel(0)), n: 0, left: DAILY_TILTS, used: 0, free: 0, combo: 0, score: 0, cleared: 0, over: false };
+}
+// Lands the next wave and scores it; if its own explosions empty the board, the following wave comes right behind it.
+function landWave(g) {
+  let out = null;
+  for (let i = 0; i < 4; i++) {
+    const r = spawnWave(g.state, g.wave, { lines: true, skipBlocked: true });
+    if (r.chain > 0) g.combo = nextCombo(g.combo, r);
+    g.score += moveScore(r, g.combo, true);
+    g.cleared += r.cleared;
+    g.wave = planWave(g.Rs, dailyLevel(++g.n));
+    out = out ? { steps: [...out.steps, ...r.steps], chain: out.chain + r.chain, cleared: out.cleared + r.cleared, gained: out.gained + r.gained } : r;
+    if (fillCount(g.state.board)) break;
+  }
+  return out;
+}
+// One daily turn. A tilt that moves nothing is free and returns null. Otherwise it costs one of the 30 tilts and the
+// next planned wave lands afterwards (blocks over a taken entry cell are dropped, nobody loses). A combo of 5 makes
+// the next DAILY_FREE tilts free: no wave, 3-matches, double points. An empty board brings the next wave at once.
+// The game is over when no tilt is left. Returns { tilt, spawn, free } (resolve results) or null.
+export function dailyTilt(g, dir) {
+  if (g.over) return null;
+  const free = g.free > 0;
+  const tilt = resolve(g.state, dir, { lines: true, ...(free ? { min: 3, mult: 2 } : {}) });
+  if (!tilt) return null;
+  g.combo = nextCombo(g.combo, tilt);
+  g.score += moveScore(tilt, g.combo, true);
+  g.cleared += tilt.cleared;
+  let spawn = null;
+  if (free) { if (--g.free === 0) g.combo = 0; }
+  else {
+    g.left--; g.used++;
+    if (g.combo >= FEVER_COMBO) g.free = DAILY_FREE;
+    else if (g.left > 0) spawn = landWave(g);
+  }
+  if (!fillCount(g.state.board)) { g.free = 0; if (!spawn && g.left > 0) spawn = landWave(g); } // nothing left to tilt
+  g.over = g.left <= 0 && g.free <= 0;
+  return { tilt, spawn, free };
+}
 
 /* ---------- puzzle aids: per-stage limits ---------- */
 // Undo once and hint twice per stage; both refill when the stage starts or restarts.

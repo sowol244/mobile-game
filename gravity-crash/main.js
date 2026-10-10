@@ -3,6 +3,7 @@
 import {
   N, DIRS, DV, OPP, cloneBoard, cloneState, settle, resolve, stageState, goalMet, solve, starsFor, createAids, migrateSave,
   rng, dailySeed, crashLevel, spawnInterval, planWave, blockedLines, spawnWave, crashStart, entryCell,
+  BLOCK_LEVELS, darkMove, needsShake, unjam, createDaily, dailyTilt, dailyLevel, moveScore, DAILY_TILTS, DAILY_FREE,
   shuffleColors, commonColor, colorBomb, nextCombo, FEVER_COMBO, FEVER_TIME, fillCount, parseBoard, mk,
 } from './logic.js';
 import { STAGES, CHAPTERS } from './stages.js';
@@ -218,7 +219,8 @@ function drawStreaks() {
 const G_CELLS = 170; // cells / s²: blocks accelerate like a real fall
 const landTime = d => Math.sqrt((2 * d) / G_CELLS);
 const busy = () => !!anim;
-const feverOn = () => !!C && C.fever > 0;
+const feverOn = () => !!C && (C.daily ? C.free > 0 : C.fever > 0); // daily: the free tilts after a combo of 5
+const LINES = { lines: true };
 function playSteps(steps, done) {
   anim = { steps, i: -1, t: 0, dur: 0, done, speed: feverOn() ? 2.6 : 1 };
   nextStep();
@@ -260,6 +262,10 @@ function stepFx(s) {
     shake = { t: 0, dur: 0.3, mag: Math.min(10, 2 + n * 0.45 + s.chain) };
     flash = Math.min(0.35, 0.1 + n * 0.012);
     sound.boom(s.chain, n);
+    if (s.lines && s.lines.length) { // 라인 크래시: a whole row / column popped
+      sound.line(); flash = 0.45; shake.mag = Math.max(shake.mag, 7);
+      pops.push({ text: s.lines.length > 1 ? `라인 크래시 ×${s.lines.length}` : '라인 크래시!', kr: true, x: W / 2, y: Lay.by + Lay.bs * 0.3, color: '#7ff8ff', size: 26, t: 0, life: 1.2 });
+    }
     if (s.lasers.length) sound.laser();
     if (ice) sound.ice();
     const cx = s.cells.reduce((a, v) => a + v.c, 0) / n, cy = s.cells.reduce((a, v) => a + v.r, 0) / n;
@@ -345,7 +351,7 @@ function drawPreviews() { // crash: where the next wave enters (ceiling side) + 
   if (!C || phase === 'over' || mode === 'tutorial' || mode === 'puzzle') return;
   const { cell, bx, by, bs } = Lay, g = st.gravity, [dy, dx] = DV[g];
   const blocked = blockedLines(st.board, g, C.wave);
-  const iv = spawnInterval(C.level), k = feverOn() || C.stopT > 0 ? 0 : clamp(1 - C.spawnT / iv, 0, 1);
+  const iv = spawnInterval(C.level), k = C.daily ? 1 : feverOn() || C.stopT > 0 ? 0 : clamp(1 - C.spawnT / iv, 0, 1);
   // countdown bar along the ceiling edge
   const ce = OPP[g];
   ctx.save();
@@ -356,7 +362,7 @@ function drawPreviews() { // crash: where the next wave enters (ceiling side) + 
   if (ce === 'down') { ctx.moveTo(bx + bs, by + bs + 5); ctx.lineTo(bx + bs - bs * k, by + bs + 5); }
   if (ce === 'left') { ctx.moveTo(bx - 5, by + bs); ctx.lineTo(bx - 5, by + bs - bs * k); }
   if (ce === 'right') { ctx.moveTo(bx + bs + 5, by); ctx.lineTo(bx + bs + 5, by + bs * k); }
-  if (k > 0) ctx.stroke();
+  if (k > 0 && !C.daily) ctx.stroke();
   ctx.restore();
   for (const w of C.wave) {
     const [r, c] = entryCell(g, w.k);
@@ -399,6 +405,13 @@ function drawBlocks() {
     drawStatic(s.board);
     const k = clamp(t / anim.dur, 0, 1);
     for (const v of s.cells) drawBlockAt(v.b, v.r, v.c, { alpha: 1 - ease(k), scale: 1 + 0.45 * k, white: Math.max(0, 1 - k * 3) });
+    for (const L of s.lines || []) { // a bright bar sweeps along the popped line
+      ctx.save(); ctx.fillStyle = `rgba(127,248,255,${0.6 * (1 - k)})`; ctx.shadowColor = '#7ff8ff'; ctx.shadowBlur = 18;
+      const w = Lay.cell * (0.5 + 0.5 * (1 - k)), o = (Lay.cell - w) / 2;
+      if (L.axis === 'row') ctx.fillRect(Lay.bx, Lay.by + L.k * Lay.cell + o, Lay.bs * Math.min(1, k * 4), w);
+      else ctx.fillRect(Lay.bx + L.k * Lay.cell + o, Lay.by, w, Lay.bs * Math.min(1, k * 4));
+      ctx.restore();
+    }
     for (const L of s.lasers) {
       const [y0, x0] = [L.r, L.c], [dy, dx] = DV[L.d];
       const [ax, ay] = cellCenter(y0, x0), [ex, ey] = cellCenter(y0 + dy * L.len, x0 + dx * L.len);
@@ -569,8 +582,10 @@ function tryGravity(dir) {
   if (mode === 'puzzle' && (puzzleDone || movesLeft() <= 0)) return;
   if (mode === 'tutorial' && tut && tut.done) return;
   preview = null;
+  if (mode === 'daily') return dailyMove(dir);
   const before = mode === 'puzzle' ? cloneState(st) : null, from = st.gravity;
-  const opts = feverOn() ? { min: 3, mult: 2 } : {};
+  const opts = { ...(mode === 'crash' ? LINES : {}), ...(feverOn() ? { min: 3, mult: 2 } : {}) };
+  const dark = mode === 'crash' && !feverOn() ? darkMove(C.dark, st, LINES) : null; // asked before the board changes
   const res = resolve(st, dir, opts);
   if (!res) { // nothing would move: not a move
     sound.bump(); const [dy, dx] = DV[dir]; shake = { t: 0, dur: 0.12, mag: 2 }; tilt = { t: 0.2, dir, from };
@@ -579,6 +594,7 @@ function tryGravity(dir) {
   }
   sound.whoosh(feverOn());
   startTilt(dir, from);
+  if (dark !== null) C.dark = dark;
   hintDir = null; deadWarn = false;
   if (mode === 'puzzle') { undoSnap = { st: before, movesUsed }; movesUsed++; }
   if (mode === 'tutorial') tut.moves++;
@@ -588,7 +604,7 @@ function tryGravity(dir) {
 function afterMove(res) {
   if (mode === 'puzzle') puzzleAfter();
   else if (mode === 'tutorial') tutAfter();
-  else crashAfter(res, true);
+  else { crashAfter(res, true); guard(); }
   hud();
 }
 
@@ -651,20 +667,30 @@ function hint() {
 function startCrash(daily) {
   mode = daily ? 'daily' : 'crash'; attract = null;
   const seed = daily ? dailySeed() : (Math.random() * 2 ** 31) >>> 0;
-  const Rs = rng(seed), Ri = rng(seed ^ 0x5bd1e995);
-  st = crashStart(Rs, 3);
-  C = { daily, seed, Rs, Ri, score: 0, shown: 0, combo: 0, fever: 0, stopT: 0, elapsed: 0, level: 1, spawnT: spawnInterval(1) + 1.2, wave: planWave(Rs, 1), items: { shuffle: 1, bomb: 0, stop: 0 }, prog: 0, cleared: 0, warned: false, best: daily ? dailyBest() : best };
+  if (daily) { // 30 tilts, the same waves for everyone: the rules live in logic.js (createDaily / dailyTilt)
+    C = { ...createDaily(seed), daily: true, seed, shown: 0, level: 1, best: dailyBest() };
+    st = C.state;
+  } else {
+    const Rs = rng(seed), Ri = rng(seed ^ 0x5bd1e995);
+    st = crashStart(Rs, 3);
+    C = { daily, seed, Rs, Ri, score: 0, shown: 0, combo: 0, fever: 0, stopT: 0, elapsed: 0, level: 1, spawnT: spawnInterval(1) + 1.2, wave: planWave(Rs, 1), items: { shuffle: 1, bomb: 0, stop: 0 }, prog: 0, cleared: 0, warned: false, dark: 0, best };
+  }
   H.lVal.textContent = '0';
   resetFx(); enterPlay(); hud(); tutCoach(false);
+}
+// A new block type joins about every 3 levels: say so when its level starts.
+function levelToast(lv) {
+  for (const t of ['a', 'i', 'h']) if (BLOCK_LEVELS[t] === lv) pops.push({ text: `새 블록: ${INFO[t].name}`, kr: true, x: W / 2, y: Lay.by + Lay.bs * 0.4, color: '#ffe600', size: 20, t: 0, life: 2 });
 }
 function crashTick(dt) {
   if (!busy()) {
     const un = unseen([...typesOn(st.board), ...C.wave.map(w => w.b.t)]);
-    if (un.length) { introThen(un, () => { phase = 'play'; overlay.hidden = true; }); return; }
+    if (un.length) { introThen(un, () => { phase = 'play'; overlay.hidden = true; pauseBtn.hidden = false; }); return; }
   }
+  if (C.daily) { if (C.over && !busy()) crashOver(); return; } // turn-based: no clock, no spawn timer
   C.elapsed += dt;
   const lv = crashLevel(C.elapsed);
-  if (lv !== C.level) { C.level = lv; pops.push({ text: `LEVEL ${lv}`, x: W / 2, y: Lay.by + Lay.bs * 0.3, color: '#00f0ff', size: 20, t: 0, life: 1.2 }); }
+  if (lv !== C.level) { C.level = lv; pops.push({ text: `LEVEL ${lv}`, x: W / 2, y: Lay.by + Lay.bs * 0.3, color: '#00f0ff', size: 20, t: 0, life: 1.2 }); levelToast(lv); }
   if (C.fever > 0) {
     C.fever -= dt;
     if (C.fever <= 0) { C.fever = 0; C.combo = 0; pops.push({ text: 'FEVER END', x: W / 2, y: Lay.by + Lay.bs * 0.5, color: '#ff2fd1', size: 18, t: 0, life: 1 }); hud(); }
@@ -679,17 +705,26 @@ function crashTick(dt) {
   if (C.spawnT <= 0) doSpawn();
 }
 function doSpawn() {
-  const res = spawnWave(st, C.wave);
+  const res = spawnWave(st, C.wave, LINES);
   if (res.overflow) { crashOver(); return; }
   sound.spawn();
   C.wave = planWave(C.Rs, C.level);
   C.spawnT = spawnInterval(C.level); C.warned = false;
-  playSteps(res.steps, () => { crashAfter(res, false); hud(); });
+  playSteps(res.steps, () => { crashAfter(res, false); hud(); guard(); });
+}
+// Stuck guard: after 3 moves with nothing to pop on a crowded board, the board is shaken up (recolored, then it pops).
+function guard() {
+  if (mode !== 'crash' || phase !== 'play' || feverOn() || !needsShake(C.dark, st, LINES)) return;
+  const res = unjam(st, C.Ri, LINES);
+  if (!res) return;
+  sound.item(); flash = 0.3;
+  pops.push({ text: '막혀서 자동 셔플', kr: true, x: W / 2, y: Lay.by + Lay.bs * 0.5, color: '#ffe600', size: 20, t: 0, life: 1.6 });
+  playSteps(res.steps, () => { crashAfter(res, false); hud(); guard(); });
 }
 function crashAfter(res, byPlayer) {
   if (!C) return;
   if (byPlayer || res.chain > 0) C.combo = nextCombo(C.combo, res);
-  if (res.gained) C.score += res.gained + (res.chain > 0 ? C.combo * 20 : 0);
+  if (res.gained) C.score += moveScore(res, C.combo);
   C.cleared += res.cleared; C.prog += res.cleared;
   while (C.prog >= 30) { C.prog -= 30; awardItem(); }
   if (C.combo >= 2 && res.chain > 0) pops.push({ text: `COMBO ${C.combo}`, x: W / 2, y: Lay.by + Lay.bs * 0.58, color: '#00f0ff', size: 18, t: 0, life: 0.9 });
@@ -712,7 +747,7 @@ function useItem(k) {
   sound.unlock();
   if (phase !== 'play' || !C || C.items[k] <= 0) return;
   if (busy()) { if (feverOn()) finishAnim(); else { lockFlash = 0.25; sound.locked(); return; } }
-  const opts = feverOn() ? { min: 3, mult: 2 } : {};
+  const opts = { ...LINES, ...(feverOn() ? { min: 3, mult: 2 } : {}) };
   if (k === 'stop') { C.items.stop--; C.stopT = 10; sound.item(); pops.push({ text: 'TIME STOP', x: W / 2, y: Lay.by + Lay.bs * 0.45, color: '#a8d8ff', size: 24, t: 0, life: 1.2 }); hud(); return; }
   let pre = [], extra = 0;
   if (k === 'shuffle') {
@@ -733,23 +768,55 @@ function useItem(k) {
   playSteps([...pre, ...res.steps], () => { crashAfter(res, false); hud(); });
   hud();
 }
+// 오늘의 크래시: one tilt = tilt + the next wave, played as one animation. dailyTilt() did all the rules already.
+function dailyMove(dir) {
+  const from = st.gravity, lv0 = dailyLevel(C.n);
+  const r = dailyTilt(C, dir);
+  if (!r) { // nothing would move: free, not a move
+    sound.bump(); shake = { t: 0, dur: 0.12, mag: 2 }; tilt = { t: 0.2, dir, from };
+    return;
+  }
+  sound.whoosh(r.free); startTilt(dir, from);
+  if (r.spawn) sound.spawn();
+  playSteps([...r.tilt.steps, ...(r.spawn ? r.spawn.steps : [])], () => {
+    if (C.combo >= 2 && r.tilt.chain > 0) pops.push({ text: `COMBO ${C.combo}`, x: W / 2, y: Lay.by + Lay.bs * 0.58, color: '#00f0ff', size: 18, t: 0, life: 0.9 });
+    if (!r.free && C.free === DAILY_FREE) { sound.fever(); warp = 1.5; flash = 0.4; pops.push({ text: '그라비티 프리! ×3', kr: true, x: W / 2, y: Lay.by + Lay.bs * 0.45, color: '#ffe600', size: 28, t: 0, life: 1.6 }); }
+    const lv = dailyLevel(C.n);
+    if (lv !== lv0) { C.level = lv; levelToast(lv); }
+    if (C.score > C.best) C.best = C.score;
+    hud();
+  });
+  hud();
+}
 function dailyBest() { const d = load('daily', null); return d && d.seed === dailySeed() ? d.best : 0; }
 function crashOver() {
+  const daily = mode === 'daily';
   phase = 'over'; preview = null;
-  shake = { t: 0, dur: 0.6, mag: 12 }; flash = 0.6; sound.over();
-  for (let i = 0; i < 4; i++) { const r = Math.floor(Math.random() * N); burst(r, Math.floor(Math.random() * N), '#ff3d6e', 14, 1.4); }
-  const entry = { id: Date.now(), score: C.score, mode: mode, lv: C.level, date: `${new Date().getMonth() + 1}/${new Date().getDate()}` };
-  const top = load('top', []);
-  top.push(entry); top.sort((a, b) => b.score - a.score);
-  save('top', top.slice(0, 10)); lastEntry = entry.id;
-  const prevBest = mode === 'daily' ? dailyBest() : best;
+  if (daily) { sound.clear(); flash = 0.35; }
+  else {
+    shake = { t: 0, dur: 0.6, mag: 12 }; flash = 0.6; sound.over();
+    for (let i = 0; i < 4; i++) { const r = Math.floor(Math.random() * N); burst(r, Math.floor(Math.random() * N), '#ff3d6e', 14, 1.4); }
+  }
+  const entry = { id: Date.now(), score: C.score, lv: C.level, date: `${new Date().getMonth() + 1}/${new Date().getDate()}` };
+  if (daily) { // the daily ranking only holds today's scores
+    const d = load('dtop', null), rows = d && d.seed === dailySeed() ? d.rows : [];
+    rows.push(entry); rows.sort((a, b) => b.score - a.score);
+    save('dtop', { seed: dailySeed(), rows: rows.slice(0, 10) });
+  } else {
+    const top = load('top', []);
+    top.push({ ...entry, mode: 'crash' }); top.sort((a, b) => b.score - a.score);
+    save('top', top.slice(0, 10));
+  }
+  lastEntry = entry.id;
+  const prevBest = daily ? dailyBest() : best;
   const isBest = C.score > 0 && C.score > prevBest;
-  if (mode === 'daily') { if (isBest) save('daily', { seed: dailySeed(), best: C.score }); }
+  if (daily) { if (isBest) save('daily', { seed: dailySeed(), best: C.score }); }
   else if (isBest) { best = C.score; save('best', best); }
   setTimeout(() => {
     hideBar(); pauseBtn.hidden = true;
-    titleEl.textContent = isBest ? '새 기록!' : '게임 오버';
-    msgEl.innerHTML = (isBest ? `${mode === 'daily' ? '오늘의 ' : ''}최고 기록을 갱신했어요!` : `최고 기록은 <b>${prevBest}</b>점이에요.`) + '<br>예고된 칸이 막혀서 판이 넘쳤어요.';
+    titleEl.textContent = daily ? (isBest ? '오늘의 새 기록!' : '이동 끝!') : (isBest ? '새 기록!' : '게임 오버');
+    msgEl.innerHTML = (isBest ? `${daily ? '오늘의 ' : ''}최고 기록을 갱신했어요!` : `${daily ? '오늘 ' : ''}최고 기록은 <b>${prevBest}</b>점이에요.`)
+      + (daily ? `<br>이동 ${DAILY_TILTS}번을 모두 썼어요.` : '<br>예고된 칸이 막혀서 판이 넘쳤어요.');
     finalEl.textContent = C.score; finalEl.hidden = false; toastEl.textContent = '';
     startBtn.textContent = '다시 하기';
     buttons(false); panel('main');
@@ -891,13 +958,21 @@ function hud() {
     H.mLabel.textContent = '연습'; H.gauge.hidden = true; H.glabel.textContent = '';
     H.rLabel.textContent = '남은 이동'; H.rVal.textContent = tut ? Math.max(0, STEPS[tut.i].limit - tut.moves) : 0; H.rVal.classList.remove('low');
   } else if (C) {
-    H.lLabel.textContent = mode === 'daily' ? '오늘의 점수' : '점수';
+    const daily = mode === 'daily';
+    H.lLabel.textContent = daily ? '오늘의 점수' : '점수';
     H.gauge.hidden = false;
     H.mLabel.textContent = feverOn() ? 'GRAVITY FREE' : 'COMBO';
     H.gauge.classList.toggle('fever', feverOn());
+    if (daily) {
+      H.gfill.style.width = (feverOn() ? (C.free / DAILY_FREE) * 100 : Math.min(1, C.combo / FEVER_COMBO) * 100) + '%';
+      H.glabel.textContent = feverOn() ? `프리 ×${C.free}` : C.combo >= 1 ? `×${C.combo}` : '';
+      H.rLabel.textContent = '남은 이동'; H.rVal.textContent = C.left; H.rVal.classList.toggle('low', C.left <= 3 && !feverOn());
+      $('iprog').hidden = true;
+      return;
+    }
     H.gfill.style.width = (feverOn() ? (C.fever / FEVER_TIME) * 100 : Math.min(1, C.combo / FEVER_COMBO) * 100) + '%';
     H.glabel.textContent = feverOn() ? `FEVER ${C.fever.toFixed(1)}s` : C.combo >= 1 ? `×${C.combo}` : '';
-    H.rLabel.textContent = mode === 'daily' ? '오늘 최고' : '최고 기록'; H.rVal.textContent = Math.max(C.best, C.score); H.rVal.classList.remove('low');
+    H.rLabel.textContent = '최고 기록'; H.rVal.textContent = Math.max(C.best, C.score); H.rVal.classList.remove('low');
     setTools([
       { ic: '⇄', l: '셔플', k: '1', n: '×' + C.items.shuffle, on: C.items.shuffle > 0, act: () => useItem('shuffle') },
       { ic: '✹', l: '컬러 붐', k: '2', n: '×' + C.items.bomb, on: C.items.bomb > 0, act: () => useItem('bomb') },
@@ -926,7 +1001,7 @@ function resetFx() { introPulse = null; anim = null; parts = []; pops = []; shak
 function enterPlay() {
   sound.setQuiet(false);
   phase = 'play'; overlay.hidden = true; pauseBtn.hidden = false;
-  barEl.hidden = mode === 'tutorial';
+  barEl.hidden = mode === 'tutorial' || mode === 'daily'; // the daily has no items: only your 30 tilts count
 }
 function showTitle() {
   phase = 'title'; mode = 'crash'; C = null; tut = null; attract = null; resetFx();
@@ -944,7 +1019,7 @@ function refreshModes() {
   const d = dailyBest();
   $('mDailyR').textContent = d ? `오늘 ${d}` : '';
   const now = new Date();
-  $('mDailyD').textContent = `${now.getMonth() + 1}월 ${now.getDate()}일: 모두 같은 블록이 와요`;
+  $('mDailyD').textContent = `${now.getMonth() + 1}월 ${now.getDate()}일 · 이동 ${DAILY_TILTS}번, 모두 같은 블록`;
 }
 // Stage select: one chapter (≤12 stages) per page; ‹ › buttons, chapter dots, swipe or ←/→ to turn pages.
 let chapter = -1;
@@ -1006,19 +1081,27 @@ $('chNext').addEventListener('click', () => turnChapter(1));
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) turnChapter(dx < 0 ? 1 : -1);
   });
 }
-function renderTop() {
-  const top = load('top', []), rows = $('rows');
-  rows.replaceChildren();
-  top.forEach((e, i) => {
+function fillRows(el, rows, label) {
+  el.replaceChildren();
+  rows.forEach((e, i) => {
     const li = document.createElement('li');
     if (e.id === lastEntry) li.className = 'me';
-    for (const [text, cls] of [[`${i + 1}`, 'rk'], [`${e.mode === 'daily' ? '오늘의 크래시' : '크래시'} · LV ${e.lv} · ${e.date}`, 'nm'], [e.score, 'sc']]) {
-      const s = document.createElement('span'); s.className = cls; s.textContent = text; li.append(s);
+    for (const [text, cls] of [[`${i + 1}`, 'rk'], [`${label} · LV ${e.lv} · ${e.date}`, 'nm'], [e.score, 'sc']]) {
+      const sp = document.createElement('span'); sp.className = cls; sp.textContent = text; li.append(sp);
     }
-    rows.append(li);
+    el.append(li);
   });
-  rows.hidden = !top.length;
-  $('rankNote').textContent = top.length ? '크래시 모드 점수 순서예요. 이 기기에만 저장돼요.' : '아직 크래시 기록이 없어요. 한 판 해 보세요!';
+  el.hidden = !rows.length;
+}
+function renderTop() {
+  const top = load('top', []).filter(e => e.mode !== 'daily'); // older saves mixed in daily scores of other days
+  fillRows($('rows'), top, '크래시');
+  $('rankNote').textContent = top.length ? '' : '아직 크래시 기록이 없어요. 한 판 해 보세요!';
+  const d = load('dtop', null), today = d && d.seed === dailySeed() ? d.rows : [];
+  fillRows($('rowsDaily'), today, '오늘');
+  $('dailyNote').textContent = today.length ? '' : '오늘은 아직 기록이 없어요.';
+  const now = new Date();
+  $('dailyHead').textContent = `오늘의 크래시 · ${now.getMonth() + 1}월 ${now.getDate()}일`;
   const cleared = stars.filter(s => s > 0).length;
   $('puzNote').innerHTML = `퍼즐 <b>${cleared}/${STAGES.length}</b> 스테이지 · <b>★ ${starCount()}</b>`;
 }
@@ -1032,7 +1115,9 @@ function buildHelp() {
     [{ t: 'a', c: 3, d: 'right' }, '<b>화살표</b>가 터지면 그 방향 줄이 사라져요.'],
     [{ t: 'h' }, '<b>블랙홀</b>은 주변 3개+를 한 색으로 바꿔요.'],
     [{ t: 'n', c: 2 }, '<b>퍼즐</b>: 정해진 횟수 안에 색 블록을 모두!'],
+    [{ t: 'line' }, '<b>가로·세로 줄</b>이 가득 차면 <b>라인 크래시</b>!'],
     [{ t: 'warn' }, '<b>크래시</b>: 예고된 칸이 막히면 게임 오버.'],
+    [{ t: 'daily' }, '<b>오늘의 크래시</b>: 이동 30번으로 점수 겨루기.'],
     [{ t: 'n', c: 3 }, '<b>5콤보</b>면 5초간 <b>그라비티 프리</b>!'],
     [{ t: 'item' }, '블록 30개를 부술 때마다 <b>아이템</b> 1개.'],
   ];
@@ -1041,10 +1126,12 @@ function buildHelp() {
     const li = document.createElement('li');
     const c = document.createElement('canvas'); c.width = c.height = 56;
     const g = c.getContext('2d'); g.scale(2, 2);
-    if (b.t === 'arrow' || b.t === 'ghost' || b.t === 'warn' || b.t === 'item') {
+    if (b.t === 'arrow' || b.t === 'ghost' || b.t === 'warn' || b.t === 'item' || b.t === 'line' || b.t === 'daily') {
       g.lineWidth = 2.5; g.lineCap = 'round'; g.lineJoin = 'round';
       if (b.t === 'arrow') { g.fillStyle = '#00f0ff'; g.shadowColor = '#00f0ff'; g.shadowBlur = 6; arrowPath(g, 'down', 14, 14, 20); g.fill(); }
       if (b.t === 'ghost') { g.setLineDash([3, 2]); g.strokeStyle = '#ff2fd1'; rr(g, 5, 5, 18, 18, 4); g.stroke(); }
+      if (b.t === 'line') { g.fillStyle = '#7ff8ff'; g.shadowColor = '#7ff8ff'; g.shadowBlur = 6; for (let i = 0; i < 4; i++) { g.fillStyle = ['#00f0ff', '#ff2fd1', '#7dff3a', '#ffe600'][i]; g.fillRect(3 + i * 5.5, 11, 4.5, 6); } }
+      if (b.t === 'daily') { g.font = '900 15px Orbitron, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffe600'; g.shadowColor = '#ffe600'; g.shadowBlur = 6; g.fillText('30', 14, 14); }
       if (b.t === 'warn') { g.fillStyle = 'rgba(255,40,80,0.45)'; g.fillRect(4, 4, 20, 20); g.strokeStyle = '#ff3d6e'; g.strokeRect(4, 4, 20, 20); }
       if (b.t === 'item') { g.font = '900 18px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ffe600'; g.shadowColor = '#ffe600'; g.shadowBlur = 6; g.fillText('✹', 14, 15); }
     } else paintBlock(g, b, 4, 4, 20);
