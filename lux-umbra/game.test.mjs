@@ -109,7 +109,7 @@ test('a lens stand recolours the torch', () => {
 test('a block never materialises inside a body; it waits until the body leaves', () => {
   const s = mk(['#######', '#.....#', '#..P..#', '#.LLL.#', '#.....#', '#######']);
   s.p.y = 3.0; // standing inside the light blocks
-  run(s, { lightSet: true, aim: Math.PI / 2 }, 0.02);
+  run(s, { lightSet: true, aim: Math.PI }, 0.02); // beam to the left: the halo alone no longer reaches the neighbour
   assert.equal(isSolid(s, 3, 3), false);
   assert.equal(isSolid(s, 2, 3), true, "the neighbour materialises");
 });
