@@ -176,8 +176,8 @@
   let score = 0, coinCount = 0, hp = MAX_HP, shield = 0, waveT = 0, waveOn = false;
   // other items: maxHp grows with 하트 그릇 (up to 5), lives = spare lives, the rest are timers / counts / this-stage flags
   let hintSeen = false; try { hintSeen = localStorage.getItem('gyo-climb-hint') === '1'; } catch (e) {}
-  let maxHp = MAX_HP, lives = 0, bombs = 0, magnetOn = false, doubleOn = false, wingT = 0, bootT = 0, starT = 0, shopStock = [], hint = null, jetClock = 0, bombsList = [];
-  const resetItems = () => { maxHp = MAX_HP; hp = MAX_HP; shield = 0; waveT = 0; waveOn = false; lives = 0; bombs = 0; magnetOn = false; doubleOn = false; wingT = 0; bootT = 0; starT = 0; };
+  let maxHp = MAX_HP, lives = 0, bombs = 0, magnetT = 0, doubleOn = false, wingT = 0, bootT = 0, starT = 0, shopStock = [], hint = null, jetClock = 0, bombsList = [];
+  const resetItems = () => { maxHp = MAX_HP; hp = MAX_HP; shield = 0; waveT = 0; waveOn = false; lives = 0; bombs = 0; magnetT = 0; doubleOn = false; wingT = 0; bootT = 0; starT = 0; };
   const input = { left: false, right: false, jump: false, attack: false };
 
   /* ---------- stages ---------- */
@@ -477,14 +477,14 @@
     heart:    { name: '하트 한 칸', price: 8, w: 0, cw: 0, desc: '체력을 한 칸 채워요.' },
     shield:   { name: '보호막 방패', price: 8, w: 5, cw: 4, desc: '다음 피해를 한 번 막아요. (최대 2개)' },
     wave:     { name: '검기 두루마리', price: 10, w: 4, cw: 3, desc: '첫 칼질부터 10초 동안 검기가 날아가요.' },
-    magnet:   { name: '코인 자석', price: 8, w: 4, cw: 3, desc: '이 스테이지 동안 가까운 코인이 끌려와요.' },
+    magnet:   { name: '코인 자석', price: 8, w: 4, cw: 3, desc: '30초 동안 가까운 코인이 끌려와요.' },
     wings:    { name: '날개 신발', price: 10, w: 3, cw: 3, desc: '30초 동안 공중에서 한 번 더 뛰어요.' },
     boots:    { name: '바람 장화', price: 6, w: 4, cw: 3, desc: '30초 동안 더 빨리 달려요.' },
     star:     { name: '무적 별', price: 12, w: 3, cw: 2, desc: '8초 동안 무적! 닿는 몬스터가 쓰러져요.' },
     bomb:     { name: '폭탄 세 개', price: 8, w: 3, cw: 3, desc: '칼을 휘두르면 폭탄을 던져요. 금 간 벽도 부숴요.' },
     doubler:  { name: '코인 두 배', price: 10, w: 3, cw: 2, desc: '이 스테이지 동안 코인이 두 배로 들어와요.' },
     life:     { name: '목숨 하나', price: 18, w: 1, cw: 1, desc: '쓰러지면 한 번, 하트 가득 다시 일어나요.' },
-    key:      { name: '비밀 열쇠', price: 8, w: 2, cw: 0, desc: '잠긴 문을 열어요.' },
+    key:      { name: '비밀 열쇠', price: 8, w: 0, cw: 0, desc: '잠긴 문을 열어요.' },
     maxheart: { name: '하트 그릇', price: 24, w: 1, cw: 0, desc: '최대 체력이 한 칸 늘어요. (최대 5칸)' },
   };
   const MAX_HEARTS = 5;
@@ -502,7 +502,7 @@
     if (id === 'heart') { hp = Math.min(maxHp, hp + 1); pops.push({ x: p.x + 2, y: p.y - 6, t: 0, heart: true }); }
     else if (id === 'shield') shield = Math.min(2, shield + 1);
     else if (id === 'wave') waveT += 10;
-    else if (id === 'magnet') magnetOn = true;
+    else if (id === 'magnet') magnetT = 30;
     else if (id === 'wings') wingT = 30;
     else if (id === 'boots') bootT = 30;
     else if (id === 'star') starT = 8;
@@ -513,9 +513,9 @@
     else if (id === 'maxheart') { maxHp = Math.min(MAX_HEARTS, maxHp + 1); hp = Math.min(maxHp, hp + 1); }
     updateHud();
   }
-  // this stage's shop: 하트 plus three others drawn by weight (하트 그릇 only from stage 4 on, 비밀 열쇠 only while a locked door remains)
+  // this stage's shop: 하트 plus three others drawn by weight (하트 그릇 only from stage 4 on)
   function rollShop(i) {
-    const pool = Object.keys(ITEMS).filter(id => ITEMS[id].w > 0 && (id !== 'maxheart' || i >= 3) && (id !== 'key' || STAGES[i].put.some(q => q[2] === 11)));
+    const pool = Object.keys(ITEMS).filter(id => ITEMS[id].w > 0 && (id !== 'maxheart' || i >= 3));
     const out = ['heart'];
     while (out.length < 4 && pool.length) { const id = pickWeighted(pool, 'w'); out.push(id); pool.splice(pool.indexOf(id), 1); }
     return out;
@@ -539,7 +539,7 @@
     saws = S.saws.map(([x0, x1, row]) => ({ x: x0 * T + 8, y: row * T - 8, x0: x0 * T + 8, x1: x1 * T + 8, vx: 55, r: 8, rot: 0 }));
     coinsList = S.coins.map(([x, r]) => ({ x: x * T + 3, y: r * T + 1, got: false }));
     chests = S.chests.map(([x, r, what]) => ({ x: x * T + 1, y: r * T + 2, w: 14, h: 14, what: rollChest(what), open: false, t: 0 }));
-    shopStock = rollShop(i); magnetOn = false; doubleOn = false; bombsList = []; jetClock = 0;
+    shopStock = rollShop(i); magnetT = 0; doubleOn = false; bombsList = []; jetClock = 0;
     jets = S.jets.map(([x, r]) => ({ x: x * T, y: r * T, ph: 0 }));   // a whole row fires together: wait for the flames to drop, then run
     keyItems = S.keys.map(([x, r]) => ({ x: x * T + 2, y: r * T + 1, got: false }));
     crackList = S.cracks.map(([x, r, n]) => ({ x, r, n, hp: 2, broken: false }));
@@ -789,7 +789,7 @@
     const cx = b.x + 4, cy = b.y + 4, R2 = 30;
     pops.push({ x: cx, y: cy, t: 0, boom: true });
     for (const e of enemies) if (!e.dead && e.active && Math.hypot(e.x + e.w / 2 - cx, e.y + e.h / 2 - cy) < R2 + 6) damageMon(e, 2, true);
-    if (boss && boss.on && !boss.dead && Math.hypot(boss.x + boss.w / 2 - cx, boss.y + boss.h / 2 - cy) < R2 + boss.w / 2) hitBoss(2, cx, true);
+    if (boss && boss.on && !boss.dead && Math.hypot(boss.x + boss.w / 2 - cx, boss.y + boss.h / 2 - cy) < R2 + boss.w / 2) hitBoss(1, cx, true);
     for (const g of crackList) if (!g.broken && Math.abs(g.x * T + 8 - cx) < R2 && cy > g.r * T - R2 && cy < (g.r + g.n) * T + R2) { g.hp = 1; hitCrack(g); }
   }
   function hitCrack(g) { // cracked stone takes two hits, then the whole stack crumbles
@@ -1107,7 +1107,7 @@
 
     stepPlayer(dt);
     if (state !== 'play') return;
-    wingT = Math.max(0, wingT - dt); bootT = Math.max(0, bootT - dt); starT = Math.max(0, starT - dt);
+    magnetT = Math.max(0, magnetT - dt); wingT = Math.max(0, wingT - dt); bootT = Math.max(0, bootT - dt); starT = Math.max(0, starT - dt);
     if (boss && boss.dead && boss.autoT > 0) { boss.autoT -= dt; if (boss.autoT <= 0) { p.auto = true; ['left', 'right', 'jump', 'attack'].forEach(k => press(k, false)); } }   // boss down: walk to the GOAL on our own
     // first time near a ladder or vine: say how to climb it (once per device)
     if (!hint && !hintSeen) {
@@ -1203,10 +1203,10 @@
       c.got = true; gainCoin();
     }
     // 코인 자석 pulls nearby coins in
-    if (magnetOn) for (const c of coinsList) if (!c.got) { const dx = p.x + p.w / 2 - c.x - 5, dy = p.y + p.h / 2 - c.y - 7, d = Math.hypot(dx, dy); if (d < 80 && d > 1) { c.x += dx / d * 220 * dt; c.y += dy / d * 220 * dt; } }
+    if (magnetT > 0) for (const c of coinsList) if (!c.got) { const dx = p.x + p.w / 2 - c.x - 5, dy = p.y + p.h / 2 - c.y - 7, d = Math.hypot(dx, dy); if (d < 80 && d > 1) { c.x += dx / d * 220 * dt; c.y += dy / d * 220 * dt; } }
     for (const c of drops) {
       c.t += dt; c.vy = Math.min(c.vy + GRAV * 0.8 * dt, 500);
-      if (magnetOn && c.t > 0.3 && Math.abs(c.x - p.x) < 80 && Math.abs(c.y - p.y) < 60) { c.x += Math.sign(p.x - c.x) * 200 * dt; c.y += Math.sign(p.y - c.y) * 120 * dt; }
+      if (magnetT > 0 && c.t > 0.3 && Math.abs(c.x - p.x) < 80 && Math.abs(c.y - p.y) < 60) { c.x += Math.sign(p.x - c.x) * 200 * dt; c.y += Math.sign(p.y - c.y) * 120 * dt; }
       moveBox(c, dt); if (c.onGround) c.vx *= 0.8;
       if (c.t > 0.3 && p.x < c.x + 10 && p.x + p.w > c.x - 2 && p.y < c.y + 10 && p.y + p.h > c.y - 2) { c.got = true; gainCoin(); }
     }
@@ -1809,7 +1809,7 @@
     if (starT > 0) chip('star', Math.ceil(starT) + '초');
     if (wingT > 0) chip('wings', Math.ceil(wingT) + '초');
     if (bootT > 0) chip('boots', Math.ceil(bootT) + '초');
-    if (magnetOn) chip('magnet', '켜짐');
+    if (magnetT > 0) chip('magnet', Math.ceil(magnetT) + '초');
     if (doubleOn) chip('doubler', 'x2');
     if (lives > 0) chip('life', 'x' + lives);
   }
@@ -2126,7 +2126,7 @@
     get s() {
       return { state, stage: stageIdx + 1, hp, coins: coinCount, shield, waveT, waveOn, slashes: slashes.length, shots: shots.length,
         boss: boss && { kind: boss.kind, hp: boss.hp, maxHp: boss.maxHp, mode: boss.mode, x: boss.x, y: boss.y, w: boss.w, h: boss.h, face: boss.face, on: boss.on, dead: boss.dead, tx: boss.tx, open: !!boss.open, hidden: !!boss.hidden, gy: boss.gy, lo: boss.lo, hi: boss.hi },
-        maxHp, lives, bombs, starT, wingT, bootT, magnetOn, doubleOn, auto: !!p.auto, climbing: !!p.climbing, hint: hint && hint.txt, godHits,
+        maxHp, lives, bombs, starT, wingT, bootT, magnetOn: magnetT > 0, magnetT, doubleOn, auto: !!p.auto, climbing: !!p.climbing, hint: hint && hint.txt, godHits,
         shopX: shop && shop.x, score: Math.floor(score), camX, cols: COLS, goalX: GOALX, banner: banner && banner.txt, drops: drops.length, saws: saws.length,
         p: { x: p.x, y: p.y, vx: p.vx, vy: p.vy, w: p.w, h: p.h, onGround: p.onGround, face: p.face, inv: p.inv, swing: p.swing },
         enemies: enemies.map(e => ({ kind: e.kind, x: e.x, y: e.y, w: e.w, h: e.h, hp: e.hp, dead: e.dead, active: e.active, mode: e.mode })) };
