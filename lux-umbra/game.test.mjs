@@ -41,7 +41,7 @@ test('every stage is rectangular, has one start, a door, three shards and only k
     assert.equal(all.split('P').length - 1, 1, `${L.id} start`);
     assert.ok(/[DH]/.test(all), `${L.id} door`);
     assert.equal(all.split('o').length - 1, 3, `${L.id} shards`);
-    assert.match(all, /^[#.LSRBrb^vDH=%?CPKMo1-9f/\\{}xG]+$/, `${L.id} tiles`);
+    assert.match(all, /^[#.LSRBrb^vDH=%?CPKMo1-9f/\\{}xGW]+$/, `${L.id} tiles`);
     assert.equal(all.split('?').length - 1, (L.signs || []).length, `${L.id} signs`);
     assert.equal(all.split('=').length - 1, (L.levers || []).length, `${L.id} levers`);
     assert.equal(typeof L.solve, 'function', `${L.id} solve`);
@@ -284,6 +284,82 @@ test('shards 2 and 3 are behind the gimmicks: the main path never takes them and
   assert.ok(kinds.size >= 8, `${kinds.size} gimmick kinds`);
 });
 
+// ---------- hidden-route hazards and entrances ----------
+const hidden = L => L.rooms.filter(r => r[0].startsWith('gm_'));
+test('about half of the hidden rooms are guarded by spikes, a pit or a saw — shard 3 nearly always', () => {
+  let rooms = 0, guarded = 0, second = 0, secondGuarded = 0;
+  for (const L of LEVELS) hidden(L).forEach((r, i) => { rooms++; if (r[6]) guarded++; if (i === 1) { second++; if (r[6]) secondGuarded++; } });
+  assert.ok(guarded >= rooms / 2, `${guarded} of ${rooms} hidden rooms are guarded`);
+  assert.ok(secondGuarded >= second * 0.8 - 8, `${secondGuarded} of ${second} second hidden rooms are guarded`);
+  assert.deepEqual([...new Set(LEVELS.flatMap(hidden).map(r => r[6]).filter(Boolean))].sort(), ['pit', 'saw', 'spikes']);
+});
+
+test('the fake-floor entrances (false-rock gap, hollow bump) open at most one stage in four', () => {
+  const n = LEVELS.filter(L => hidden(L).some(r => r[0] === 'gm_fakefloor' || r[0] === 'gm_hollowbump')).length;
+  assert.ok(n <= LEVELS.length / 4, `${n} stages use a fake-floor entrance`);
+});
+
+test('no stage hides both its shards behind the same kind of entrance', () => {
+  for (const L of LEVELS) { const h = hidden(L); assert.equal(new Set(h.map(r => r[0])).size, h.length, `${L.id} ${h.map(r => r[0])}`); }
+});
+
+test('a saw slides on its rail and kills on touch; spikes kill too', () => {
+  const s = mk(['#######', '#P....#', '#..W..#', '#######'], { saws: [{ move: [0, -1], period: 4 }] });
+  assert.equal(s.saws.length, 1);
+  run(s, {}, 0.5);
+  assert.equal(s.deaths, 0);
+  run(s, { mx: 1 }, 1);
+  assert.ok(s.deaths >= 1, 'walking into the saw kills');
+  const sp = mk(['#####', '#P.^#', '#####']);
+  run(sp, { mx: 1 }, 1);
+  assert.ok(sp.deaths >= 1);
+});
+
+// ---------- levers, crates and timers cannot be skipped ----------
+const playFor = (L, sol, tweak, opts) => {
+  const s = createGame(L); if (tweak) tweak(s);
+  const next = driver(s, sol, opts), touched = new Set();
+  try {
+    for (let k = 0; k < 90 / STEP && !s.cleared; k++) {
+      step(s, next(), STEP);
+      for (const e of s.events) if (e.type === 'lever') touched.add(`${e.x},${e.y}`);
+      s.events.length = 0;
+      if (tweak && tweak.after) tweak.after(s);
+    }
+  } catch { /* the scripted route fell apart: it did not get through */ }
+  return { s, touched, ok: s.cleared && s.deaths === 0 };
+};
+const withLevers = LEVELS.filter(L => L.levers && L.levers.length);
+test('without any lever the main path cannot clear a stage', () => {
+  for (const L of withLevers) assert.equal(playFor(L, MAIN_SOLUTIONS[L.id], s => { s.levers = []; }).ok, false, `${L.id} clears with no levers`);
+});
+test('every lever the main path touches is needed: take any one away and the stage cannot be cleared', () => {
+  for (const L of withLevers) {
+    const base = playFor(L, MAIN_SOLUTIONS[L.id]);
+    assert.ok(base.ok, `${L.id} base`);
+    for (const key of base.touched) {
+      const r = playFor(L, MAIN_SOLUTIONS[L.id], s => { s.levers = s.levers.filter(l => `${l.x},${l.y}` !== key); });
+      assert.equal(r.ok, false, `${L.id}: lever ${key} is not needed`);
+    }
+  }
+});
+test('clock levers are tight: shorten every timer by 0.35 s and neither route gets through', () => {
+  const timed = LEVELS.filter(L => (L.levers || []).some(l => l.t));
+  assert.ok(timed.length >= 8, `${timed.length} stages with clock levers`);
+  for (const L of timed) for (const sol of [MAIN_SOLUTIONS[L.id], SOLUTIONS[L.id]]) {
+    const r = playFor(L, sol, s => { for (const l of s.levers) if (l.time) l.time -= 0.35; });
+    assert.equal(r.ok, false, `${L.id} still clears with the timers cut`);
+  }
+});
+test('crates held in place (never pushed) the main path cannot clear the crate stages', () => {
+  const crated = LEVELS.filter(L => L.rows.join('').includes('K'));
+  assert.ok(crated.length >= 8, `${crated.length} crate stages`);
+  for (const L of crated) {
+    const tweak = () => {}; tweak.after = s => { for (const c of s.crates) { c.x = c.hx + (1 - c.w) / 2; c.y = c.hy; c.vx = c.vy = 0; } };
+    assert.equal(playFor(L, MAIN_SOLUTIONS[L.id], tweak).ok, false, `${L.id} clears without moving a crate`);
+  }
+});
+
 test('landing assist: a block that appears just after you sank past its top still catches you', () => {
   const s = mk(['#######', '#.....#', '#..P..#', '#.....#', '#.LLL.#', '#.....#', '#^^^^^#', '#######']);
   // fall in the dark, switch the light on a moment after the feet passed the block top
@@ -330,7 +406,7 @@ test('no room template is used more than 3 times', () => {
 test('a save from another stage set is wiped (settings kept); a current one is kept', () => {
   const mem = init => { const m = new Map(Object.entries(init)); return { m, getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; };
   const old = { 'lux-progress': '{"1-1":{"s":[true,true,true],"best":9}}', 'lux-top': '[{"stage":"1-1","time":9,"stars":3}]', 'lux-mute': '1' };
-  for (const ver of [undefined, '2', '3']) {
+  for (const ver of [undefined, '2', '3', '4']) {
     const st = mem(ver ? { ...old, 'lux-levels': ver } : old);
     assert.equal(resetOldSave(st), true);
     assert.equal(st.getItem('lux-progress'), null); assert.equal(st.getItem('lux-top'), null);
