@@ -514,6 +514,18 @@ export function createRenderer(canvas) {
       ctx.fillStyle = 'rgba(200,215,255,0.85)'; ctx.font = '0.36px Jua, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('?', g.x + 0.5, g.y + 0.29);
     }
+    // saws: a faint rail, and a spinning toothed blade
+    for (const w of s.saws) {
+      ctx.strokeStyle = 'rgba(190,200,230,0.22)'; ctx.lineWidth = 0.05; ctx.setLineDash([0.1, 0.12]);
+      ctx.beginPath(); ctx.moveTo(w.x0, w.y0); ctx.lineTo(w.x0 + w.move[0], w.y0 + w.move[1]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.save(); ctx.translate(w.x, w.y); ctx.rotate(t * 9);
+      ctx.fillStyle = '#c9d3ee'; ctx.shadowColor = 'rgba(190,210,255,0.8)'; ctx.shadowBlur = 8;
+      ctx.beginPath();
+      for (let k = 0; k < 16; k++) { const r = k % 2 ? w.r * 0.78 : w.r * 1.08, a = k * Math.PI / 8; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+      ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#2a3150'; ctx.beginPath(); ctx.arc(0, 0, w.r * 0.28, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
     // shard
     for (const q of s.shards) if (!q.got) {
       const x = q.x + 0.5, y = q.y + 0.5 + Math.sin(t * 2.4) * 0.08, w = 0.2 * Math.abs(Math.cos(t * 1.8)) + 0.05;

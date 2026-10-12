@@ -10,7 +10,7 @@
 import { PHYS, LIGHT, COL, DEATH_TIME } from './config.js';
 
 const REACTIVE = new Set(['L', 'S', 'R', 'B', 'H']);
-const ENTITY = new Set(['P', 'K', 'M', 'o']);
+const ENTITY = new Set(['P', 'K', 'M', 'o', 'W']);
 const MIRROR = { '/': 0, '\\': 1, '{': 0, '}': 1 }; // '/' '\' fixed, '{' '}' turn when touched
 
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -22,7 +22,7 @@ const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h 
 export function parseLevel(def) {
   const rows = def.rows, h = rows.length, w = Math.max(...rows.map(r => r.length));
   const tiles = new Array(w * h).fill('.');
-  const out = { w, h, tiles, start: null, crates: [], statues: [], shards: [], secret: [], levers: [], lenses: [], signs: [], checks: [], lamps: [], doors: [], mirrors: [] };
+  const out = { w, h, tiles, start: null, crates: [], statues: [], shards: [], secret: [], saws: [], levers: [], lenses: [], signs: [], checks: [], lamps: [], doors: [], mirrors: [] };
   let li = 0, ni = 0, si = 0;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const c = rows[y][x] || '#';
@@ -33,6 +33,7 @@ export function parseLevel(def) {
       else if (c === 'K') out.crates.push({ x, y });
       else if (c === 'M') out.statues.push({ x, y });
       else if (c === 'o') out.shards.push({ x, y });
+      else if (c === 'W') { const d = (def.saws || [])[out.saws.length] || {}; out.saws.push({ x0: x + 0.5, y0: y + 0.5, x: x + 0.5, y: y + 0.5, move: d.move || [0, 0], period: d.period || 4, phase: d.phase || 0, r: 0.42 }); }
       continue;
     }
     tiles[i] = c;
@@ -73,7 +74,7 @@ export function createGame(def) {
     p: null, fl: { on: false, dark: false, aim: LIGHT.defaultAim, col: COL.w },
     crates: lv.crates.map(c => ({ x: c.x + (1 - PHYS.cw) / 2, y: c.y, w: PHYS.cw, h: 1, vx: 0, vy: 0, hx: c.x, hy: c.y })),
     statues: lv.statues.map(m => ({ x: m.x + (1 - PHYS.sw) / 2, y: m.y + 1 - PHYS.sh, w: PHYS.sw, h: PHYS.sh, vy: 0, vx: 0, awake: false, face: -1, walk: 0, hx: m.x, hy: m.y })),
-    shards: lv.shards.map(q => ({ ...q, got: false })), secret: new Uint8Array(w * h),
+    shards: lv.shards.map(q => ({ ...q, got: false })), secret: new Uint8Array(w * h), saws: lv.saws,
     t: 0, deaths: 0, cleared: false, events: [], snap: null, startPos: lv.start,
   };
   for (let i = 0; i < w * h; i++) if (REACTIVE.has(lv.tiles[i])) s.reactive.push(i);
@@ -138,6 +139,14 @@ function isOpaque(s, x, y) {
 }
 
 // Lamps on rails slide back and forth (smoothly) with the clock.
+// A saw slides to and fro on its rail with the clock, like a lamp, and kills on touch.
+function moveSaws(s) {
+  for (const w of s.saws) {
+    const k = (1 - Math.cos(2 * Math.PI * (s.t / w.period + w.phase))) / 2;
+    w.x = w.x0 + w.move[0] * k; w.y = w.y0 + w.move[1] * k;
+  }
+}
+
 function moveLamps(s) {
   for (const L of s.lamps) {
     if (!L.move) continue;
@@ -447,6 +456,10 @@ function interact(s) {
     if (c === '^' && touches(p, x, y, 0.15, 0.5, 0.85, 1)) return die(s, 'spike');
     if (c === 'v' && touches(p, x, y, 0.15, 0, 0.85, 0.5)) return die(s, 'spike');
   }
+  for (const w of s.saws) {
+    const nx = clamp(w.x, p.x, p.x + p.w), ny = clamp(w.y, p.y, p.y + p.h);
+    if (Math.hypot(w.x - nx, w.y - ny) < w.r) return die(s, 'saw');
+  }
   for (const m of s.statues) if (m.awake && overlap(p, { x: m.x + 0.08, y: m.y + 0.08, w: m.w - 0.16, h: m.h - 0.1 })) return die(s, 'statue');
 
   for (const l of s.levers) {
@@ -501,6 +514,7 @@ export function step(s, inp, dt) {
   }
   s.t += dt;
   moveLamps(s);
+  moveSaws(s);
   for (const l of s.levers) if (l.timer > 0) {
     l.timer -= dt;
     if (l.timer <= 0) { l.timer = 0; for (const g of l.g) s.groups[g] = !s.groups[g]; s.events.push({ type: 'leverBack', x: l.x, y: l.y }); }
