@@ -4,6 +4,7 @@ import { LEVELS, CHAPTERS, LEVELS_VERSION, resetOldSave } from './levels.js';
 import { SOLUTIONS, MAIN_SOLUTIONS } from './solutions.js';
 import { createGame, step, isSolid, tileLight, starsFor, castRay } from './game.js';
 import { driver } from './bot.js';
+import { buildCode, encodeProgress, decodeProgress, importProgress, ADMIN_ALL, ADMIN_RESET, countStars, countCleared, isAdminCode } from './save-code.js';
 import { STEP, COL } from './config.js';
 
 let n = 0;
@@ -358,6 +359,80 @@ test('crates held in place (never pushed) the main path cannot clear the crate s
     const tweak = () => {}; tweak.after = s => { for (const c of s.crates) { c.x = c.hx + (1 - c.w) / 2; c.y = c.hy; c.vx = c.vy = 0; } };
     assert.equal(playFor(L, MAIN_SOLUTIONS[L.id], tweak).ok, false, `${L.id} clears without moving a crate`);
   }
+});
+
+// ---------- 기록 코드 ----------
+let seed = 12345;
+const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+const randEntries = n => Array.from({ length: n }, () => (rnd() < 0.6 ? { s: [rnd() < 0.5, rnd() < 0.5, rnd() < 0.5] } : null));
+const compact = c => c.replace(/-/g, '');
+const ALPHA = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+test('save code: random progress states survive a round trip, and a state always gives the same code', () => {
+  for (let k = 0; k < 300; k++) {
+    const e = randEntries(1 + Math.floor(rnd() * 80)), code = encodeProgress(e), r = decodeProgress(code, 80);
+    assert.ok(r.ok, code);
+    assert.deepEqual(r.entries, e);
+    assert.equal(encodeProgress(e), code);
+  }
+  const code = encodeProgress(randEntries(80));
+  assert.match(code, /^([0-9A-HJKMNP-TV-Z]{4}-)+[0-9A-HJKMNP-TV-Z]{1,4}$/);
+  assert.ok(compact(code).length >= 70 && compact(code).length <= 78, `${compact(code).length} characters`);
+});
+
+test('save code: changing any single character is rejected', () => {
+  for (let k = 0; k < 4; k++) {
+    const code = compact(encodeProgress(randEntries(80)));
+    for (let i = 0; i < code.length; i++) for (const ch of ALPHA) {
+      if (ch === code[i]) continue;
+      assert.equal(decodeProgress(code.slice(0, i) + ch + code.slice(i + 1), 80).ok, false, `position ${i} -> ${ch}`);
+    }
+  }
+});
+
+test('save code: lowercase, confusable letters, hyphens and spaces all read the same', () => {
+  const e = randEntries(80), code = encodeProgress(e), ref = decodeProgress(code, 80);
+  const messy = code.toLowerCase().replace(/1/g, 'l').replace(/0/g, 'o').replace(/-/g, ' \n');
+  assert.deepEqual(decodeProgress(messy, 80), ref);
+  assert.deepEqual(decodeProgress(code.replace(/1/g, 'I').replace(/-/g, '--'), 80), ref);
+  assert.equal(decodeProgress('', 80).ok, false);
+  assert.equal(decodeProgress('hello world!', 80).error, 'format');
+});
+
+test('save code: different states share no prefix', () => {
+  const heads = new Set();
+  for (let k = 0; k < 200; k++) heads.add(encodeProgress(randEntries(80)).slice(0, 9));
+  assert.equal(heads.size, 200);
+  assert.notEqual(encodeProgress(Array(80).fill(null)).slice(0, 4), encodeProgress([{ s: [true, false, false] }, ...Array(79).fill(null)]).slice(0, 4));
+});
+
+test('save code: a code with fewer stages loads with the rest unset; one with more stages is rejected; a wrong marker too', () => {
+  const small = randEntries(50), r = decodeProgress(encodeProgress(small), 80);
+  assert.ok(r.ok); assert.equal(r.entries.length, 50);
+  const ids = LEVELS.map(L => L.id), p = importProgress(r.entries, ids, {});
+  assert.equal(Object.keys(p).length, countCleared(small));
+  assert.ok(ids.slice(50).every(id => !p[id]));
+  assert.deepEqual(decodeProgress(encodeProgress(randEntries(81)), 80), { ok: false, error: 'more' });
+  assert.deepEqual(decodeProgress(buildCode(randEntries(80), 0x42), 80), { ok: false, error: 'marker' });
+});
+
+test('save code: the two admin codes decode to every stage with all shards, and to a blank record', () => {
+  const all = decodeProgress(ADMIN_ALL, 80), none = decodeProgress(ADMIN_RESET, 80);
+  assert.ok(all.ok && none.ok);
+  assert.equal(all.entries.length, 80); assert.ok(all.entries.every(e => e && e.s.every(Boolean)));
+  assert.equal(none.entries.length, 80); assert.ok(none.entries.every(e => e === null));
+  assert.equal(ADMIN_ALL, encodeProgress(all.entries)); assert.equal(ADMIN_RESET, encodeProgress(none.entries));
+  assert.ok(isAdminCode(ADMIN_ALL.toLowerCase().replace(/-/g, ' ')) && isAdminCode(ADMIN_RESET) && !isAdminCode(encodeProgress(randEntries(80))));
+  assert.equal(countStars(all.entries), 240);
+});
+
+test('importing a code replaces the whole record: stages the code leaves out lock again, stars follow the code, best times stay only where cleared', () => {
+  const ids = ['a', 'b', 'c', 'd'];
+  const old = { a: { s: [true, true, true], best: 12.5 }, b: { s: [true, false, false], best: 20 }, c: { s: [false, false, false], best: 30 } };
+  const code = [{ s: [true, false, false] }, null, { s: [false, true, true] }, { s: [true, true, true] }];
+  const p = importProgress(code, ids, old);
+  assert.deepEqual(p, { a: { s: [true, false, false], best: 12.5 }, c: { s: [false, true, true], best: 30 }, d: { s: [true, true, true], best: 99 } });
+  assert.equal(p.b, undefined);
 });
 
 test('landing assist: a block that appears just after you sank past its top still catches you', () => {

@@ -9,11 +9,12 @@ import { STEP, COL } from './config.js';
 import { createInput } from './input.js';
 import { createRenderer } from './render.js';
 import { drawPlayer } from './art.js';
+import { encodeProgress, decodeProgress, importProgress, progressEntries, countStars, countCleared, isAdminCode } from './save-code.js';
 import { sfx, unlock, isMuted, setMuted, music, musicLight } from './sound.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage'), overlay = $('overlay'), canvas = $('c');
-const panels = { main: $('pMain'), stages: $('pStages'), help: $('pHelp'), rank: $('pRank'), pause: $('pPause') };
+const panels = { main: $('pMain'), stages: $('pStages'), help: $('pHelp'), rank: $('pRank'), code: $('pCode'), pause: $('pPause') };
 const titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), eyebrow = $('eyebrow');
 const startBtn = $('start'), homeBtn = $('home'), helpBtn = $('helpBtn'), rankBtn = $('rankBtn'), againBtn = $('again'), menuLink = $('toMenu');
 const pauseBtn = $('pause'), retryBtn = $('retry'), muteBtn = $('mute'), bannerEl = $('banner');
@@ -58,7 +59,7 @@ const firstOpen = () => { const i = LEVELS.findIndex(L => !progress[L.id]); retu
 
 // ---------- panels ----------
 function panel(name) { for (const [k, el] of Object.entries(panels)) el.hidden = k !== name; overlay.hidden = false; overlay.scrollTop = 0; }
-function secButtons(afterRun) { helpBtn.hidden = afterRun; menuLink.hidden = afterRun; homeBtn.hidden = !afterRun; againBtn.hidden = !afterRun; }
+function secButtons(afterRun) { $('codeBtn').hidden = afterRun; helpBtn.hidden = afterRun; menuLink.hidden = afterRun; homeBtn.hidden = !afterRun; againBtn.hidden = !afterRun; }
 
 function showTitle() {
   state = 'title'; input.enabled = false; input.reset();
@@ -109,7 +110,7 @@ function buildStages(ch) {
     const meta = document.createElement('span'); meta.className = 'meta';
     const sr = document.createElement('span'); sr.className = 'sr';
     (progress[L.id] ? progress[L.id].s : [false, false, false]).forEach(g => { const e = document.createElement(g ? 'b' : 'span'); e.textContent = '★'; sr.append(e); });
-    const bt = document.createElement('span'); bt.className = 'bt'; bt.textContent = progress[L.id] ? fmt(progress[L.id].best) : '';
+    const bt = document.createElement('span'); bt.className = 'bt'; bt.textContent = progress[L.id] && progress[L.id].best < 99 ? fmt(progress[L.id].best) : '';
     meta.append(sr, bt);
     btn.append(id, nm, meta);
     btn.setAttribute('aria-label', `${L.id} ${L.name}${open ? '' : ' 잠김'}, 별 ${starCount(L.id)}개`);
@@ -149,13 +150,77 @@ rankBtn.addEventListener('click', () => { sfx.click(); renderTop(lastEntry); pan
 homeBtn.addEventListener('click', () => { sfx.click(); showTitle(); });
 againBtn.addEventListener('click', () => { unlock(); sfx.click(); startStage(idx); });
 document.querySelectorAll('.back').forEach(b => b.addEventListener('click', () => { sfx.click(); panel('main'); }));
+// ---------- 기록 코드: save and load progress as text ----------
+const KEY_HINT = 'lux-codehint';
+function localStorage_get(k) { try { return localStorage.getItem(k); } catch { return null; } }
+const dHint = $('dHint'), dConfirm = $('dConfirm'), codeOut = $('codeOut'), codeIn = $('codeIn'), codeErr = $('codeErr'), copyBtn = $('codeCopy');
+let dlgFrom = null, dlgOpen = null;
+function openDlg(el, focus) { dlgFrom = document.activeElement; dlgOpen = el; el.hidden = false; focus.focus(); }
+function closeDlg() { if (!dlgOpen) return; dlgOpen.hidden = true; dlgOpen = null; if (dlgFrom && dlgFrom.isConnected && !dlgFrom.hidden) dlgFrom.focus(); }
+document.addEventListener('keydown', e => {
+  if (!dlgOpen) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeDlg(); }
+  if (e.key === 'Tab') {   // keep focus inside the dialog
+    const f = [...dlgOpen.querySelectorAll('button, input')];
+    const i = f.indexOf(document.activeElement);
+    if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+  }
+});
+const rememberHint = () => { if ($('hintOff').checked) { try { localStorage.setItem(KEY_HINT, '1'); } catch { /* storage blocked */ } } };
+$('hintGo').addEventListener('click', () => { sfx.click(); rememberHint(); dlgFrom = null; closeDlg(); buildStages(); panel('stages'); });
+$('hintShow').addEventListener('click', () => { sfx.click(); rememberHint(); dlgFrom = null; closeDlg(); openCode('save'); });
+
+function codeTab(name) {
+  const save = name === 'save';
+  $('tabSave').setAttribute('aria-selected', String(save)); $('tabLoad').setAttribute('aria-selected', String(!save));
+  $('codeSave').hidden = !save; $('codeLoad').hidden = save;
+  if (save) {
+    const ids = LEVELS.map(L => L.id), e = progressEntries(progress, ids);
+    $('codeStat').textContent = `별 ${countStars(e)} / ${LEVELS.length * 3} · 클리어 ${countCleared(e)} / ${LEVELS.length}`;
+    codeOut.value = encodeProgress(e); copyBtn.textContent = '코드 복사';
+  } else { codeErr.textContent = ''; }
+}
+function openCode(name) { codeTab(name); panel('code'); $(name === 'save' ? 'tabSave' : 'tabLoad').focus(); }
+$('codeBtn').addEventListener('click', () => { sfx.click(); openCode('save'); });
+$('tabSave').addEventListener('click', () => { sfx.click(); codeTab('save'); });
+$('tabLoad').addEventListener('click', () => { sfx.click(); codeTab('load'); });
+copyBtn.addEventListener('click', async () => {
+  sfx.click();
+  let ok = false;
+  try { await navigator.clipboard.writeText(codeOut.value); ok = true; } catch { /* fall back to selecting the text */ }
+  if (!ok) { codeOut.focus(); codeOut.select(); try { ok = document.execCommand('copy'); } catch { ok = false; } }
+  copyBtn.textContent = ok ? '복사됨' : '선택했어요. 길게 눌러 복사해요';
+  setTimeout(() => { copyBtn.textContent = '코드 복사'; }, 1800);
+});
+codeOut.addEventListener('focus', () => codeOut.select());
+const CODE_ERR = { format: '코드가 틀려요', marker: '이 게임 코드가 아니에요', more: '판이 더 많은 코드예요' };
+let pending = null;
+$('codeApply').addEventListener('click', () => {
+  sfx.click();
+  const r = decodeProgress(codeIn.value, LEVELS.length);
+  if (!r.ok) { codeErr.textContent = CODE_ERR[r.error]; return; }
+  codeErr.textContent = '';
+  const now = countStars(progressEntries(progress, LEVELS.map(L => L.id)));
+  const next = countStars(r.entries.slice(0, LEVELS.length));
+  pending = r.entries;
+  $('cfStars').textContent = isAdminCode(codeIn.value) ? '관리자 코드' : `별 ${now}개 → 별 ${next}개`;
+  openDlg(dConfirm, $('cfNo'));
+});
+$('cfNo').addEventListener('click', () => { sfx.click(); closeDlg(); });
+$('cfYes').addEventListener('click', () => {
+  sfx.click(); dlgFrom = null; closeDlg();
+  progress = importProgress(pending, LEVELS.map(L => L.id), progress); pending = null;
+  save(KEY_PROG, progress); codeIn.value = ''; codeErr.textContent = '';
+  showTitle();
+});
+
 startBtn.addEventListener('click', () => {
   unlock(); sfx.click();
   if (state === 'clear') {
     if (idx + 1 < LEVELS.length) return startStage(idx + 1);
     buildStages(); return panel('stages');
   }
-  buildStages(); panel('stages');
+  if (localStorage_get(KEY_HINT) === '1') { buildStages(); panel('stages'); } else openDlg(dHint, $('hintGo'));
 });
 $('resume').addEventListener('click', () => pause(false));
 $('restart').addEventListener('click', () => { sfx.click(); startStage(idx); });

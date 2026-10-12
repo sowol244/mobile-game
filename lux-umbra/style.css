@@ -59,8 +59,8 @@ canvas { width: 100%; height: 100%; display: block; }
 
 #btns { display: flex; flex-direction: column; gap: 10px; width: min(340px, 100%); margin-top: 6px; }
 #prim button { width: 100%; height: 54px; padding: 0 16px; }
-#sec { display: flex; gap: 8px; }
-#sec .sub { flex: 1 1 0; min-width: 0; height: 44px; padding: 0 6px; font: inherit; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; box-sizing: border-box; color: var(--accent); background: transparent; border: 1px solid rgba(255, 210, 122, 0.6); border-radius: 999px; text-decoration: none; cursor: pointer; }
+#sec { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#sec .sub { min-width: 0; height: 44px; padding: 0 6px; font: inherit; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; box-sizing: border-box; color: var(--accent); background: transparent; border: 1px solid rgba(255, 210, 122, 0.6); border-radius: 999px; text-decoration: none; cursor: pointer; }
 #sec .sub:focus-visible { outline: 3px solid var(--hud); outline-offset: 3px; }
 button.go { font: inherit; font-size: 22px; color: #2a1800; background: linear-gradient(#ffe2a0, #ffc35c); border: 0; border-radius: 999px; padding: 10px 34px; cursor: pointer; box-shadow: 0 4px 0 var(--accent-dk), 0 0 24px rgba(255, 200, 100, 0.35); }
 button.go:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--accent-dk); }
@@ -162,3 +162,23 @@ button.go.ghost { background: transparent; color: var(--accent); border: 1px sol
 @media (max-height: 640px) and (orientation: portrait) {
   #overlay h1 { font-size: 34px; }
 }
+
+/* 기록 코드 panel and dialogs */
+.seg { display: flex; width: min(340px, 100%); border: 1px solid rgba(255, 210, 122, 0.6); border-radius: 999px; overflow: hidden; }
+.seg button { flex: 1; height: 40px; font: inherit; font-size: 16px; color: var(--accent); background: transparent; border: 0; cursor: pointer; }
+.seg button[aria-selected="true"] { color: #2a1800; background: linear-gradient(#ffe2a0, #ffc35c); }
+.seg button:focus-visible, .chk input:focus-visible, textarea.codebox:focus-visible { outline: 3px solid var(--hud); outline-offset: 2px; }
+.codebody { display: flex; flex-direction: column; align-items: center; gap: 10px; width: min(340px, 100%); }
+.codebody .go { width: 100%; height: 48px; font-size: 19px; padding: 0 16px; }
+textarea.codebox { width: 100%; box-sizing: border-box; resize: none; padding: 10px; font: 16px/1.5 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.04em; text-align: center; color: #fff1cf; background: rgba(150, 170, 255, 0.08); border: 1px solid rgba(150, 170, 255, 0.35); border-radius: 12px; }
+.hint { color: var(--muted); font-size: 12px; line-height: 1.4; }
+#overlay p.err { min-height: 1.4em; color: #ff9d8a; font-size: 14px; }
+.dlg { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px; overflow-y: auto; background: rgba(3, 5, 12, 0.8); }
+.dlg .card { margin: auto 0; width: min(320px, 100%); display: grid; gap: 12px; padding: 18px 16px; text-align: center; border-radius: 18px; background: #10162e; border: 1px solid rgba(255, 210, 122, 0.45); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); }
+.dlg h2 { margin: 0; font-family: var(--title); font-weight: 700; font-size: 24px; line-height: 1.2; color: #fff1cf; }
+.dlg p { margin: 0; color: #dfe3f6; font-size: 15px; line-height: 1.5; text-wrap: balance; }
+.dlg .row { display: grid; gap: 8px; }
+.dlg .row button { width: 100%; height: 48px; padding: 0; font-size: 18px; }
+.chk { display: flex; justify-content: center; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; cursor: pointer; }
+.chk input { width: 20px; height: 20px; accent-color: var(--accent); }
+@media (orientation: landscape) and (max-height: 560px) { .dlg .row { grid-template-columns: 1fr 1fr; } .dlg .card { gap: 8px; padding: 12px; } }

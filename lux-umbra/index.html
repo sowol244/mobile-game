@@ -28,6 +28,28 @@
       <button id="pause" type="button" aria-label="일시정지" hidden>Ⅱ</button>
     </div>
     <div id="banner" aria-live="polite"></div>
+    <div class="dlg" id="dHint" role="dialog" aria-modal="true" aria-labelledby="dHintT" hidden>
+      <div class="card">
+        <h2 id="dHintT">기록을 코드로 남겨 두세요</h2>
+        <p>쿠키를 지우거나 기기를 바꾸면 기록이 사라져요. 코드를 메모해 두면 되살릴 수 있어요.</p>
+        <label class="chk"><input type="checkbox" id="hintOff"> 다시 보지 않기</label>
+        <div class="row">
+          <button class="go" id="hintShow" type="button">코드 보기</button>
+          <button class="go ghost" id="hintGo" type="button">그냥 시작</button>
+        </div>
+      </div>
+    </div>
+    <div class="dlg" id="dConfirm" role="dialog" aria-modal="true" aria-labelledby="dConfirmT" hidden>
+      <div class="card">
+        <h2 id="dConfirmT">기록을 바꿀까요?</h2>
+        <p id="cfStars"></p>
+        <p>코드 내용으로 통째로 바뀌어요. 안 깬 판은 다시 잠겨요.</p>
+        <div class="row">
+          <button class="go ghost" id="cfNo" type="button">취소</button>
+          <button class="go" id="cfYes" type="button">바꾸기</button>
+        </div>
+      </div>
+    </div>
     <div id="overlay">
       <div class="panel" id="pMain">
         <small id="eyebrow">LUX &amp; UMBRA</small>
@@ -41,6 +63,7 @@
             <button class="sub" id="helpBtn" type="button">게임 설명</button>
             <button class="sub" id="rankBtn" type="button">순위 보기</button>
             <button class="sub" id="again" type="button" hidden>다시 하기</button>
+            <button class="sub" id="codeBtn" type="button">기록 코드</button>
             <a class="sub" id="toMenu" href="../">게임 선택</a>
           </div>
         </div>
@@ -81,6 +104,25 @@
         <ol id="rows"></ol>
         <p id="rankNote"></p>
         <button class="go back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pCode" hidden>
+        <h1>기록 코드</h1>
+        <div class="seg" role="tablist" aria-label="기록 코드">
+          <button type="button" role="tab" id="tabSave" aria-selected="true" aria-controls="codeSave">저장</button>
+          <button type="button" role="tab" id="tabLoad" aria-selected="false" aria-controls="codeLoad">불러오기</button>
+        </div>
+        <div class="codebody" id="codeSave" role="tabpanel" aria-labelledby="tabSave">
+          <p id="codeStat"></p>
+          <textarea class="codebox" id="codeOut" readonly rows="4" spellcheck="false" aria-label="내 기록 코드"></textarea>
+          <button class="go" id="codeCopy" type="button">코드 복사</button>
+          <small class="hint">코드를 메모해 두면 다른 기기에서도 이어서 할 수 있어요.</small>
+        </div>
+        <div class="codebody" id="codeLoad" role="tabpanel" aria-labelledby="tabLoad" hidden>
+          <textarea class="codebox" id="codeIn" rows="4" spellcheck="false" autocapitalize="characters" autocomplete="off" placeholder="여기에 코드를 붙여 넣어요" aria-label="기록 코드 붙여넣기"></textarea>
+          <button class="go" id="codeApply" type="button">불러오기</button>
+          <p class="err" id="codeErr" role="alert"></p>
+        </div>
+        <button class="go ghost back" type="button">돌아가기</button>
       </div>
       <div class="panel" id="pPause" hidden>
         <h1>일시정지</h1>
