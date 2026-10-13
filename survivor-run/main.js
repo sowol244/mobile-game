@@ -15,7 +15,8 @@ const hud = {
   root: $('hud'), distance: $('distance'), timer: $('timer'),
   progress: $('progressFill'), healthText: $('healthText'), health: $('healthFill'),
   weapon: $('weapon'), weaponLevel: $('weaponLevel'), weaponIcon: $('weaponIcon'),
-  kills: $('kills'), bossRoot: $('bossHud'), bossFill: $('bossFill'),
+  kills: $('kills'), allyRoot: $('allyStat'), allyCount: $('allyCount'),
+  bossRoot: $('bossHud'), bossFill: $('bossFill'),
 };
 const KEY_TOP = 'survivor-run-top', KEY_TUT = 'dead-route-tutorial';
 const top = () => { try { return JSON.parse(localStorage.getItem(KEY_TOP)) || []; } catch { return []; } };
@@ -36,8 +37,8 @@ const assets = {
 };
 const tutorials = [
   ['이동', '화면을 좌우로 끌어 도로 안에서 움직입니다. PC에서는 A/D 또는 ←/→ 키를 사용하세요.'],
-  ['자동 사격', '총은 자동으로 발사됩니다. 목표물과 같은 쪽으로 움직이면 사격 방향이 따라갑니다.'],
-  ['보급 선택', '숫자 드럼통을 부수면 보상을 얻습니다. 빨간 드럼통은 큰 폭발을 일으켜요.'],
+  ['자동 사격', '총은 자동으로 발사됩니다. 원하는 좀비나 보급통 쪽으로 움직이면 표적이 바뀝니다.'],
+  ['보급과 회피', '숫자 내구도를 0으로 만들면 보상을 얻습니다. 동료는 함께 사격하고 붉은 보스 공격은 차선을 바꿔 피하세요.'],
 ];
 
 let state = 'title', game = null, lastFrame = performance.now();
@@ -69,7 +70,7 @@ function showTitle() {
   hud.root.hidden = true; hud.bossRoot.hidden = true;
   $('pause').hidden = true;
   $('title').innerHTML = 'DEAD<br>ROUTE';
-  $('msg').innerHTML = '무너진 도로를 돌파하고<br>안전지대까지 살아남으세요.';
+  $('msg').innerHTML = '보급통을 선택해 무기를 강화하고,<br>대규모 웨이브와 보스를 돌파하세요.';
   $('result').hidden = true; $('home').hidden = true;
   $('start').textContent = '작전 시작';
   showPanel('main'); overlay.hidden = false;
@@ -93,8 +94,8 @@ function updateHud() {
   if (!game) return;
   hud.distance.textContent = game.distance.toLocaleString('ko-KR') + ' m';
   hud.progress.style.width = Math.min(100, game.t / STAGE_DURATION * 100) + '%';
-  const remaining = Math.max(0, STAGE_DURATION - game.t);
-  hud.timer.textContent = game.boss ? '보스' : '00:' + String(Math.ceil(remaining)).padStart(2, '0');
+  const elapsed = Math.floor(game.t);
+  hud.timer.textContent = String(Math.floor(elapsed / 60)).padStart(2, '0') + ':' + String(elapsed % 60).padStart(2, '0');
   hud.healthText.textContent = Math.ceil(game.hp) + ' / ' + game.maxHp;
   hud.health.style.width = Math.max(0, game.hp / game.maxHp * 100) + '%';
   hud.health.classList.toggle('critical', game.hp <= 30);
@@ -102,6 +103,8 @@ function updateHud() {
   hud.weaponIcon.textContent = game.weapon === 'smg' ? '▰' : '●';
   hud.weaponLevel.textContent = String(game.weaponLevel[game.weapon] || 1);
   hud.kills.textContent = String(game.kills);
+  hud.allyRoot.hidden = game.companions.length === 0;
+  hud.allyCount.textContent = String(game.companions.length);
   hud.bossRoot.hidden = !game.boss;
   if (game.boss) hud.bossFill.style.width = Math.max(0, game.boss.hp / game.boss.maxHp * 100) + '%';
 }
@@ -116,17 +119,21 @@ function announce(message, seconds) {
 function handleEvents(events) {
   for (const event of events) {
     if (event === 'shot') sfx.shot();
+    else if (event === 'allyShot') sfx.allyShot();
     else if (event === 'hit') sfx.hit();
     else if (event === 'barrelDown') sfx.pick();
     else if (event === 'explosion') sfx.explosion();
     else if (event === 'hurt') { sfx.hurt(); announce('피격! 도로를 벗어나세요', 1.2); }
     else if (event === 'bossStart') { sfx.boss(); announce('보스 출현 · 경고 구역을 피하세요', 2.2); }
     else if (event === 'bossWarn') announce('강타 예고 · 붉은 구역을 피하세요', 1.1);
+    else if (event === 'bossSlam') announce('착탄 · 다음 붉은 예고 구역을 피하세요', 1.2);
     else if (event === 'bossDown') { sfx.pick(); announce('대형 변이체 격파', 1.8); }
     else if (event === 'win') sfx.win();
     else if (event === 'lose' || event === 'timeout') sfx.lose();
     else if (event && typeof event === 'object' && event.type === 'reward') {
       sfx.upgrade(); announce(event.label, 1.8);
+    } else if (event && typeof event === 'object' && event.type === 'cue') {
+      announce(event.label, event.duration);
     }
   }
 }
@@ -138,6 +145,7 @@ function finishGame(result) {
   const entry = {
     id: Date.now(), score: game.score, kills: game.kills,
     distance: game.distance, result: result === 'win' ? '돌파 성공' : '작전 종료',
+    elapsed: Math.floor(game.t), barrels: game.barrelsBroken,
     date: new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' }).format(new Date()),
   };
   const records = top();
@@ -146,8 +154,12 @@ function finishGame(result) {
   save(KEY_TOP, records.slice(0, 10));
   lastSaved = entry.id;
   $('title').innerHTML = result === 'win' ? 'ROUTE<br>SECURED' : 'MISSION<br>FAILED';
-  $('msg').textContent = result === 'win' ? '안전지대에 도착했습니다.' : '탄약과 체력을 정비하고 다시 출동하세요.';
-  $('result').textContent = '점수 ' + game.score.toLocaleString('ko-KR') + ' · 처치 ' + game.kills + ' · 거리 ' + game.distance + 'm';
+  $('msg').textContent = result === 'win'
+    ? '최종 보스를 격파하고 1-1을 돌파했습니다.'
+    : game.hp <= 0 ? '체력이 소진되었습니다. 보급과 회피를 다시 노려보세요.' : '제한 시간 안에 보스를 격파하지 못했습니다.';
+  const elapsed = Math.floor(game.t);
+  const clock = String(Math.floor(elapsed / 60)).padStart(2, '0') + ':' + String(elapsed % 60).padStart(2, '0');
+  $('result').textContent = '시간 ' + clock + ' · 보급통 ' + game.barrelsBroken + ' · 처치 ' + game.kills + ' · 점수 ' + game.score.toLocaleString('ko-KR');
   $('result').hidden = false;
   $('start').textContent = '다시 출동';
   $('home').hidden = false;
@@ -163,7 +175,9 @@ function paintRank() {
     const rank = document.createElement('span'); rank.className = 'rk'; rank.textContent = String(index + 1) + '.';
     const score = document.createElement('span'); score.className = 'sc'; score.textContent = Number(entry.score || 0).toLocaleString('ko-KR') + '점';
     const detail = document.createElement('span'); detail.textContent = '처치 ' + (entry.kills || 0);
-    const date = document.createElement('span'); date.className = 'dt'; date.textContent = (entry.result || '기록') + ' · ' + (entry.distance || 0) + 'm · ' + (entry.date || '');
+    const elapsed = Number(entry.elapsed || 0);
+    const clock = String(Math.floor(elapsed / 60)).padStart(2, '0') + ':' + String(elapsed % 60).padStart(2, '0');
+    const date = document.createElement('span'); date.className = 'dt'; date.textContent = (entry.result || '기록') + ' · ' + clock + ' · 보급 ' + (entry.barrels || 0) + ' · ' + (entry.date || '');
     li.append(rank, score, detail, date);
     rows.append(li);
   });
@@ -290,3 +304,4 @@ function frame(now) {
 
 showTitle();
 requestAnimationFrame(frame);
+
