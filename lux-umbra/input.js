@@ -2,7 +2,7 @@
 //   Touch: ◀ ▶ on the left; on the right 손전등, 점프, and 깜빡 (above 점프: the light is off only while it is held).
 //          손전등: a quick tap switches the torch on/off; press and drag aims it (and switches it on).
 //          The aim stays where you left it and flips with you when you turn around.
-//   Keyboard: ←→ / A D move, Space / ↑ / W jump, F / J torch, hold Shift / C = 깜빡, Q / E turn the aim, R checkpoint, Esc pause.
+//   Keyboard: ← → move, Space jump, left Alt toggles the torch, hold left Ctrl for 깜빡, Q / E aim, R checkpoint, Esc pause.
 //   Mouse: the torch points at the cursor while the mouse is over the game; click toggles the torch.
 
 const DRAG_MIN = 12;   // px before a press on the torch button counts as aiming
@@ -98,25 +98,26 @@ export function createInput({ stage, left, right, jump, blink, torch, knob }) {
 
   // keyboard
   const KEYS = {
-    ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r',
-    ' ': 'jump', ArrowUp: 'jump', w: 'jump', W: 'jump', z: 'jump', Z: 'jump',
-    f: 'torch', F: 'torch', j: 'torch', J: 'torch', x: 'torch', X: 'torch',
-    q: 'aimUp', Q: 'aimUp', e: 'aimDown', E: 'aimDown', ArrowDown: 'aimDown', s: 'aimDown', S: 'aimDown',
-    Shift: 'dark', c: 'dark', C: 'dark',
+    ArrowLeft: 'l', ArrowRight: 'r', Space: 'jump',
+    AltLeft: 'torch', ControlLeft: 'dark',
+    KeyQ: 'aimUp', KeyE: 'aimDown',
   };
   window.addEventListener('keydown', e => {
-    if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') { if (st.enabled && st.onPause) st.onPause(); return; }
-    if ((e.key === 'r' || e.key === 'R') && st.enabled && st.onRetry) { st.onRetry(); return; }
-    const k = KEYS[e.key];
-    if (!k || !st.enabled) return;
+    if (e.code === 'Escape' || e.code === 'KeyP') { if (st.enabled && st.onPause) st.onPause(); return; }
+    if (e.code === 'KeyR' && st.enabled && st.onRetry) { st.onRetry(); return; }
+    if (!st.enabled) return;
+    const k = KEYS[e.code];
+    if (!k && !e.code.startsWith('Arrow') && e.code !== 'Space') return;
     e.preventDefault();
+    // A horizontal key press takes control from the idle mouse aim so the player turns with movement.
+    if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' || k === 'aimUp' || k === 'aimDown') st.mouseOn = false;
+    if (!k) return;
     if (e.repeat) return;
     st.keys.add(k);
     if (k === 'jump') st.q.jumpPress = true;
     if (k === 'torch') st.q.toggle = true;
-    if (k === 'aimUp' || k === 'aimDown') st.mouseOn = false;
   });
-  window.addEventListener('keyup', e => { const k = KEYS[e.key]; if (k) st.keys.delete(k); });
+  window.addEventListener('keyup', e => { const k = KEYS[e.code]; if (k) st.keys.delete(k); });
   window.addEventListener('blur', () => { st.keys.clear(); thumbs.clear(); st.l = st.r = st.jumpHeld = st.thumbDark = false; [left, right, jump, blink].forEach(el => flag(el, false)); });
 
   // mouse aim (only real mice, never touch)
