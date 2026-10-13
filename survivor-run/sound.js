@@ -33,6 +33,8 @@ export const sfx = {
   hit() { tone(220, 120, 0.06, 'triangle', 0.024); },
   pick() { tone(620, 1040, 0.14, 'triangle', 0.05); },
   hurt() { tone(165, 62, 0.22, 'sawtooth', 0.065); },
+  explosion() { tone(105, 36, 0.42, 'sawtooth', 0.075); },
+  upgrade() { [740, 990].forEach((f, i) => setTimeout(() => tone(f, f * 1.15, 0.11, 'triangle', 0.035), i * 70)); },
   boss() { tone(115, 58, 0.52, 'sawtooth', 0.075); },
   win() { [523, 659, 784].forEach((f, i) => setTimeout(() => tone(f, f, 0.2, 'triangle', 0.05), i * 115)); },
   lose() { tone(280, 75, 0.55, 'triangle', 0.065); },

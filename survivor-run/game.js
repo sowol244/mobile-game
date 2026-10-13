@@ -1,20 +1,37 @@
-const UPGRADE = [
-  { kind: 'squad', label: '+2 생존자' },
-  { kind: 'rapid', label: '연사 +20%' },
-  { kind: 'power', label: '화력 +1' },
-  { kind: 'heal', label: '방패 +1' },
-];
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+export const STAGE_DURATION = 75;
+
+export function roadHalfWidth(w, h, y) {
+  const depth = clamp((y - h * 0.13) / (h * 0.84), 0, 1);
+  return w * (0.23 + depth * 0.21);
+}
+
+export function laneX(w, h, y, lane) {
+  return w * 0.5 + (lane - 1) * roadHalfWidth(w, h, y) * 0.58;
+}
+
+function closestLane(s, x) {
+  let best = 0, distance = Infinity;
+  for (let lane = 0; lane < 3; lane++) {
+    const next = Math.abs(laneX(s.w, s.h, s.y, lane) - x);
+    if (next < distance) { distance = next; best = lane; }
+  }
+  return best;
+}
 
 export function createGame(w, h) {
   return {
-    w, h, t: 0, playing: true, finished: null,
-    x: w / 2, targetX: w / 2, y: h * 0.79,
-    hp: 3, maxHp: 3, squad: 3, fireRate: 0.42, firePower: 1,
-    score: 0, kills: 0, distance: 0, bosses: 0,
-    roadOffset: 0, fireTimer: 0.2, spawnTimer: 0.8,
-    gateTimer: 5.5, gateNo: 0, bossTimer: 14,
-    invulnerable: 0, flash: 0, boss: null, bossNo: 0,
-    zombies: [], bullets: [], hazards: [], gates: [], pickups: [],
+    w, h, t: 0, finished: null,
+    x: w * 0.5, targetX: w * 0.5, y: h * 0.76,
+    hp: 100, maxHp: 100, invulnerable: 0, flash: 0,
+    weapon: 'pistol', weaponLevel: { pistol: 1, smg: 0 },
+    damageBonus: 0, fireTimer: 0.15,
+    score: 0, kills: 0, barrelsBroken: 0, distance: 0,
+    roadOffset: 0, spawnTimer: 0.7,
+    barrelTimer: 9.5, barrelWave: 0, explosiveTimer: 23,
+    boss: null, bossStarted: false, bossDefeated: false,
+    zombies: [], barrels: [], bullets: [], hazards: [], effects: [],
     events: [],
   };
 }
@@ -23,219 +40,341 @@ export function resizeGame(s, w, h) {
   const sx = w / s.w, sy = h / s.h;
   s.x *= sx;
   s.targetX *= sx;
-  s.y = h * 0.79;
-  for (const list of [s.zombies, s.bullets, s.hazards, s.gates, s.pickups]) {
-    for (const item of list) { item.x *= sx; item.y *= sy; }
+  s.y = h * 0.76;
+  for (const item of [...s.zombies, ...s.barrels, ...s.bullets, ...s.hazards, ...s.effects]) {
+    item.x *= sx;
+    item.y *= sy;
+    if (item.vx != null) item.vx *= sx;
+    if (item.vy != null) item.vy *= sy;
   }
   if (s.boss) { s.boss.x *= sx; s.boss.y = h * 0.2; }
-  s.w = w; s.h = h;
+  s.w = w;
+  s.h = h;
 }
 
-function spawnZombie(s) {
+function spawnZombie(s, forcedKind) {
+  if (s.zombies.length >= 40) return;
+  const kind = forcedKind || (s.t > 17 && Math.random() < 0.34 ? 'runner' : 'walker');
   const lane = Math.floor(Math.random() * 3);
-  const roadL = s.w * 0.18, roadW = s.w * 0.64;
-  const x = roadL + roadW * (lane + 0.5) / 3 + (Math.random() - 0.5) * roadW * 0.12;
-  const r = Math.random();
-  const kind = r < 0.16 ? 'runner' : r > 0.86 ? 'brute' : 'walker';
-  const hp = kind === 'brute' ? 4 : kind === 'runner' ? 1 : 2;
+  const y = s.h * (0.15 + Math.random() * 0.035);
+  const hp = kind === 'runner' ? 15 : 20;
   s.zombies.push({
-    kind, x, y: -28, homeX: x,
-    r: kind === 'brute' ? 20 : kind === 'runner' ? 12 : 15,
-    hp, maxHp: hp,
-    speed: (kind === 'runner' ? 82 : kind === 'brute' ? 35 : 53) + Math.min(30, s.t * 0.28),
-    phase: Math.random() * 8,
+    kind, lane, x: laneX(s.w, s.h, y, lane), y,
+    hp, maxHp: hp, radius: kind === 'runner' ? 13 : 16,
+    speed: s.h * (kind === 'runner' ? 0.42 : 0.29) * (1 + Math.min(0.2, s.t / 500)),
+    phase: Math.random() * Math.PI * 2, dead: false, dying: 0,
   });
 }
 
-function spawnGate(s) {
-  const left = UPGRADE[s.gateNo % UPGRADE.length];
-  let right = UPGRADE[(s.gateNo + 1 + Math.floor(s.gateNo / UPGRADE.length)) % UPGRADE.length];
-  if (left.kind === right.kind) right = UPGRADE[(s.gateNo + 2) % UPGRADE.length];
-  s.gates.push({ y: -52, left, right, checked: false });
-  s.gateNo++;
+function spawnBarrelPair(s) {
+  const pair = s.barrelWave % 2 === 0
+    ? [{ lane: 0, kind: 'weapon', hp: 60 }, { lane: 2, kind: 'upgrade', hp: 50 }]
+    : [{ lane: 0, kind: 'upgrade', hp: 50 }, { lane: 2, kind: 'weapon', hp: 60 }];
+  for (const item of pair) {
+    const y = s.h * 0.16;
+    s.barrels.push({
+      lane: item.lane, kind: item.kind, hp: item.hp, maxHp: item.hp,
+      x: laneX(s.w, s.h, y, item.lane), y, radius: 20, dead: false,
+    });
+  }
+  s.barrelWave++;
 }
 
-function upgrade(s, choice) {
-  if (choice.kind === 'squad') {
-    const before = s.squad;
-    s.squad = Math.min(12, s.squad + 2);
-    return before === 12 ? '생존자 최대' : '생존자 합류 +' + (s.squad - before);
-  }
-  if (choice.kind === 'rapid') {
-    const before = s.fireRate;
-    s.fireRate = Math.max(0.18, s.fireRate * 0.8);
-    return before === s.fireRate ? '연사 최대' : '연사 강화';
-  }
-  if (choice.kind === 'power') {
-    const before = s.firePower;
-    s.firePower = Math.min(4, s.firePower + 1);
-    return before === 4 ? '화력 최대' : '화력 강화';
-  }
-  s.maxHp = Math.min(5, s.maxHp + 1);
-  s.hp = Math.min(s.maxHp, s.hp + 1);
-  return '방패 충전';
+function spawnExplosiveBarrel(s, lane) {
+  const y = s.h * 0.155;
+  const chosen = lane == null ? Math.floor(Math.random() * 3) : lane;
+  s.barrels.push({
+    lane: chosen, kind: 'explosive', hp: 30, maxHp: 30,
+    x: laneX(s.w, s.h, y, chosen), y, radius: 21, dead: false,
+  });
 }
 
-function hitPlayer(s, events) {
+function hurtPlayer(s, damage, events) {
   if (s.invulnerable > 0 || s.finished) return;
-  s.hp = Math.max(0, s.hp - 1);
-  s.invulnerable = 1.05;
-  s.flash = 0.28;
+  s.hp = Math.max(0, s.hp - damage);
+  s.invulnerable = 0.6;
+  s.flash = 0.22;
   events.push('hurt');
-  if (s.hp === 0) {
+  if (s.hp <= 0) {
     s.finished = 'lose';
-    s.playing = false;
     events.push('lose');
   }
 }
 
-function popZombie(s, z, events) {
-  z.dead = true;
+function rewardBarrel(s, barrel, events) {
+  if (barrel.kind === 'weapon') {
+    if (s.weapon === 'pistol') {
+      s.weapon = 'smg';
+      s.weaponLevel.smg = 1;
+      events.push({ type: 'reward', label: '기관단총 획득' });
+    } else {
+      s.weaponLevel.smg = Math.min(5, s.weaponLevel.smg + 1);
+      s.damageBonus += 1;
+      events.push({ type: 'reward', label: '기관단총 강화 Lv.' + s.weaponLevel.smg });
+    }
+  } else if (barrel.kind === 'upgrade') {
+    s.damageBonus += 4;
+    events.push({ type: 'reward', label: '화력 강화 +4' });
+  }
+  s.barrelsBroken++;
+  s.score += 35;
+  events.push('barrelDown');
+}
+
+function addExplosion(s, x, y, radius, events) {
+  const queue = [{ x, y }];
+  const exploded = new Set();
+  while (queue.length) {
+    const point = queue.shift();
+    for (const other of s.barrels) {
+      if (other.kind !== 'explosive' || other.dead || exploded.has(other)) continue;
+      if (Math.hypot(other.x - point.x, other.y - point.y) <= radius) {
+        other.dead = true;
+        exploded.add(other);
+        s.barrelsBroken++;
+        s.score += 20;
+        queue.push(other);
+      }
+    }
+    for (const zombie of s.zombies) {
+      if (zombie.dead || Math.hypot(zombie.x - point.x, zombie.y - point.y) > radius) continue;
+      zombie.hp -= 65;
+      if (zombie.hp <= 0) killZombie(s, zombie, events);
+    }
+    if (s.boss && Math.hypot(s.boss.x - point.x, s.boss.y - point.y) < radius * 0.85) {
+      s.boss.hp -= 65;
+      if (s.boss.hp <= 0) defeatBoss(s, events);
+    }
+    s.effects.push({ x: point.x, y: point.y, kind: 'explosion', life: 0.62, total: 0.62, radius });
+  }
+  events.push('explosion');
+}
+
+function killZombie(s, zombie, events) {
+  if (zombie.dead) return;
+  zombie.dead = true;
+  zombie.dying = 0.28;
   s.kills++;
-  s.score += z.kind === 'brute' ? 140 : z.kind === 'runner' ? 110 : 90;
+  s.score += zombie.kind === 'runner' ? 15 : 10;
   events.push('kill');
-  if (z.kind === 'runner' && Math.random() < 0.4) {
-    s.pickups.push({ x: z.x, y: z.y, kind: 'survivor', vy: 52, phase: Math.random() * 8 });
+}
+
+function defeatBoss(s, events) {
+  if (!s.boss || s.bossDefeated) return;
+  s.boss = null;
+  s.bossDefeated = true;
+  s.score += 500;
+  events.push('bossDown');
+  s.finished = 'win';
+  events.push('win');
+}
+
+function findTarget(s) {
+  const side = roadHalfWidth(s.w, s.h, s.y) * 1.13;
+  const targets = [];
+  for (const zombie of s.zombies) if (!zombie.dead) targets.push(zombie);
+  for (const barrel of s.barrels) if (!barrel.dead) targets.push(barrel);
+  if (s.boss) targets.push({ ...s.boss, radius: 52, targetType: 'boss' });
+  let best = null, bestScore = Infinity;
+  for (const target of targets) {
+    const dx = Math.abs(target.x - s.x);
+    const dy = s.y - target.y;
+    if (dy < 15 || dx > side) continue;
+    const score = dy + dx * 1.2;
+    if (score < bestScore) { best = target; bestScore = score; }
+  }
+  return best;
+}
+
+function shoot(s, events) {
+  const target = findTarget(s);
+  const tx = target ? target.x : s.x;
+  const ty = target ? target.y : s.h * 0.16;
+  const dx = tx - s.x, dy = ty - (s.y - 26);
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const smg = s.weapon === 'smg';
+  const damage = (smg ? 6 : 10) + s.damageBonus;
+  s.bullets.push({
+    x: s.x, y: s.y - 28,
+    vx: dx / length * 730, vy: dy / length * 730,
+    damage, weapon: s.weapon, life: 1.25,
+  });
+  if (smg && s.weaponLevel.smg >= 3) {
+    for (const spread of [-0.07, 0.07]) {
+      s.bullets.push({
+        x: s.x, y: s.y - 28,
+        vx: (dx / length + spread) * 730, vy: dy / length * 730,
+        damage: damage * 0.68, weapon: s.weapon, life: 1.25,
+      });
+    }
+  }
+  events.push('shot');
+}
+
+function damageTarget(s, target, damage, events) {
+  if (target === s.boss) {
+    target.hp -= damage;
+    events.push('hit');
+    if (target.hp <= 0) defeatBoss(s, events);
+    return;
+  }
+  target.hp -= damage;
+  events.push('hit');
+  if (target.hp > 0) return;
+  if (target.kind === 'walker' || target.kind === 'runner') {
+    killZombie(s, target, events);
+  } else if (target.kind === 'explosive') {
+    target.dead = true;
+    s.barrelsBroken++;
+    s.score += 20;
+    addExplosion(s, target.x, target.y, s.w * 0.21, events);
+  } else {
+    target.dead = true;
+    rewardBarrel(s, target, events);
+  }
+}
+
+function updateBoss(s, dt, events) {
+  if (s.t >= 60 && !s.bossStarted) {
+    s.bossStarted = true;
+    const y = s.h * 0.2;
+    s.boss = {
+      x: s.w * 0.5, y, hp: 500, maxHp: 500,
+      phase: 0, attackTimer: 3.2, warning: 0, attackLane: 1,
+    };
+    events.push('bossStart');
+  }
+  if (!s.boss) return;
+  const boss = s.boss;
+  boss.phase += dt;
+  boss.x = s.w * 0.5 + Math.sin(boss.phase * 0.8) * roadHalfWidth(s.w, s.h, boss.y) * 0.36;
+  if (boss.warning > 0) {
+    boss.warning -= dt;
+    if (boss.warning <= 0) {
+      const targetX = s.x;
+      const targetY = s.y - 18;
+      const dx = targetX - boss.x, dy = targetY - boss.y;
+      const len = Math.max(1, Math.hypot(dx, dy));
+      s.hazards.push({ x: boss.x, y: boss.y + 16, vx: dx / len * 320, vy: dy / len * 320, radius: 13, damage: 16 });
+      boss.attackTimer = 2.8;
+      events.push('bossShot');
+    }
+  } else {
+    boss.attackTimer -= dt;
+    if (boss.attackTimer <= 0) {
+      boss.attackLane = closestLane(s, s.x);
+      boss.warning = 0.95;
+      events.push('bossWarn');
+    }
   }
 }
 
 export function updateGame(s, dt, targetX) {
-  if (!s.playing) return [];
+  if (s.finished) return [];
   const events = [];
   dt = Math.min(0.04, Math.max(0, dt));
   s.t += dt;
-  s.distance = Math.floor(s.t * 12);
-  s.score += dt * 4;
-  s.y = s.h * 0.79;
-  if (targetX != null) s.targetX = Math.max(s.w * 0.2, Math.min(s.w * 0.8, targetX));
+  s.distance = Math.floor(s.t * 10);
+  s.roadOffset = (s.roadOffset + dt * 0.42) % 1;
+  s.y = s.h * 0.76;
+  if (targetX != null) {
+    const reach = roadHalfWidth(s.w, s.h, s.y) * 0.88;
+    s.targetX = clamp(targetX, s.w * 0.5 - reach, s.w * 0.5 + reach);
+  }
   s.x += (s.targetX - s.x) * Math.min(1, dt * 12);
-  s.roadOffset = (s.roadOffset + dt * 205) % 120;
   s.invulnerable = Math.max(0, s.invulnerable - dt);
   s.flash = Math.max(0, s.flash - dt);
 
-  if (!s.boss && s.bosses < 3 && s.t >= s.bossTimer) {
-    s.bossNo = s.bosses + 1;
-    s.boss = { x: s.w / 2, y: s.h * 0.2, hp: 20 + s.bossNo * 8, maxHp: 20 + s.bossNo * 8, phase: 0, shotTimer: 1.5 };
-    s.zombies = [];
-    events.push('bossStart');
-  }
-
-  if (!s.boss) {
+  if (s.t < 60) {
     s.spawnTimer -= dt;
     if (s.spawnTimer <= 0) {
       spawnZombie(s);
-      s.spawnTimer = Math.max(0.58, 1.42 - s.t * 0.004) * (0.76 + Math.random() * 0.42);
-    }
-    s.gateTimer -= dt;
-    if (s.gateTimer <= 0) {
-      spawnGate(s);
-      s.gateTimer = 10.5;
+      s.spawnTimer = Math.max(0.56, 1.12 - s.t * 0.006) * (0.78 + Math.random() * 0.4);
     }
   }
+  s.barrelTimer -= dt;
+  if (s.barrelTimer <= 0 && s.barrelWave < 4) {
+    spawnBarrelPair(s);
+    s.barrelTimer = [15, 15, 14, 99][s.barrelWave - 1];
+  }
+  s.explosiveTimer -= dt;
+  if (s.explosiveTimer <= 0 && s.t < 60) {
+    const lane = Math.floor(Math.random() * 2);
+    spawnExplosiveBarrel(s, lane);
+    spawnExplosiveBarrel(s, lane + 1);
+    s.explosiveTimer = 14;
+  }
 
-  if (s.boss) {
-    const b = s.boss;
-    b.phase += dt;
-    b.x = s.w / 2 + Math.sin(b.phase * 0.72) * s.w * 0.22;
-    b.shotTimer -= dt;
-    if (b.shotTimer <= 0) {
-      const lane = Math.floor(Math.random() * 3);
-      const roadL = s.w * 0.18, roadW = s.w * 0.64;
-      s.hazards.push({ x: roadL + roadW * (lane + 0.5) / 3, y: b.y + 36, vy: 170, r: 11 });
-      b.shotTimer = Math.max(0.85, 1.55 - s.bossNo * 0.12);
-      events.push('bossShot');
+  updateBoss(s, dt, events);
+  for (const zombie of s.zombies) {
+    zombie.y += zombie.speed * dt;
+    zombie.x = laneX(s.w, s.h, zombie.y, zombie.lane) + Math.sin(s.t * 2.1 + zombie.phase) * 3;
+    if (zombie.dead) { zombie.dying -= dt; continue; }
+    if (zombie.y >= s.y - 24) {
+      if (Math.abs(zombie.x - s.x) < zombie.radius + 20) hurtPlayer(s, zombie.kind === 'runner' ? 15 : 10, events);
+      zombie.dead = true;
     }
+  }
+  for (const barrel of s.barrels) {
+    barrel.y += s.h * 0.19 * dt;
+    barrel.x = laneX(s.w, s.h, barrel.y, barrel.lane);
+    if (barrel.y >= s.y - 28) barrel.dead = true;
   }
 
   s.fireTimer -= dt;
   if (s.fireTimer <= 0) {
-    const count = Math.min(7, s.squad);
-    for (let i = 0; i < count; i++) {
-      const offset = (i - (count - 1) / 2) * Math.min(12, s.w * 0.031);
-      s.bullets.push({ x: s.x + offset, y: s.y - 18, vy: 510, damage: s.firePower, r: 3.5 });
-    }
-    s.fireTimer = s.fireRate;
-    events.push('shot');
+    shoot(s, events);
+    s.fireTimer = s.weapon === 'smg' ? 0.11 : 0.25;
   }
-
-  for (const z of s.zombies) {
-    z.y += z.speed * dt;
-    z.x = z.homeX + Math.sin(s.t * 1.15 + z.phase) * 5;
-    if (z.y >= s.y - 22) {
-      if (Math.abs(z.x - s.x) < z.r + 13) hitPlayer(s, events);
-      z.dead = true;
+  for (const bullet of s.bullets) {
+    bullet.x += bullet.vx * dt;
+    bullet.y += bullet.vy * dt;
+    bullet.life -= dt;
+    if (bullet.life <= 0) { bullet.dead = true; continue; }
+    let hit = false;
+    for (const barrel of s.barrels) {
+      if (barrel.dead) continue;
+      if (Math.hypot(bullet.x - barrel.x, bullet.y - barrel.y) > barrel.radius + 5) continue;
+      damageTarget(s, barrel, bullet.damage, events);
+      bullet.dead = true; hit = true; break;
     }
-  }
-
-  for (const b of s.bullets) b.y -= b.vy * dt;
-  for (const b of s.bullets) {
-    if (b.dead) continue;
-    if (s.boss && Math.abs(b.x - s.boss.x) < 46 && Math.abs(b.y - s.boss.y) < 42) {
-      s.boss.hp -= b.damage;
-      b.dead = true;
-      events.push('hit');
-      if (s.boss.hp <= 0) {
-        s.boss = null;
-        s.bosses++;
-        s.score += 650;
-        events.push('bossDown');
-        if (s.bosses >= 3) {
-          s.finished = 'win';
-          s.playing = false;
-          events.push('win');
-        } else {
-          s.bossTimer = s.t + 12;
-        }
-      }
-      continue;
+    if (hit) continue;
+    for (const zombie of s.zombies) {
+      if (zombie.dead) continue;
+      if (Math.hypot(bullet.x - zombie.x, bullet.y - zombie.y) > zombie.radius + 5) continue;
+      damageTarget(s, zombie, bullet.damage, events);
+      bullet.dead = true; hit = true; break;
     }
-    for (const z of s.zombies) {
-      if (z.dead || Math.abs(b.x - z.x) > z.r + 4 || Math.abs(b.y - z.y) > z.r + 5) continue;
-      z.hp -= b.damage;
-      b.dead = true;
-      events.push('hit');
-      if (z.hp <= 0) popZombie(s, z, events);
-      break;
+    if (hit) continue;
+    if (s.boss && Math.hypot(bullet.x - s.boss.x, bullet.y - s.boss.y) < 58) {
+      damageTarget(s, s.boss, bullet.damage, events);
+      bullet.dead = true;
     }
   }
 
-  for (const h of s.hazards) {
-    h.y += h.vy * dt;
-    if (Math.abs(h.x - s.x) < h.r + 12 && Math.abs(h.y - s.y) < h.r + 12) {
-      hitPlayer(s, events);
-      h.dead = true;
+  for (const hazard of s.hazards) {
+    hazard.x += hazard.vx * dt;
+    hazard.y += hazard.vy * dt;
+    if (Math.hypot(hazard.x - s.x, hazard.y - (s.y - 10)) < hazard.radius + 22) {
+      hurtPlayer(s, hazard.damage, events);
+      hazard.dead = true;
     }
   }
+  for (const effect of s.effects) effect.life -= dt;
+  s.zombies = s.zombies.filter(z => !z.dead || z.dying > 0);
+  s.barrels = s.barrels.filter(b => !b.dead);
+  s.bullets = s.bullets.filter(b => !b.dead && b.y > -20 && b.y < s.h + 20);
+  s.hazards = s.hazards.filter(h => !h.dead && h.y < s.h + 30 && h.x > -30 && h.x < s.w + 30);
+  s.effects = s.effects.filter(e => e.life > 0);
 
-  for (const g of s.gates) {
-    g.y += 154 * dt;
-    if (!g.checked && g.y >= s.y - 14) {
-      g.checked = true;
-      const leftX = s.w * 0.34, rightX = s.w * 0.66;
-      const dl = Math.abs(s.x - leftX), dr = Math.abs(s.x - rightX);
-      if (Math.min(dl, dr) < s.w * 0.13) {
-        const label = upgrade(s, dl < dr ? g.left : g.right);
-        events.push({ type: 'gate', label });
-      } else events.push({ type: 'gateMiss' });
-    }
+  if (s.t >= STAGE_DURATION && s.bossDefeated) {
+    s.finished = 'win';
+    events.push('win');
+  } else if (s.t >= 88 && !s.finished) {
+    s.finished = 'lose';
+    events.push('timeout');
+    events.push('lose');
   }
-
-  for (const p of s.pickups) {
-    p.y += p.vy * dt;
-    p.phase += dt * 4;
-    if (Math.hypot(p.x - s.x, p.y - s.y) < 28) {
-      p.dead = true;
-      s.squad = Math.min(12, s.squad + 1);
-      s.score += 35;
-      events.push('pickup');
-    }
-  }
-
-  s.zombies = s.zombies.filter(z => !z.dead && z.y < s.h + 30);
-  s.bullets = s.bullets.filter(b => !b.dead && b.y > -20);
-  s.hazards = s.hazards.filter(h => !h.dead && h.y < s.h + 30);
-  s.gates = s.gates.filter(g => g.y < s.h + 70);
-  s.pickups = s.pickups.filter(p => !p.dead && p.y < s.h + 30);
   s.score = Math.floor(s.score);
   s.events = events;
   return events;
