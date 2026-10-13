@@ -1,35 +1,56 @@
-import { createGame, resizeGame, updateGame } from './game.js';
+import { createGame, resizeGame, updateGame, STAGE_DURATION } from './game.js';
 import { drawScene } from './render.js';
 import { isMuted, setMuted, unlock, sfx } from './sound.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('gameCanvas');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { alpha: false });
 const overlay = $('overlay');
+const stage = $('stage');
 const panels = {
   main: $('pMain'), ask: $('pAsk'), tutorial: $('pTutorial'),
   help: $('pHelp'), rank: $('pRank'), pause: $('pPause'),
 };
-const hud = { root: $('hud'), score: $('score'), squad: $('squad'), health: $('health') };
-const KEY_TOP = 'survivor-run-top', KEY_TUT = 'survivor-run-tutorial';
+const hud = {
+  root: $('hud'), distance: $('distance'), timer: $('timer'),
+  progress: $('progressFill'), healthText: $('healthText'), health: $('healthFill'),
+  weapon: $('weapon'), weaponLevel: $('weaponLevel'), weaponIcon: $('weaponIcon'),
+  kills: $('kills'), bossRoot: $('bossHud'), bossFill: $('bossFill'),
+};
+const KEY_TOP = 'survivor-run-top', KEY_TUT = 'dead-route-tutorial';
 const top = () => { try { return JSON.parse(localStorage.getItem(KEY_TOP)) || []; } catch { return []; } };
-const save = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 기록 없이도 플레이할 수 있어요. */ } };
+const save = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 저장 없이도 플레이할 수 있어요. */ } };
+const sprite = path => {
+  const image = new Image();
+  image.src = new URL(path, import.meta.url).href;
+  return image;
+};
+const assets = {
+  player: sprite('assets/player-back-a.webp'),
+  playerRun: sprite('assets/player-back-b.webp'),
+  walker: sprite('assets/zombie-walker.webp'),
+  walkerRun: sprite('assets/zombie-walker-run.webp'),
+  runner: sprite('assets/zombie-runner.webp'),
+  runnerRun: sprite('assets/zombie-runner-run.webp'),
+  brute: sprite('assets/zombie-brute.webp'),
+};
 const tutorials = [
-  ['이동', '화면을 좌우로 끌어 움직입니다. 사격은 자동이에요.'],
-  ['강화', '길목에서 왼쪽이나 오른쪽 문으로 달리세요.'],
-  ['보스', '붉은 탄환을 피하고 세 구역의 보스를 쓰러뜨리세요.'],
+  ['이동', '화면을 좌우로 끌어 도로 안에서 움직입니다. PC에서는 A/D 또는 ←/→ 키를 사용하세요.'],
+  ['자동 사격', '총은 자동으로 발사됩니다. 목표물과 같은 쪽으로 움직이면 사격 방향이 따라갑니다.'],
+  ['보급 선택', '숫자 드럼통을 부수면 보상을 얻습니다. 빨간 드럼통은 큰 폭발을 일으켜요.'],
 ];
 
 let state = 'title', game = null, lastFrame = performance.now();
-let viewW = 1, viewH = 1, dpr = 1, pointerDown = false, pointerX = null;
-let keys = new Set(), tutorialStep = 0, bannerTimer = 0, lastSaved = null;
+let viewW = 1, viewH = 1, dpr = 1;
+let pointerDown = false, pointerX = null, keys = new Set();
+let tutorialStep = 0, bannerTimer = 0, lastSaved = null;
 
 function showPanel(name) {
-  for (const [key, el] of Object.entries(panels)) el.hidden = key !== name;
+  for (const [key, panel] of Object.entries(panels)) panel.hidden = key !== name;
 }
 
 function resize() {
-  const rect = canvas.getBoundingClientRect();
+  const rect = stage.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
   const w = rect.width, h = rect.height;
   const changed = w !== viewW || h !== viewH;
@@ -45,11 +66,12 @@ function resize() {
 
 function showTitle() {
   state = 'title'; game = null; keys.clear(); pointerDown = false; pointerX = null;
-  hud.root.hidden = true; $('pause').hidden = true;
-  $('title').innerHTML = '생존자를 모으며<br>달리는 게임';
-  $('msg').textContent = '길을 고르고 좀비 떼를 쓸어내는 슈팅 게임';
+  hud.root.hidden = true; hud.bossRoot.hidden = true;
+  $('pause').hidden = true;
+  $('title').innerHTML = 'DEAD<br>ROUTE';
+  $('msg').innerHTML = '무너진 도로를 돌파하고<br>안전지대까지 살아남으세요.';
   $('result').hidden = true; $('home').hidden = true;
-  $('start').textContent = '시작';
+  $('start').textContent = '작전 시작';
   showPanel('main'); overlay.hidden = false;
 }
 
@@ -61,6 +83,7 @@ function beginGame() {
   bannerTimer = 0;
   $('banner').classList.remove('on');
   hud.root.hidden = false; $('pause').hidden = false;
+  hud.bossRoot.hidden = true;
   overlay.hidden = true;
   updateHud();
   lastFrame = performance.now();
@@ -68,45 +91,53 @@ function beginGame() {
 
 function updateHud() {
   if (!game) return;
-  hud.score.textContent = game.score.toLocaleString('ko-KR');
-  hud.squad.textContent = String(game.squad);
-  hud.health.textContent = '♥'.repeat(game.hp) + '♡'.repeat(Math.max(0, game.maxHp - game.hp));
+  hud.distance.textContent = game.distance.toLocaleString('ko-KR') + ' m';
+  hud.progress.style.width = Math.min(100, game.t / STAGE_DURATION * 100) + '%';
+  const remaining = Math.max(0, STAGE_DURATION - game.t);
+  hud.timer.textContent = game.boss ? '보스' : '00:' + String(Math.ceil(remaining)).padStart(2, '0');
+  hud.healthText.textContent = Math.ceil(game.hp) + ' / ' + game.maxHp;
+  hud.health.style.width = Math.max(0, game.hp / game.maxHp * 100) + '%';
+  hud.health.classList.toggle('critical', game.hp <= 30);
+  hud.weapon.textContent = game.weapon === 'smg' ? '기관단총' : '권총';
+  hud.weaponIcon.textContent = game.weapon === 'smg' ? '▰' : '●';
+  hud.weaponLevel.textContent = String(game.weaponLevel[game.weapon] || 1);
+  hud.kills.textContent = String(game.kills);
+  hud.bossRoot.hidden = !game.boss;
+  if (game.boss) hud.bossFill.style.width = Math.max(0, game.boss.hp / game.boss.maxHp * 100) + '%';
 }
 
 function announce(message, seconds) {
   const el = $('banner');
   el.textContent = message;
   el.classList.add('on');
-  bannerTimer = seconds || 1.8;
+  bannerTimer = seconds || 1.6;
 }
 
 function handleEvents(events) {
-  if (events.includes('shot')) sfx.shot();
-  if (events.includes('hit')) sfx.hit();
-  if (events.includes('pickup')) { sfx.pick(); announce('생존자 합류', 1.2); }
-  if (events.includes('hurt')) { sfx.hurt(); announce('조심하세요!', 1.2); }
-  if (events.includes('bossStart')) { sfx.boss(); announce('보스 출현', 2); }
-  if (events.includes('bossDown')) { sfx.pick(); announce('보스 격파', 1.6); }
   for (const event of events) {
-    if (event && typeof event === 'object' && event.type === 'gate') {
-      sfx.pick(); announce(event.label, 1.5);
+    if (event === 'shot') sfx.shot();
+    else if (event === 'hit') sfx.hit();
+    else if (event === 'barrelDown') sfx.pick();
+    else if (event === 'explosion') sfx.explosion();
+    else if (event === 'hurt') { sfx.hurt(); announce('피격! 도로를 벗어나세요', 1.2); }
+    else if (event === 'bossStart') { sfx.boss(); announce('보스 출현 · 경고 구역을 피하세요', 2.2); }
+    else if (event === 'bossWarn') announce('강타 예고 · 붉은 구역을 피하세요', 1.1);
+    else if (event === 'bossDown') { sfx.pick(); announce('대형 변이체 격파', 1.8); }
+    else if (event === 'win') sfx.win();
+    else if (event === 'lose' || event === 'timeout') sfx.lose();
+    else if (event && typeof event === 'object' && event.type === 'reward') {
+      sfx.upgrade(); announce(event.label, 1.8);
     }
-    if (event && typeof event === 'object' && event.type === 'gateMiss') announce('문을 골라 보세요', 1.4);
   }
-  if (events.includes('win')) sfx.win();
-  if (events.includes('lose')) sfx.lose();
 }
 
 function finishGame(result) {
   if (!game || state === 'over') return;
   state = 'over'; keys.clear(); pointerDown = false;
-  $('pause').hidden = true;
+  $('pause').hidden = true; hud.root.hidden = true; hud.bossRoot.hidden = true;
   const entry = {
-    id: Date.now(),
-    score: game.score,
-    kills: game.kills,
-    distance: game.distance,
-    result: result === 'win' ? '돌파 성공' : '탈출',
+    id: Date.now(), score: game.score, kills: game.kills,
+    distance: game.distance, result: result === 'win' ? '돌파 성공' : '작전 종료',
     date: new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' }).format(new Date()),
   };
   const records = top();
@@ -114,13 +145,12 @@ function finishGame(result) {
   records.sort((a, b) => b.score - a.score);
   save(KEY_TOP, records.slice(0, 10));
   lastSaved = entry.id;
-  $('title').textContent = result === 'win' ? '구조대에 도착!' : '작전 종료';
-  $('msg').textContent = result === 'win' ? '세 구역을 모두 돌파했어요.' : '생존자 ' + game.squad + '명과 안전지대까지 달렸어요.';
+  $('title').innerHTML = result === 'win' ? 'ROUTE<br>SECURED' : 'MISSION<br>FAILED';
+  $('msg').textContent = result === 'win' ? '안전지대에 도착했습니다.' : '탄약과 체력을 정비하고 다시 출동하세요.';
   $('result').textContent = '점수 ' + game.score.toLocaleString('ko-KR') + ' · 처치 ' + game.kills + ' · 거리 ' + game.distance + 'm';
   $('result').hidden = false;
-  $('start').textContent = '다시 달리기';
+  $('start').textContent = '다시 출동';
   $('home').hidden = false;
-  hud.root.hidden = true;
   showPanel('main'); overlay.hidden = false;
 }
 
@@ -137,17 +167,7 @@ function paintRank() {
     li.append(rank, score, detail, date);
     rows.append(li);
   });
-  $('rankNote').textContent = list.length ? '점수가 높은 순서예요. 이 기기에만 저장됩니다.' : '아직 기록이 없어요.';
-}
-
-function showTutorial() {
-  tutorialStep = 0;
-  paintTutorial();
-  showPanel('tutorial');
-}
-
-function markTutorialSeen() {
-  try { localStorage.setItem(KEY_TUT, '1'); } catch { /* 튜토리얼 안내를 다시 보여도 플레이할 수 있어요. */ }
+  $('rankNote').textContent = list.length ? '높은 점수 순서예요. 이 기기에만 저장됩니다.' : '아직 작전 기록이 없습니다.';
 }
 
 function paintTutorial() {
@@ -156,6 +176,16 @@ function paintTutorial() {
   $('tutTitle').textContent = item[0];
   $('tutText').textContent = item[1];
   $('tutNext').textContent = tutorialStep === tutorials.length - 1 ? '출발!' : '다음';
+}
+
+function markTutorialSeen() {
+  try { localStorage.setItem(KEY_TUT, '1'); } catch { /* 다음 출동에서 안내를 다시 보여도 괜찮아요. */ }
+}
+
+function showTutorial() {
+  tutorialStep = 0;
+  paintTutorial();
+  showPanel('tutorial');
 }
 
 function startFromTitle() {
@@ -208,7 +238,7 @@ canvas.addEventListener('pointerdown', event => {
   pointerDown = true;
   const rect = canvas.getBoundingClientRect();
   pointerX = event.clientX - rect.left;
-  try { canvas.setPointerCapture(event.pointerId); } catch { /* 터치가 화면 밖으로 나가도 다음 입력에서 복구돼요. */ }
+  try { canvas.setPointerCapture(event.pointerId); } catch { /* 입력 중단 시 다음 터치에서 복구합니다. */ }
 });
 canvas.addEventListener('pointermove', event => {
   if (!pointerDown || state !== 'play') return;
@@ -225,7 +255,7 @@ window.addEventListener('keydown', event => {
     keys.add(event.key.toLowerCase());
     event.preventDefault();
   }
-  if (event.key === 'Escape') { $('pause').click(); }
+  if (event.key === 'Escape') $('pause').click();
 });
 window.addEventListener('keyup', event => keys.delete(event.key.toLowerCase()));
 window.addEventListener('blur', () => { keys.clear(); pointerDown = false; });
@@ -235,7 +265,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('resize', resize);
 window.addEventListener('gesturestart', event => event.preventDefault(), { passive: false });
 window.addEventListener('wheel', event => { if (event.ctrlKey) event.preventDefault(); }, { passive: false });
-new ResizeObserver(resize).observe($('stage'));
+new ResizeObserver(resize).observe(stage);
 resize();
 
 function frame(now) {
@@ -254,7 +284,7 @@ function frame(now) {
     }
     if (game.finished) finishGame(game.finished);
   }
-  drawScene(ctx, game, viewW, viewH, now, state === 'title' || !game);
+  drawScene(ctx, game, viewW, viewH, now, state === 'title' || !game, assets);
   requestAnimationFrame(frame);
 }
 
