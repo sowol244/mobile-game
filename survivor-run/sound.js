@@ -30,6 +30,7 @@ function tone(from, to, duration, type, volume) {
 
 export const sfx = {
   shot() { tone(470, 190, 0.055, 'square', 0.012); },
+  allyShot() { tone(620, 330, 0.045, 'triangle', 0.006); },
   hit() { tone(220, 120, 0.06, 'triangle', 0.024); },
   pick() { tone(620, 1040, 0.14, 'triangle', 0.05); },
   hurt() { tone(165, 62, 0.22, 'sawtooth', 0.065); },
@@ -39,3 +40,4 @@ export const sfx = {
   win() { [523, 659, 784].forEach((f, i) => setTimeout(() => tone(f, f, 0.2, 'triangle', 0.05), i * 115)); },
   lose() { tone(280, 75, 0.55, 'triangle', 0.065); },
 };
+

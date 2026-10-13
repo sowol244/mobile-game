@@ -17,7 +17,7 @@
         <div class="route-label"><span>DEAD ROUTE</span><b id="distance">0 m</b></div>
         <div class="progress-track"><i id="progressFill"></i></div>
       </div>
-      <div class="timer-tag"><small>남은 시간</small><b id="timer">01:15</b></div>
+      <div class="timer-tag"><small>경과 시간</small><b id="timer">00:00</b></div>
     </div>
     <div class="hud-bottom">
       <div class="health-block">
@@ -27,6 +27,7 @@
       <div class="weapon-block">
         <span class="weapon-icon" id="weaponIcon">●</span>
         <span class="weapon-copy"><b id="weapon">권총</b><small>LV. <i id="weaponLevel">1</i></small></span>
+        <span class="ally-chip" id="allyStat" hidden>동료 <b id="allyCount">0</b></span>
         <span class="kill-chip">☠ <b id="kills">0</b></span>
       </div>
     </div>
@@ -44,8 +45,8 @@
       <section class="panel" id="pMain">
         <div class="eyebrow">SURVIVAL SHOOTER · 1-1</div>
         <h1 id="title">DEAD<br>ROUTE</h1>
-        <p id="msg">무너진 도로를 돌파하고<br>안전지대까지 살아남으세요.</p>
-        <div class="mission-chips"><span>75초 작전</span><span>자동 사격</span><span>보스 웨이브</span></div>
+        <p id="msg">보급통을 선택해 무기를 강화하고,<br>대규모 웨이브와 보스를 돌파하세요.</p>
+        <div class="mission-chips"><span>숫자 보급통 선택</span><span>자동 사격 · 좌우 이동</span><span>75초 최종 보스</span></div>
         <p id="result" hidden></p>
         <div class="buttons">
           <button class="primary" id="start" type="button">작전 시작</button>
@@ -56,12 +57,12 @@
           </div>
           <button class="sub home" id="home" type="button" hidden>처음 화면</button>
         </div>
-        <div class="menu-footer"><span>드럼통을 노려 무기를 강화하세요</span><span class="signal">● 작전 가능</span></div>
+        <div class="menu-footer"><span>원하는 보급통 쪽으로 이동해 집중 사격</span><span class="signal">● 작전 가능</span></div>
       </section>
       <section class="panel" id="pAsk" hidden>
         <div class="eyebrow">작전 브리핑</div>
         <h1>생존 규칙</h1>
-        <p>짧은 안내를 보고 안전지대를 향해 출발합니다.</p>
+        <p>좌우로 이동해 보급을 받고, 75초 안에 최종 보스를 처치하세요.</p>
         <div class="buttons">
           <button class="primary" id="askYes" type="button">안내 확인</button>
           <button class="sub wide" id="askNo" type="button">바로 출발</button>
@@ -82,9 +83,11 @@
         <ul class="help">
           <li><b>이동</b> 화면을 좌우로 끌어 도로 안에서 움직입니다.</li>
           <li><b>자동 사격</b> 총은 자동으로 쏩니다. 원하는 목표물 쪽으로 이동하세요.</li>
-          <li><b>드럼통</b> 숫자를 0으로 만들면 보상을 얻습니다. 파랑은 기관단총, 보라는 화력 강화입니다.</li>
-          <li><b>폭발</b> 빨간 드럼통은 주변 좀비와 폭발 드럼통까지 함께 터뜨립니다.</li>
-          <li><b>보스</b> 바닥의 붉은 경고 구역에서 벗어나며 약점을 공격하세요.</li>
+          <li><b>목표 선택</b> 원하는 보급통 쪽으로 움직이면 표적 표시와 사격 방향이 따라갑니다.</li>
+          <li><b>보급통</b> 숫자는 남은 내구도입니다. 동료 또는 기관단총을 선택해 전투력을 올리세요.</li>
+          <li><b>동료</b> 합류한 전투원은 플레이어 뒤에서 자동으로 사격합니다.</li>
+          <li><b>폭발</b> 빨간 드럼통을 터뜨리면 주변 좀비와 폭발통까지 함께 휩쓸립니다.</li>
+          <li><b>보스</b> 붉게 표시되는 공격 차선에서 벗어나며 최종 보스를 공격하세요.</li>
         </ul>
         <button class="primary back" type="button">돌아가기</button>
       </section>
@@ -110,3 +113,4 @@
 <script type="module" src="main.js"></script>
 </body>
 </html>
+

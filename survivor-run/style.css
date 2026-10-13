@@ -28,7 +28,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 #app {
-  width: min(100%, 560px);
+  width: min(100vw, 56.25dvh, 520px);
   height: 100%;
   height: 100dvh;
   min-height: 0;
@@ -74,6 +74,8 @@ body {
 .weapon-copy b { color: #f2ddaa; font-size: 12px; white-space: nowrap; }
 .weapon-copy small { color: var(--muted); font-size: 10px; }
 .weapon-copy i { font-style: normal; color: var(--gold); }
+.ally-chip { display: flex; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid rgba(139,220,161,.44); border-radius: 9px; color: #c3f0c7; background: rgba(62,137,83,.22); font-size: 10px; white-space: nowrap; }
+.ally-chip b { color: #f2ffdc; font-size: 12px; }
 .kill-chip { margin-left: auto; display: flex; gap: 4px; align-items: center; color: #f3c6b5; font-size: 11px; }
 .kill-chip b { color: var(--fg); font-size: 13px; }
 #stage {
@@ -88,6 +90,7 @@ body {
   box-shadow: 0 18px 55px rgba(0, 0, 0, .38), inset 0 1px rgba(255,255,255,.1);
   touch-action: none;
 }
+#gameCanvas { cursor: crosshair; }
 #gameCanvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #mute, #pause {
   position: absolute;
@@ -231,3 +234,4 @@ button, .sub { font: 16px var(--font); cursor: pointer; touch-action: manipulati
   .panel { padding-inline: 13px; }
   .menu-footer { font-size: 9px; }
 }
+
