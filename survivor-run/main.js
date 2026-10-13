@@ -1,6 +1,6 @@
-import { createGame, resizeGame, updateGame, STAGE_DURATION } from './game.js';
-import { drawScene } from './render.js';
-import { isMuted, setMuted, unlock, sfx } from './sound.js';
+import { createGame, resizeGame, updateGame, STAGE_DURATION } from './game.js?v=1-1-20261014';
+import { drawScene } from './render.js?v=1-1-20261014';
+import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014';
 
 const $ = id => document.getElementById(id);
 const canvas = $('gameCanvas');
