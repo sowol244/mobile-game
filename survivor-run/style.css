@@ -130,6 +130,25 @@ body {
 .boss-label span { color: #ffae88; font-size: 10px; }
 .boss-track { height: 8px; }
 .boss-track i { width: 100%; background: linear-gradient(90deg, #ff9a52, #f34c45); }
+#tutorialHint {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  left: 50%;
+  max-width: calc(100% - 48px);
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 218, 143, .32);
+  border-radius: 12px;
+  color: var(--fg);
+  background: rgba(13, 20, 19, .78);
+  box-shadow: 0 4px 12px rgba(0,0,0,.2);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
 #banner {
   position: absolute;
   z-index: 2;

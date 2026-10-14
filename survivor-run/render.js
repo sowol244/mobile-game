@@ -1,4 +1,4 @@
-import { roadHalfWidth, laneX } from './game.js';
+import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const tintedSpriteCache = new WeakMap();
@@ -238,6 +238,22 @@ function drawObstacle(g, obstacle, h, time) {
   g.restore();
 }
 
+function drawDefenseLine(g, w, h, flash) {
+  const y = h * DEFENSE_LINE_Y_RATIO;
+  const half = Math.max(0, roadHalfWidth(w, h, y) - 4);
+  const intensity = clamp(flash / 0.38, 0, 1);
+  g.save();
+  g.strokeStyle = 'rgba(255,75,67,' + (0.28 + intensity * 0.67) + ')';
+  g.lineWidth = 1.2 + intensity * 1.5;
+  g.shadowColor = '#ff4b43';
+  g.shadowBlur = 2 + intensity * 10;
+  g.beginPath();
+  g.moveTo(w * 0.5 - half, y);
+  g.lineTo(w * 0.5 + half, y);
+  g.stroke();
+  g.restore();
+}
+
 function drawFootstepDust(g, x, y, scale, phase, color) {
   const step = (Math.sin(phase) + 1) * 0.5;
   g.save();
@@ -352,7 +368,7 @@ function drawPlayer(g, s, time, assets) {
   if (s.invulnerable > 0 && Math.floor(time * 18) % 2 === 0) return;
   drawFootstepDust(g, s.x, s.y + 16, 1.05, stride, '#c8b898');
   const image = Math.sin(stride) > 0 && assets.playerRun ? assets.playerRun : assets.player;
-  drawSprite(g, image, s.x, s.y + 17 + bob, w, h, 0, Math.sin(stride) * 0.035, 1);
+  drawSprite(g, image, s.x, s.y + 17 + bob, w, h, 0, Math.sin(stride) * 0.035, 1, s.flash > 0 ? '#ff7068' : null);
 }
 
 function drawBullet(g, bullet) {
@@ -402,6 +418,38 @@ function drawEffect(g, effect, time) {
   }
   const progress = 1 - effect.life / effect.total;
   g.save();
+  if (effect.kind === 'damageNumber') {
+    const y = effect.y - progress * 21;
+    const label = '-' + effect.amount;
+    g.globalAlpha = clamp(1 - progress * 0.88, 0, 1);
+    g.font = '900 19px "Black Han Sans", sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineWidth = 3;
+    g.strokeStyle = 'rgba(16,20,19,.92)';
+    g.strokeText(label, effect.x, y);
+    g.fillStyle = effect.source === 'breach' ? '#ffd37b' : '#ff7770';
+    g.fillText(label, effect.x, y);
+    g.restore();
+    return;
+  }
+  if (effect.kind === 'breach') {
+    const radius = 6 + progress * 18;
+    g.globalAlpha = 1 - progress;
+    g.strokeStyle = '#ff6258';
+    g.lineWidth = 2.5 * (1 - progress) + 0.8;
+    g.beginPath();
+    g.arc(effect.x, effect.y, radius, 0, Math.PI * 2);
+    g.stroke();
+    for (const side of [-1, 1]) {
+      g.beginPath();
+      g.moveTo(effect.x + side * (radius + 3), effect.y - 3);
+      g.lineTo(effect.x + side * (radius + 8), effect.y - 9);
+      g.stroke();
+    }
+    g.restore();
+    return;
+  }
   if (effect.kind === 'hit') {
     const size = effect.radius * (0.5 + progress * 0.8);
     g.globalAlpha = 1 - progress;
@@ -431,10 +479,15 @@ function drawTargetLock(g, s, time) {
   const pulse = 0.66 + Math.sin(time * 12) * 0.22;
   g.save();
   g.globalAlpha = pulse;
+  if (s.showAimGuide) {
+    g.save();
+    g.globalAlpha = pulse * 0.42;
+    g.strokeStyle = color; g.lineWidth = 1.2;
+    g.setLineDash([3, 5]);
+    g.beginPath(); g.moveTo(s.x, s.y - 42); g.lineTo(target.x, target.y); g.stroke();
+    g.restore();
+  }
   g.strokeStyle = color; g.lineWidth = 2;
-  g.setLineDash([5, 4]);
-  g.beginPath(); g.moveTo(s.x, s.y - 42); g.lineTo(target.x, target.y); g.stroke();
-  g.setLineDash([]);
   g.beginPath(); g.arc(target.x, target.y - radius * 0.45, radius, 0, Math.PI * 2); g.stroke();
   const cx = target.x, cy = target.y - radius * 0.45, c = radius * 0.42;
   for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
@@ -469,12 +522,19 @@ function drawTitleScene(g, w, h, time, assets) {
 
 export function drawScene(ctx, s, w, h, now, title, assets) {
   ctx.clearRect(0, 0, w, h);
+  ctx.save();
+  if (s && s.hitShake > 0) {
+    const shake = s.hitShake * 8;
+    ctx.translate(Math.sin(now * 0.07) * shake, Math.cos(now * 0.09) * shake * 0.45);
+  }
   const offset = s ? s.roadOffset : (now * 0.00008) % 1;
   if (title || !s) {
     drawTitleScene(ctx, w, h, now, assets || {});
+    ctx.restore();
     return;
   }
   drawRoad(ctx, w, h, offset);
+  drawDefenseLine(ctx, w, h, s.defenseFlash);
   const time = s.t;
   const objects = [];
   for (const barrel of s.barrels) objects.push({ y: barrel.y, kind: 'barrel', item: barrel });
@@ -504,16 +564,12 @@ export function drawScene(ctx, s, w, h, now, title, assets) {
     ctx.strokeStyle = 'rgba(255,230,143,' + (0.35 + Math.sin(time * 25) * 0.16) + ')';
     ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(s.x, s.y + 6, 40, 25, 0, 0, Math.PI * 2); ctx.stroke();
   }
-  if (s.t < 7) {
-    roundRect(ctx, w * 0.5 - 94, h * 0.64, 188, 33, 16, 'rgba(18,25,25,.74)', 'rgba(255,255,255,.18)');
-    ctx.fillStyle = '#fff4d2'; ctx.font = '15px Jua, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('좌우로 움직여 자동 사격을 유도하세요', w * 0.5, h * 0.64 + 17);
-  }
   const vignette = ctx.createRadialGradient(w / 2, h * 0.52, h * 0.2, w / 2, h * 0.52, h * 0.86);
   vignette.addColorStop(0, 'rgba(0,0,0,0)');
   vignette.addColorStop(1, 'rgba(0,0,0,.24)');
   ctx.fillStyle = vignette; ctx.fillRect(0, 0, w, h);
   if (s.flash > 0) { ctx.fillStyle = 'rgba(255,66,48,' + (s.flash * 0.34) + ')'; ctx.fillRect(0, 0, w, h); }
+  ctx.restore();
 }
 
 

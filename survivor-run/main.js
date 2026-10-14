@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, STAGE_DURATION } from './game.js?v=1-1-20261014d';
-import { drawScene } from './render.js?v=1-1-20261014d';
+import { createGame, resizeGame, updateGame, STAGE_DURATION } from './game.js?v=1-1-20261014e';
+import { drawScene } from './render.js?v=1-1-20261014e';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014';
 
 const $ = id => document.getElementById(id);
@@ -16,7 +16,7 @@ const hud = {
   progress: $('progressFill'), healthText: $('healthText'), health: $('healthFill'),
   weapon: $('weapon'), weaponLevel: $('weaponLevel'), weaponIcon: $('weaponIcon'),
   kills: $('kills'), allyRoot: $('allyStat'), allyCount: $('allyCount'),
-  bossRoot: $('bossHud'), bossFill: $('bossFill'),
+  bossRoot: $('bossHud'), bossFill: $('bossFill'), tutorialHint: $('tutorialHint'),
 };
 const KEY_TOP = 'survivor-run-top', KEY_TUT = 'dead-route-tutorial';
 const top = () => { try { return JSON.parse(localStorage.getItem(KEY_TOP)) || []; } catch { return []; } };
@@ -67,7 +67,7 @@ function resize() {
 
 function showTitle() {
   state = 'title'; game = null; keys.clear(); pointerDown = false; pointerX = null;
-  hud.root.hidden = true; hud.bossRoot.hidden = true;
+  hud.root.hidden = true; hud.bossRoot.hidden = true; hud.tutorialHint.hidden = true;
   $('pause').hidden = true;
   $('title').innerHTML = 'DEAD<br>ROUTE';
   $('msg').innerHTML = '보급통을 선택해 무기를 강화하고,<br>대규모 웨이브와 보스를 돌파하세요.';
@@ -83,6 +83,7 @@ function beginGame() {
   state = 'play'; keys.clear(); pointerDown = false; pointerX = null;
   bannerTimer = 0;
   $('banner').classList.remove('on');
+  hud.tutorialHint.hidden = true;
   hud.root.hidden = false; $('pause').hidden = false;
   hud.bossRoot.hidden = true;
   overlay.hidden = true;
@@ -103,6 +104,7 @@ function updateHud() {
   hud.weaponIcon.textContent = game.weapon === 'smg' ? '▰' : '●';
   hud.weaponLevel.textContent = String(game.weaponLevel[game.weapon] || 1);
   hud.kills.textContent = String(game.kills);
+  hud.tutorialHint.hidden = !game.moveTutorialVisible;
   hud.allyRoot.hidden = game.companions.length === 0;
   hud.allyCount.textContent = String(game.companions.length);
   hud.bossRoot.hidden = !game.boss;
@@ -117,13 +119,16 @@ function announce(message, seconds) {
 }
 
 function handleEvents(events) {
+  let hurtSoundPlayed = false;
   for (const event of events) {
     if (event === 'shot') sfx.shot();
     else if (event === 'allyShot') sfx.allyShot();
     else if (event === 'hit') sfx.hit();
     else if (event === 'barrelDown') sfx.pick();
     else if (event === 'explosion') sfx.explosion();
-    else if (event === 'hurt') { sfx.hurt(); announce('피격! 도로를 벗어나세요', 1.2); }
+    else if (event === 'hurt' || (event && typeof event === 'object' && event.type === 'hurt')) {
+      if (!hurtSoundPlayed) { sfx.hurt(); hurtSoundPlayed = true; }
+    }
     else if (event === 'bossStart') { sfx.boss(); announce('보스 출현 · 경고 구역을 피하세요', 2.2); }
     else if (event === 'bossWarn') announce('강타 예고 · 붉은 구역을 피하세요', 1.1);
     else if (event === 'bossSlam') announce('착탄 · 다음 붉은 예고 구역을 피하세요', 1.2);
