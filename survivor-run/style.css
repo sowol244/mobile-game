@@ -97,7 +97,7 @@ body {
 .support-chip small { color: #e5dfc8; font-size: 9px; white-space: nowrap; }
 .support-track { grid-column: 1 / 4; height: 3px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.14); }
 .support-track i { display: block; width: 100%; height: 100%; border-radius: inherit; transition: width .12s linear; }
-.soldier .support-track i { background: linear-gradient(90deg, #43a8ed, #a4ebff); }
+.soldier .support-track i { background: linear-gradient(90deg, #536c73, #a1b2b1); }
 .drone .support-track i { background: linear-gradient(90deg, #8751e0, #c9a5ff); }
 .rocket .support-track i { background: linear-gradient(90deg, #e87336, #ffd16c); }
 .rapid .support-track i { background: linear-gradient(90deg, #c89a26, #fff06c); }

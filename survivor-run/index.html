@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1a2423">
 <title>DEAD ROUTE</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap">
-<link rel="stylesheet" href="style.css?v=1-1-20261014c">
+<link rel="stylesheet" href="style.css?v=1-1-20261014l">
 </head>
 <body>
 <main id="app">
@@ -14,7 +14,7 @@
     <div class="hud-top">
       <div class="stage-tag"><small>STAGE</small><b>1-1</b></div>
       <div class="route-progress">
-        <div class="route-label"><span>DEAD ROUTE</span><b id="distance">0 m</b></div>
+        <div class="route-label"><span>폐쇄 고속도로</span><b id="distance">0 m</b></div>
         <div class="progress-track"><i id="progressFill"></i></div>
       </div>
       <div class="timer-tag"><small>경과 시간</small><b id="timer">00:00</b></div>
@@ -32,7 +32,7 @@
     </div>
     <div class="support-status" id="supportHud" aria-label="화력 지원 상태" hidden>
       <div class="support-chip soldier" id="soldierSupport" hidden>
-        <img src="assets/reward-support.svg" alt="">
+        <img src="assets/support-survivor.webp" alt="">
         <span class="support-name">지원 사수 <b id="soldierCount">×1</b></span>
         <small id="soldierTime">10초</small>
         <span class="support-track"><i id="soldierFill"></i></span>
@@ -71,8 +71,8 @@
       <section class="panel" id="pMain">
         <div class="eyebrow">SURVIVAL SHOOTER · 1-1</div>
         <h1 id="title">DEAD<br>ROUTE</h1>
-        <p id="msg">숫자 보급통을 부숴 지원 사수·드론·로켓 화력을 얻고,<br>대규모 웨이브와 최종 보스를 돌파하세요.</p>
-        <div class="mission-chips"><span>숫자 보급통 선택</span><span>자동 사격 · 좌우 이동</span><span>동료·드론·로켓 지원</span><span>75초 최종 보스</span></div>
+        <p id="msg">숫자 보급통으로 연사·지원 사수·로켓 화력을 얻고,<br>대규모 웨이브와 최종 보스를 돌파하세요.</p>
+        <div class="mission-chips"><span>숫자 보급통 선택</span><span>자동 사격 · 좌우 이동</span><span>지원 사수 · 로켓 화력</span><span>75~90초 목표 · 보스 처치</span></div>
         <p id="result" hidden></p>
         <div class="buttons">
           <button class="primary" id="start" type="button">작전 시작</button>
@@ -88,7 +88,7 @@
       <section class="panel" id="pAsk" hidden>
         <div class="eyebrow">작전 브리핑</div>
         <h1>생존 규칙</h1>
-        <p>좌우로 이동해 보급을 받고, 75초 안에 최종 보스를 처치하세요.</p>
+        <p>좌우로 이동하고 자동 사격으로 보급통을 부수세요. 약 64초 뒤 등장하는 거대 변이체를 처치하면 돌파 성공입니다.</p>
         <div class="buttons">
           <button class="primary" id="askYes" type="button">안내 확인</button>
           <button class="sub wide" id="askNo" type="button">바로 출발</button>
@@ -110,8 +110,8 @@
           <li><b>이동</b> 화면을 좌우로 끌어 도로 안에서 움직입니다.</li>
           <li><b>자동 사격</b> 총은 자동으로 쏩니다. 원하는 목표물 쪽으로 이동하세요.</li>
           <li><b>목표 선택</b> 원하는 보급통 쪽으로 움직이면 표적 표시와 사격 방향이 따라갑니다.</li>
-          <li><b>보급통</b> 숫자는 남은 내구도입니다. 지원 사수·드론·로켓·연사·회복 중 보상을 고르세요.</li>
-          <li><b>화력 지원</b> 사수와 드론은 제한 시간동안 함께 사격하고, 로켓은 좀비 무리에 3발을 폭격합니다.</li>
+          <li><b>보급통</b> 숫자는 남은 내구도입니다. 연사통은 스테이지 동안 발사속도를 높이고, 첫 선택에서는 지원 사수 또는 공격력 강화를 고르세요.</li>
+          <li><b>화력 지원</b> 지원 사수는 10초간 함께 사격합니다. 로켓통을 부수면 좀비 무리에 3발을 폭격합니다.</li>
           <li><b>폭발</b> 빨간 드럼통을 터뜨리면 주변 좀비와 폭발통까지 함께 휩쓸립니다.</li>
           <li><b>보스</b> 붉게 표시되는 공격 차선에서 벗어나며 최종 보스를 공격하세요.</li>
         </ul>
@@ -136,7 +136,7 @@
     </div>
   </section>
 </main>
-<script type="module" src="main.js?v=1-1-20261014g"></script>
+<script type="module" src="main.js?v=1-1-20261014l"></script>
 </body>
 </html>
 

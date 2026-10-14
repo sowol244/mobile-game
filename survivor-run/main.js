@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, STAGE_DURATION, applyPlayerDrag } from './game.js?v=1-1-20261014g';
-import { drawScene } from './render.js?v=1-1-20261014g';
+import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261014l';
+import { drawScene } from './render.js?v=1-1-20261014l';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014';
 
 const $ = id => document.getElementById(id);
@@ -39,22 +39,15 @@ const assets = {
   runner: sprite('assets/zombie-runner.webp'),
   runnerRun: sprite('assets/zombie-runner-run.webp'),
   brute: sprite('assets/zombie-brute.webp'),
-  supportSoldier: sprite('assets/support-soldier.svg'),
+  supportSurvivorA: sprite('assets/support-survivor.webp'),
+  supportSurvivorB: sprite('assets/support-survivor-b.webp'),
   combatDrone: sprite('assets/combat-drone.svg'),
   rocketProjectile: sprite('assets/rocket-projectile.svg'),
-  rewardSupport: sprite('assets/reward-support.svg'),
-  rewardDrone: sprite('assets/reward-drone.svg'),
-  rewardRocket: sprite('assets/reward-rocket.svg'),
-  rewardRapidfire: sprite('assets/reward-rapidfire.svg'),
-  rewardHeal: sprite('assets/reward-heal.svg'),
-  rewardWeapon: sprite('assets/reward-weapon.svg'),
-  rewardUpgrade: sprite('assets/reward-upgrade.svg'),
-  rewardExplosive: sprite('assets/reward-explosive.svg'),
 };
 const tutorials = [
   ['이동', '화면을 좌우로 끌어 도로 안에서 움직입니다. PC에서는 A/D 또는 ←/→ 키를 사용하세요.'],
   ['자동 사격', '총은 자동으로 발사됩니다. 원하는 좀비나 보급통 쪽으로 움직이면 표적이 바뀝니다.'],
-  ['보급과 회피', '숫자 내구도를 0으로 만들면 지원 사수·드론·로켓을 얻습니다. 붉은 보스 공격은 차선을 바꿔 피하세요.'],
+  ['보급과 회피', '숫자 내구도를 0으로 만들면 연사·지원 사수·로켓 화력을 얻습니다. 붉은 보스 공격은 차선을 바꿔 피하세요.'],
 ];
 
 let state = 'title', game = null, lastFrame = performance.now();
@@ -95,7 +88,7 @@ function showTitle() {
   hud.root.hidden = true; hud.bossRoot.hidden = true; hud.tutorialHint.hidden = true;
   $('pause').hidden = true;
   $('title').innerHTML = 'DEAD<br>ROUTE';
-  $('msg').innerHTML = '숫자 보급통을 부숴 지원 사수·드론·로켓 화력을 얻고,<br>대규모 웨이브와 최종 보스를 돌파하세요.';
+  $('msg').innerHTML = '숫자 보급통으로 연사·지원 사수·로켓 화력을 얻고,<br>대규모 웨이브와 최종 보스를 돌파하세요.';
   $('result').hidden = true; $('home').hidden = true;
   $('start').textContent = '작전 시작';
   showPanel('main'); overlay.hidden = false;
@@ -119,7 +112,12 @@ function beginGame() {
 function updateHud() {
   if (!game) return;
   hud.distance.textContent = game.distance.toLocaleString('ko-KR') + ' m';
-  hud.progress.style.width = Math.min(100, game.t / STAGE_DURATION * 100) + '%';
+  const progress = game.bossDefeated
+    ? 100
+    : game.boss
+      ? 88 + (1 - game.boss.hp / game.boss.maxHp) * 11
+      : Math.min(88, game.t / BOSS_START_AT * 88);
+  hud.progress.style.width = progress + '%';
   const elapsed = Math.floor(game.t);
   hud.timer.textContent = String(Math.floor(elapsed / 60)).padStart(2, '0') + ':' + String(elapsed % 60).padStart(2, '0');
   hud.healthText.textContent = Math.ceil(game.hp) + ' / ' + game.maxHp;
@@ -147,10 +145,10 @@ function updateHud() {
   hud.rocketRoot.hidden = rockets <= 0;
   hud.rocketCount.textContent = String(rockets);
   hud.rocketFill.style.width = Math.min(100, rockets / 6 * 100) + '%';
-  hud.rapidRoot.hidden = game.rapidFireTimer <= 0;
-  hud.rapidTime.textContent = Math.ceil(game.rapidFireTimer) + '초';
-  hud.rapidFill.style.width = Math.max(0, Math.min(100, game.rapidFireTimer / 12 * 100)) + '%';
-  hud.supportRoot.hidden = soldiers.length === 0 && !drone && rockets <= 0 && game.rapidFireTimer <= 0;
+  hud.rapidRoot.hidden = !game.permanentRapidFire && game.rapidFireTimer <= 0;
+  hud.rapidTime.textContent = game.permanentRapidFire ? '계속' : Math.ceil(game.rapidFireTimer) + '초';
+  hud.rapidFill.style.width = game.permanentRapidFire ? '100%' : Math.max(0, Math.min(100, game.rapidFireTimer / 12 * 100)) + '%';
+  hud.supportRoot.hidden = soldiers.length === 0 && !drone && rockets <= 0 && game.rapidFireTimer <= 0 && !game.permanentRapidFire;
   hud.bossRoot.hidden = !game.boss;
   if (game.boss) hud.bossFill.style.width = Math.max(0, game.boss.hp / game.boss.maxHp * 100) + '%';
 }
@@ -174,7 +172,8 @@ function handleEvents(events) {
     else if (event === 'hurt' || (event && typeof event === 'object' && event.type === 'hurt')) {
       if (!hurtSoundPlayed) { sfx.hurt(); hurtSoundPlayed = true; }
     }
-    else if (event === 'bossStart') { sfx.boss(); announce('보스 출현 · 경고 구역을 피하세요', 2.2); }
+    else if (event === 'bossIncoming') announce('WARNING · 거대 변이체 접근', 2.2);
+    else if (event === 'bossStart') { sfx.boss(); announce('보스 출현 · 붉은 공격 구역을 피하세요', 2.2); }
     else if (event === 'bossWarn') announce('강타 예고 · 붉은 구역을 피하세요', 1.1);
     else if (event === 'bossSlam') announce('착탄 · 다음 붉은 예고 구역을 피하세요', 1.2);
     else if (event === 'bossDown') { sfx.pick(); announce('대형 변이체 격파', 1.8); }
@@ -206,7 +205,7 @@ function finishGame(result) {
   $('title').innerHTML = result === 'win' ? 'ROUTE<br>SECURED' : 'MISSION<br>FAILED';
   $('msg').textContent = result === 'win'
     ? '최종 보스를 격파하고 1-1을 돌파했습니다.'
-    : game.hp <= 0 ? '체력이 소진되었습니다. 보급과 회피를 다시 노려보세요.' : '제한 시간 안에 보스를 격파하지 못했습니다.';
+    : game.hp <= 0 ? '체력이 소진되었습니다. 보급과 회피를 다시 노려보세요.' : '작전이 종료되었습니다.';
   const elapsed = Math.floor(game.t);
   const clock = String(Math.floor(elapsed / 60)).padStart(2, '0') + ':' + String(elapsed % 60).padStart(2, '0');
   $('result').textContent = '시간 ' + clock + ' · 보급통 ' + game.barrelsBroken + ' · 처치 ' + game.kills + ' · 점수 ' + game.score.toLocaleString('ko-KR');

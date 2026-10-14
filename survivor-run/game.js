@@ -1,29 +1,31 @@
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-export const STAGE_DURATION = 75;
+export const BOSS_START_AT = 64;
+export const BOSS_WARNING_AT = 62;
 export const PLAYER_BASE_Y_RATIO = 0.84;
 export const DEFENSE_LINE_Y_RATIO = 0.95;
 export const MAX_PASS_DAMAGE_PER_SECOND = 14;
 export const DIRECT_HIT_INVULNERABILITY = 0.85;
 export const MOVE_TUTORIAL_DELAY = 0.9;
 export const MOVE_TUTORIAL_DURATION = 2;
-export const AIM_ASSIST_ANGLE = 12;
+export const AIM_ASSIST_ANGLE = 8;
 const AIM_ASSIST_ANGLE_RADIANS = AIM_ASSIST_ANGLE * Math.PI / 180;
 const AIM_ASSIST_DISTANCE_TIE_EPSILON = 8;
 export const BARREL_CONFIG = Object.freeze({
-  companion: Object.freeze({ hp: 40, color: '#43a8ed' }),
+  companion: Object.freeze({ hp: 40, color: '#75836f' }),
   drone: Object.freeze({ hp: 70, color: '#a65ae8' }),
   rocket: Object.freeze({ hp: 100, color: '#f18a3f' }),
-  rapidfire: Object.freeze({ hp: 45, color: '#f2c744' }),
+  rapidfire: Object.freeze({ hp: 35, color: '#b99a50' }),
   heal: Object.freeze({ hp: 35, color: '#4cc878' }),
+  explosive: Object.freeze({ hp: 30, color: '#8d4937' }),
 });
 export const SUPPORT_CONFIG = Object.freeze({
   companionDuration: 10,
-  companionMaxCount: 2,
-  companionDuplicateExtension: 5,
-  companionMaxDuration: 15,
-  companionDamage: 5,
-  companionFireInterval: 0.25,
+  companionMaxCount: 1,
+  companionDuplicateExtension: 10,
+  companionMaxDuration: 20,
+  companionDamage: 6,
+  companionFireInterval: 0.26,
   droneDuration: 8,
   droneDuplicateExtension: 4,
   droneMaxDuration: 12,
@@ -37,7 +39,7 @@ export const SUPPORT_CONFIG = Object.freeze({
   rapidFireDuration: 8,
   rapidFireDuplicateExtension: 4,
   rapidFireMaxDuration: 12,
-  rapidFireMultiplier: 0.68,
+  rapidFireMultiplier: 0.77,
   healAmount: 25,
 });
 export const ZOMBIE_DAMAGE = Object.freeze({
@@ -49,19 +51,20 @@ export const ZOMBIE_DAMAGE = Object.freeze({
 });
 
 const WAVE_PLAN = [
-  { start: 0.35, count: 8, interval: 1.08, pattern: ['walker'] },
-  { start: 12.2, count: 6, interval: 1.34, pattern: ['walker', 'runner'] },
-  { start: 25.15, count: 15, interval: 0.63, pattern: ['walker', 'walker', 'runner'] },
-  { start: 41.5, count: 9, interval: 1.23, pattern: ['walker', 'runner', 'walker'] },
-  { start: 55.1, count: 25, interval: 0.24, pattern: ['walker', 'runner', 'runner', 'walker'] },
+  { start: 0.6, count: 5, interval: 1.45, pattern: ['walker'], lanes: [1, 0, 1, 2, 0] },
+  { start: 8.35, count: 6, interval: 1.32, pattern: ['walker'], lanes: [0, 2, 0, 2, 1, 1] },
+  { start: 16.25, count: 9, interval: 1.18, pattern: ['walker'], lanes: [1, 0, 2, 1, 0, 2, 1, 0, 2] },
+  { start: 28.2, count: 14, interval: 0.86, pattern: ['walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'runner', 'runner'], lanes: [0, 2, 1, 0, 0, 0, 2, 2, 1, 1, 1, 2, 0, 2] },
+  { start: 40.25, count: 15, interval: 0.78, pattern: ['walker'], lanes: [0, 2, 1, 0, 2, 1, 0, 1, 2, 0, 2, 1, 0, 2, 1] },
+  { start: 55, count: 10, interval: 0.65, pattern: ['walker', 'walker', 'walker', 'walker', 'runner'], lanes: [1, 0, 2, 1, 0, 2, 1, 0, 2, 1] },
 ];
 
 const PHASE_CUES = [
-  { at: 10, label: '첫 보급 선택 · 동료 또는 기관단총', duration: 2.2 },
-  { at: 25, label: '강화 화력으로 좀비 웨이브를 돌파하세요', duration: 2 },
-  { at: 35, label: '두 번째 보급 선택 · 전투 드론 또는 무기 강화', duration: 2.2 },
-  { at: 48, label: '생존 보급 선택 · 연사 강화 또는 회복', duration: 2 },
-  { at: 55, label: '대규모 웨이브 · 폭발통을 노리세요', duration: 2 },
+  { at: 8, label: '연사 보급통을 노려 화력을 높이세요', duration: 2 },
+  { at: 16, label: '보급 선택 · 지원 사수 또는 공격력 강화', duration: 2.2 },
+  { at: 28, label: '좀비가 늘어납니다 · 이동하며 자동 사격하세요', duration: 2.2 },
+  { at: 40, label: '대규모 웨이브 · 로켓 폭격을 준비하세요', duration: 2.2 },
+  { at: 55, label: '보스 전 마지막 좀비 웨이브', duration: 1.8 },
 ];
 
 export function roadHalfWidth(w, h, y) {
@@ -86,19 +89,20 @@ export function createGame(w, h) {
   return {
     w, h, t: 0, finished: null,
     x: w * 0.5, targetX: w * 0.5, y: h * PLAYER_BASE_Y_RATIO,
-    hp: 120, maxHp: 120, invulnerable: 0, flash: 0, hitShake: 0,
+    hp: 100, maxHp: 100, invulnerable: 0, flash: 0, hitShake: 0,
     passDamageWindow: 0, passDamageTaken: 0, defenseFlash: 0,
     moveTutorialShown: false, moveTutorialVisible: false, moveTutorialTimer: 0,
     hasPlayerMoved: false, showAimGuide: false,
     weapon: 'pistol', weaponLevel: { pistol: 1, smg: 0 },
-    damageBonus: 0, fireTimer: 0.15, powerFlash: 0,
+    damageBonus: 0, damageMultiplier: 1, fireTimer: 0.15, powerFlash: 0,
     companions: [], nextCompanionId: 1, companionPower: 1, drone: null, rocketAmmo: 0, rocketTimer: 0,
     missiles: [], particles: [], rapidFireTimer: 0,
     score: 0, kills: 0, barrelsBroken: 0, distance: 0,
     roadOffset: 0, waveIndex: 0, waveSpawned: 0, cueIndex: 0,
-    firstChoiceSpawned: false, secondChoiceSpawned: false, utilityChoiceSpawned: false,
-    explosivesSpawned: false, rocketBarrelSpawned: false, obstacleSpawned: false,
-    boss: null, bossStarted: false, bossDefeated: false,
+    rapidfireSpawned: false, firstChoiceSpawned: false, rocketBarrelSpawned: false,
+    firstExplosiveSpawned: false, secondExplosiveSpawned: false, obstacleSpawned: false,
+    boss: null, bossStarted: false, bossDefeated: false, bossWarningShown: false, bossAlertTimer: 0,
+    permanentRapidFire: false,
     zombies: [], barrels: [], obstacles: [], bullets: [], hazards: [], effects: [],
     target: null, events: [],
   };
@@ -138,16 +142,16 @@ export function applyPlayerDrag(s, deltaX) {
   return s.targetX;
 }
 
-function spawnZombie(s, forcedKind) {
+function spawnZombie(s, forcedKind, forcedLane) {
   if (s.zombies.filter(zombie => !zombie.dead).length >= 40) return;
   const kind = forcedKind || 'walker';
-  const lane = Math.floor(Math.random() * 3);
+  const lane = Number.isInteger(forcedLane) ? clamp(forcedLane, 0, 2) : Math.floor(Math.random() * 3);
   const y = s.h * (0.15 + Math.random() * 0.035);
   const hp = kind === 'runner' ? 15 : 20;
   s.zombies.push({
     kind, lane, x: laneX(s.w, s.h, y, lane), y,
     hp, maxHp: hp, radius: kind === 'runner' ? 13 : 16,
-    speed: s.h * (kind === 'runner' ? 0.42 : 0.29) * (1 + Math.min(0.2, s.t / 500)),
+    speed: s.h * (kind === 'runner' ? 0.42 : 0.26) * (1 + Math.min(0.2, s.t / 500)),
     phase: Math.random() * Math.PI * 2, dead: false, dying: 0,
     hitFlash: 0, recoilX: 0, recoilY: 0, deathSide: 1, hasAppliedDamage: false,
   });
@@ -164,12 +168,12 @@ function spawnBarrelPair(s, rewards) {
   }
 }
 
-function spawnRewardBarrel(s, lane, kind) {
-  const y = s.h * 0.17;
-  const hp = BARREL_CONFIG[kind].hp;
+function spawnRewardBarrel(s, lane, kind, options = {}) {
+  const hp = options.hp || BARREL_CONFIG[kind]?.hp || 40;
+  const y = s.h * 0.18;
   s.barrels.push({
-    lane, kind, hp, maxHp: hp, x: laneX(s.w, s.h, y, lane), y,
-    radius: 23, dead: false, hitFlash: 0, hitShake: 0,
+    lane, kind, hp, maxHp: hp, permanent: Boolean(options.permanent),
+    x: laneX(s.w, s.h, y, lane), y, radius: 23, dead: false, hitFlash: 0, hitShake: 0,
   });
 }
 
@@ -260,30 +264,62 @@ function resolveZombieContact(s, zombie, contact, events) {
   s.passDamageTaken = Math.min(MAX_PASS_DAMAGE_PER_SECOND, s.passDamageTaken + applied);
 }
 
-function spawnBurst(s, x, y, color, count = 12) {
-  const palette = Array.isArray(color) ? color : [color, '#fff0bd'];
+function addParticle(s, particle) {
+  s.particles.push(particle);
+  if (s.particles.length > 140) s.particles.splice(0, s.particles.length - 140);
+}
+
+function spawnSmoke(s, x, y, count, radius, palette = ['#504f49', '#666157', '#797264']) {
   for (let i = 0; i < count; i++) {
-    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.3;
-    const speed = 36 + Math.random() * 92;
-    s.particles.push({
-      kind: 'shard', x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 24,
-      life: 0.35 + Math.random() * 0.28, total: 0.63, size: 2.5 + Math.random() * 2.5,
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 12 + Math.random() * 35;
+    addParticle(s, {
+      kind: 'smoke', x, y,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 12 - Math.random() * 12,
+      life: 0.55 + Math.random() * 0.28, total: 0.83,
+      size: radius * (0.22 + Math.random() * 0.24), growth: 11 + Math.random() * 13,
+      color: palette[i % palette.length],
+    });
+  }
+}
+
+function spawnDebris(s, x, y, count, palette = ['#55564f', '#79776c', '#9a8464']) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 35 + Math.random() * 115;
+    addParticle(s, {
+      kind: 'debris', x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 16,
+      life: 0.28 + Math.random() * 0.22, total: 0.5, size: 1.6 + Math.random() * 2.1,
       rotation: Math.random() * Math.PI, spin: (Math.random() - 0.5) * 12,
       color: palette[i % palette.length],
     });
   }
-  if (s.particles.length > 140) s.particles.splice(0, s.particles.length - 140);
+}
+
+function spawnExplosionParticles(s, x, y, radius) {
+  spawnSmoke(s, x, y, 13, Math.min(54, radius * 0.48));
+  spawnDebris(s, x, y, 9, ['#4d514d', '#79776b', '#ad7444']);
+  for (let i = 0; i < 4; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 55 + Math.random() * 90;
+    addParticle(s, {
+      kind: 'ember', x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 24,
+      life: 0.16 + Math.random() * 0.13, total: 0.29, size: 1 + Math.random() * 1.4,
+      color: i % 2 ? '#c66b39' : '#d9a05b',
+    });
+  }
 }
 
 function barrelBreakEffect(s, barrel) {
   const color = BARREL_CONFIG[barrel.kind]?.color || '#f18a3f';
-  s.effects.push({ kind: 'barrelBreak', x: barrel.x, y: barrel.y, color, life: 0.34, total: 0.34 });
-  spawnBurst(s, barrel.x, barrel.y - 4, [color, '#d4d9ce', '#fff0bd'], 14);
+  s.effects.push({ kind: 'barrelBreak', x: barrel.x, y: barrel.y, color, life: 0.28, total: 0.28 });
+  spawnSmoke(s, barrel.x, barrel.y - 4, 5, 23, ['#625e52', '#797468', '#82725b']);
+  spawnDebris(s, barrel.x, barrel.y - 4, 7);
 }
 
-function summonEffect(s, x, y, color) {
-  s.effects.push({ kind: 'summon', x, y, color, life: 0.42, total: 0.42 });
-  spawnBurst(s, x, y, [color, '#fff1b8'], 8);
+function summonEffect(s, x, y) {
+  s.effects.push({ kind: 'summon', x, y, color: '#918b78', life: 0.32, total: 0.32 });
+  spawnSmoke(s, x, y, 4, 16, ['#777468', '#8b8575']);
 }
 
 function rewardBarrel(s, barrel, events) {
@@ -302,28 +338,32 @@ function rewardBarrel(s, barrel, events) {
   } else if (barrel.kind === 'upgrade') {
     const key = s.weapon;
     s.weaponLevel[key] = Math.min(5, (s.weaponLevel[key] || 1) + 1);
-    s.damageBonus += key === 'smg' ? 2 : 4;
+    s.damageMultiplier = Math.min(2, s.damageMultiplier + 0.25);
     events.push({
       type: 'reward',
-      label: key === 'smg' ? '기관단총 강화 · 관통탄 Lv.' + s.weaponLevel[key] : '권총 강화 · 화력 +4',
+      label: '공격력 +25% · 무기 Lv.' + s.weaponLevel[key],
     });
   } else if (barrel.kind === 'companion') {
     const active = s.companions.filter(companion => companion.life > 0);
     if (active.length < SUPPORT_CONFIG.companionMaxCount) {
-      const occupiedSides = new Set(active.map(companion => companion.side));
-      const side = occupiedSides.has(-1) ? 1 : -1;
+      const occupiedSlots = new Set(active.map(companion => companion.slot));
+      const slot = Array.from({ length: SUPPORT_CONFIG.companionMaxCount }, (_, index) => index)
+        .find(index => !occupiedSlots.has(index)) ?? active.length % SUPPORT_CONFIG.companionMaxCount;
+      const direction = s.x < s.w * 0.5 ? 1 : -1;
+      const offsets = [-direction * 64, direction * 64, direction * 128];
+      const side = Math.sign(offsets[slot]) || -1;
       s.companions.push({
-        id: s.nextCompanionId++, side, x: s.x + side * 46, y: s.y + 27,
+        id: s.nextCompanionId++, side, slot, x: s.x + offsets[slot], y: s.y + 10,
         life: SUPPORT_CONFIG.companionDuration, maxLife: SUPPORT_CONFIG.companionDuration,
         fireTimer: 0.16, appear: 0.4, exit: 0, recoil: 0, muzzleFlash: 0, phase: Math.random() * 6,
       });
-      summonEffect(s, s.x + side * 46, s.y + 12, '#71caff');
+      summonEffect(s, s.x + offsets[slot], s.y + 4);
       events.push({ type: 'reward', label: '지원 사수 +1' });
     } else {
       const companion = active.reduce((shortest, current) => current.life < shortest.life ? current : shortest);
       companion.life = Math.min(SUPPORT_CONFIG.companionMaxDuration, companion.life + SUPPORT_CONFIG.companionDuplicateExtension);
       companion.maxLife = Math.max(companion.maxLife, companion.life);
-      events.push({ type: 'reward', label: '지원 사수 지속시간 +5초' });
+      events.push({ type: 'reward', label: '지원 사수 지속시간 +10초' });
     }
   } else if (barrel.kind === 'drone') {
     if (!s.drone || s.drone.life <= 0) {
@@ -332,7 +372,7 @@ function rewardBarrel(s, barrel, events) {
         maxLife: SUPPORT_CONFIG.droneDuration, fireTimer: 0.2, appear: 0.42, exit: 0,
         phase: Math.random() * 6, recoil: 0, muzzleFlash: 0,
       };
-      summonEffect(s, s.drone.x, s.drone.y, '#8f71ff');
+      summonEffect(s, s.drone.x, s.drone.y);
       events.push({ type: 'reward', label: '드론 가동' });
     } else {
       s.drone.life = Math.min(SUPPORT_CONFIG.droneMaxDuration, s.drone.life + SUPPORT_CONFIG.droneDuplicateExtension);
@@ -343,15 +383,20 @@ function rewardBarrel(s, barrel, events) {
     s.rocketAmmo = Math.min(6, s.rocketAmmo + SUPPORT_CONFIG.rocketCount);
     events.push({ type: 'reward', label: '로켓 폭격 · 3발 준비' });
   } else if (barrel.kind === 'rapidfire') {
-    s.rapidFireTimer = Math.min(
-      SUPPORT_CONFIG.rapidFireMaxDuration,
-      s.rapidFireTimer + (s.rapidFireTimer > 0 ? SUPPORT_CONFIG.rapidFireDuplicateExtension : SUPPORT_CONFIG.rapidFireDuration),
-    );
-    events.push({ type: 'reward', label: '연사 강화 · 8초' });
+    if (barrel.permanent) {
+      s.permanentRapidFire = true;
+      events.push({ type: 'reward', label: '연사 속도 +30% · 스테이지 지속' });
+    } else {
+      s.rapidFireTimer = Math.min(
+        SUPPORT_CONFIG.rapidFireMaxDuration,
+        s.rapidFireTimer + (s.rapidFireTimer > 0 ? SUPPORT_CONFIG.rapidFireDuplicateExtension : SUPPORT_CONFIG.rapidFireDuration),
+      );
+      events.push({ type: 'reward', label: '연사 강화 · 8초' });
+    }
   } else if (barrel.kind === 'heal') {
     const restored = Math.min(SUPPORT_CONFIG.healAmount, s.maxHp - s.hp);
     s.hp = Math.min(s.maxHp, s.hp + SUPPORT_CONFIG.healAmount);
-    summonEffect(s, s.x, s.y - 12, '#75e991');
+    summonEffect(s, s.x, s.y - 12);
     events.push({ type: 'reward', label: restored > 0 ? '응급 키트 · 체력 +' + restored : '응급 키트 · 체력 안정' });
   }
   s.barrelsBroken++;
@@ -414,19 +459,37 @@ function addExplosion(s, x, y, radius, events) {
       s.boss.hitFlash = 0.16;
       if (s.boss.hp <= 0) defeatBoss(s, events);
     }
-    s.effects.push({ kind: 'explosion', x: point.x, y: point.y, life: 0.62, total: 0.62, radius });
+    s.effects.push({ kind: 'explosion', x: point.x, y: point.y, life: 0.72, total: 0.72, radius });
+    spawnExplosionParticles(s, point.x, point.y, radius);
   }
   events.push('explosion');
 }
 
 function defeatBoss(s, events) {
   if (!s.boss || s.bossDefeated) return;
-  s.boss = null;
+  const boss = s.boss;
+  boss.hp = 0;
+  boss.deathDuration = 1.15;
+  boss.deathTimer = boss.deathDuration;
+  boss.warning = 0;
+  boss.attackTimer = Infinity;
+  boss.hitFlash = 0.24;
   s.bossDefeated = true;
   s.score += 500;
+  s.effects.push({ kind: 'explosion', x: boss.x, y: boss.y + 38, life: 0.9, total: 0.9, radius: s.w * 0.24 });
+  spawnExplosionParticles(s, boss.x, boss.y + 38, s.w * 0.24);
+  for (const zombie of s.zombies) {
+    if (zombie.dead) continue;
+    zombie.dead = true;
+    zombie.dying = 0.32;
+  }
+  for (const barrel of s.barrels) barrel.dead = true;
+  for (const obstacle of s.obstacles) obstacle.dead = true;
+  s.bullets.length = 0;
+  s.missiles.length = 0;
+  s.hazards.length = 0;
+  s.rocketAmmo = 0;
   events.push('bossDown');
-  s.finished = 'win';
-  events.push('win');
 }
 
 export function findAimTarget(s, fromX = s.x, fromY = s.y - 28, includeBarrels = true) {
@@ -468,7 +531,7 @@ function shoot(s, events, owner = 'player', fromX = s.x, fromY = s.y - 28, damag
     ? SUPPORT_CONFIG.companionDamage * s.companionPower
     : owner === 'drone'
       ? SUPPORT_CONFIG.droneDamage
-      : ((smg ? 7 : 10) + s.damageBonus) * damageScale;
+      : ((smg ? 7 : 10) + s.damageBonus) * damageScale * s.damageMultiplier;
   const spreads = owner === 'player' && smg && s.weaponLevel.smg >= 3 ? [-0.075, 0, 0.075] : [0];
   for (const spread of spreads) {
     const angle = aimAngle + spread;
@@ -476,7 +539,7 @@ function shoot(s, events, owner = 'player', fromX = s.x, fromY = s.y - 28, damag
       x: fromX, y: fromY,
       vx: Math.sin(angle) * 760, vy: -Math.cos(angle) * 760,
       damage: damage * (spread ? 0.68 : 1), weapon: owner === 'drone' ? 'drone' : s.weapon, owner, life: 1.25,
-      rapid: owner === 'player' && s.rapidFireTimer > 0,
+      rapid: owner === 'player' && (s.permanentRapidFire || s.rapidFireTimer > 0),
     });
   }
   events.push(owner === 'player' ? 'shot' : 'allyShot');
@@ -522,45 +585,38 @@ function spawnWaves(s) {
     }
     const spawnAt = wave.start + s.waveSpawned * wave.interval;
     if (s.t < spawnAt) break;
-    spawnZombie(s, wave.pattern[s.waveSpawned % wave.pattern.length]);
+    spawnZombie(s, wave.pattern[s.waveSpawned % wave.pattern.length], wave.lanes?.[s.waveSpawned]);
     s.waveSpawned++;
   }
 }
 
 function spawnScriptedObjects(s) {
-  if (s.t >= 10 && !s.firstChoiceSpawned) {
+  if (s.t >= 8 && !s.rapidfireSpawned) {
+    s.rapidfireSpawned = true;
+    spawnRewardBarrel(s, 1, 'rapidfire', { hp: 35, permanent: true });
+  }
+  if (s.t >= 16 && !s.firstChoiceSpawned) {
     s.firstChoiceSpawned = true;
     spawnBarrelPair(s, [
-      { lane: 0, kind: 'companion' },
-      { lane: 2, kind: 'weapon', hp: 40 },
+      { lane: 0, kind: 'companion', hp: 40 },
+      { lane: 2, kind: 'upgrade', hp: 45 },
     ]);
   }
-  if (s.t >= 30 && !s.explosivesSpawned) {
-    s.explosivesSpawned = true;
+  if (s.t >= 41.5 && !s.firstExplosiveSpawned) {
+    s.firstExplosiveSpawned = true;
     spawnExplosiveBarrel(s, 0);
-    spawnExplosiveBarrel(s, 1);
   }
-  if (s.t >= 35 && !s.secondChoiceSpawned) {
-    s.secondChoiceSpawned = true;
-    spawnBarrelPair(s, [
-      { lane: 0, kind: 'upgrade', hp: 65 },
-      { lane: 2, kind: 'drone' },
-    ]);
+  if (s.t >= 42.5 && !s.rocketBarrelSpawned) {
+    s.rocketBarrelSpawned = true;
+    spawnRewardBarrel(s, 1, 'rocket', { hp: 100 });
   }
-  if (s.t >= 45 && !s.obstacleSpawned) {
+  if (s.t >= 45 && !s.secondExplosiveSpawned) {
+    s.secondExplosiveSpawned = true;
+    spawnExplosiveBarrel(s, 2);
+  }
+  if (s.t >= 52 && !s.obstacleSpawned) {
     s.obstacleSpawned = true;
     spawnObstacle(s, 1);
-  }
-  if (s.t >= 48 && !s.utilityChoiceSpawned) {
-    s.utilityChoiceSpawned = true;
-    spawnBarrelPair(s, [
-      { lane: 0, kind: 'rapidfire' },
-      { lane: 2, kind: 'heal' },
-    ]);
-  }
-  if (s.t >= 55 && !s.rocketBarrelSpawned) {
-    s.rocketBarrelSpawned = true;
-    spawnRewardBarrel(s, 1, 'rocket');
   }
 }
 
@@ -586,6 +642,12 @@ function findDroneTarget(s, fromX, fromY) {
 }
 
 function updateCompanions(s, dt, events) {
+  const direction = s.x < s.w * 0.5 ? 1 : -1;
+  const formation = [
+    { x: -direction * 64, y: -4 },
+    { x: direction * 64, y: -4 },
+    { x: direction * 128, y: -24 },
+  ];
   for (const companion of s.companions) {
     companion.phase += dt * 9;
     companion.appear = Math.max(0, companion.appear - dt);
@@ -593,16 +655,20 @@ function updateCompanions(s, dt, events) {
     companion.recoil *= Math.exp(-dt * 12);
     if (companion.life > 0) {
       companion.life = Math.max(0, companion.life - dt);
-      const targetX = s.x + companion.side * 46;
+      const position = formation[companion.slot] || formation[0];
+      const halfRoad = roadHalfWidth(s.w, s.h, s.y + position.y) * 0.84;
+      const targetX = clamp(s.x + position.x, s.w * 0.5 - halfRoad, s.w * 0.5 + halfRoad);
       companion.x += (targetX - companion.x) * Math.min(1, dt * 10);
-      companion.y = s.y + 27 + Math.sin(companion.phase) * 1.5;
+      companion.side = Math.sign(companion.x - s.x) || companion.side;
+      companion.y = s.y + 17 + position.y + Math.sin(companion.phase) * 1.5;
       if (companion.life <= 0) {
         companion.exit = 0.42;
         continue;
       }
       companion.fireTimer -= dt;
       if (companion.fireTimer <= 0) {
-        shoot(s, events, 'companion', companion.x + companion.side * 5, s.y - 8, 0.5);
+        const muzzleSide = companion.side < 0 ? 1 : -1;
+        shoot(s, events, 'companion', companion.x + muzzleSide * 20, companion.y - 78, 0.5);
         companion.fireTimer = SUPPORT_CONFIG.companionFireInterval;
         companion.recoil = 1;
         companion.muzzleFlash = 0.085;
@@ -682,9 +748,9 @@ function detonateRocket(s, missile, events) {
   }
   s.effects.push({
     kind: 'explosion', x: missile.targetX, y: missile.targetY,
-    life: 0.62, total: 0.62, radius: missile.radius, source: 'rocket',
+    life: 0.72, total: 0.72, radius: missile.radius, source: 'rocket',
   });
-  spawnBurst(s, missile.targetX, missile.targetY, ['#ffb13d', '#f15a31', '#fff1a5'], 16);
+  spawnExplosionParticles(s, missile.targetX, missile.targetY, missile.radius);
   events.push('rocketBlast');
 }
 
@@ -732,7 +798,13 @@ function updateParticles(s, dt) {
   for (const particle of s.particles) {
     particle.x += particle.vx * dt;
     particle.y += particle.vy * dt;
-    particle.vy += particle.kind === 'smoke' ? -4 * dt : 145 * dt;
+    if (particle.kind === 'smoke') {
+      particle.vx *= Math.exp(-dt * 1.1);
+      particle.vy += -4 * dt;
+      particle.size += (particle.growth || 0) * dt;
+    } else {
+      particle.vy += particle.kind === 'ember' ? 42 * dt : 145 * dt;
+    }
     particle.rotation = (particle.rotation || 0) + (particle.spin || 0) * dt;
     particle.life -= dt;
   }
@@ -740,20 +812,42 @@ function updateParticles(s, dt) {
 }
 
 function updateBoss(s, dt, events) {
-  if (s.t >= 65 && !s.bossStarted) {
+  if (s.t >= BOSS_WARNING_AT && !s.bossWarningShown) {
+    s.bossWarningShown = true;
+    s.bossAlertTimer = 2.2;
+    events.push('bossIncoming');
+  }
+  s.bossAlertTimer = Math.max(0, s.bossAlertTimer - dt);
+  if (s.t >= BOSS_START_AT && !s.bossStarted) {
     s.bossStarted = true;
     const y = s.h * 0.2;
     s.boss = {
-      x: s.w * 0.5, y, hp: 360, maxHp: 360,
-      phase: 0, attackTimer: 1.65, warning: 0, attackLane: 1, hitFlash: 0,
+      x: s.w * 0.5, y, hp: 350, maxHp: 350,
+      phase: 0, attackTimer: 1.65, warning: 0, attackLane: 1, hitFlash: 0, addTimer: 4.2,
     };
     events.push('bossStart');
   }
   if (!s.boss) return;
   const boss = s.boss;
+  if (boss.deathTimer != null) {
+    boss.deathTimer = Math.max(0, boss.deathTimer - dt);
+    boss.hitFlash = Math.max(0, boss.hitFlash - dt);
+    if (boss.deathTimer <= 0) {
+      s.boss = null;
+      s.finished = 'win';
+      events.push('win');
+    }
+    return;
+  }
   boss.phase += dt;
   boss.x = s.w * 0.5 + Math.sin(boss.phase * 0.8) * roadHalfWidth(s.w, s.h, boss.y) * 0.36;
   boss.hitFlash = Math.max(0, boss.hitFlash - dt);
+  boss.addTimer -= dt;
+  if (boss.addTimer <= 0) {
+    spawnZombie(s, 'walker', 0);
+    spawnZombie(s, 'walker', 2);
+    boss.addTimer = 5.2;
+  }
   if (boss.warning > 0) {
     boss.warning -= dt;
     if (boss.warning <= 0) {
@@ -794,7 +888,7 @@ export function updateGame(s, dt, targetX) {
   if (s.finished) return [];
   const events = [];
   dt = Math.min(0.04, Math.max(0, dt));
-  s.t = Math.min(STAGE_DURATION, s.t + dt);
+  s.t += dt;
   s.distance = Math.floor(s.t * 10);
   s.roadOffset = (s.roadOffset + dt * 0.42) % 1;
   s.y = s.h * PLAYER_BASE_Y_RATIO;
@@ -872,7 +966,7 @@ export function updateGame(s, dt, targetX) {
   if (s.fireTimer <= 0) {
     shoot(s, events);
     const baseInterval = s.weapon === 'smg' ? Math.max(0.075, 0.12 - (s.weaponLevel.smg || 1) * 0.008) : 0.25;
-    s.fireTimer = baseInterval * (s.rapidFireTimer > 0 ? SUPPORT_CONFIG.rapidFireMultiplier : 1);
+    s.fireTimer = baseInterval * (s.permanentRapidFire || s.rapidFireTimer > 0 ? SUPPORT_CONFIG.rapidFireMultiplier : 1);
   }
   updateCompanions(s, dt, events);
   updateDrone(s, dt, events);
@@ -925,11 +1019,6 @@ export function updateGame(s, dt, targetX) {
   if (s.target && (s.target.dead || s.target.hp <= 0)) s.target = null;
   s.effects = s.effects.filter(effect => effect.life > 0);
 
-  if (s.t >= STAGE_DURATION && !s.finished) {
-    s.finished = s.bossDefeated ? 'win' : 'lose';
-    events.push(s.bossDefeated ? 'win' : 'timeout');
-    if (!s.bossDefeated) events.push('lose');
-  }
   s.score = Math.floor(s.score);
   s.events = events;
   return events;
