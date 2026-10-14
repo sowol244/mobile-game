@@ -5,7 +5,7 @@
 
 // Chapters for the stage select (one page each, ≤12 stages).
 export const CHAPTERS = [
-  { name: '입문', from: 1, to: 12 },
+  { name: '입문', from: 1, to: 12, guide: '중력 조작 → 벽과 특수 블록 → 기믹 조합' },
   { name: '훈련', from: 13, to: 24 },
   { name: '얼음 동굴', from: 25, to: 35 },
   { name: '레이저 공장', from: 36, to: 46 },

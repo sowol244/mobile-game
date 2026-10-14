@@ -5,9 +5,9 @@ import {
   rng, dailySeed, crashLevel, spawnInterval, planWave, blockedLines, spawnWave, crashStart, entryCell,
   BLOCK_LEVELS, darkMove, needsShake, unjam, createDaily, dailyTilt, dailyItem, dailyLevel, moveScore, DAILY_TILTS, DAILY_FREE,
   shuffleColors, commonColor, colorBomb, nextCombo, FEVER_COMBO, FEVER_TIME, fillCount, parseBoard, mk,
-} from './logic.js?v=challenge-3';
-import { STAGES, CHAPTERS } from './stages.js';
-import { STEPS } from './tutorial.js';
+} from './logic.js?v=challenge-5';
+import { STAGES, CHAPTERS } from './stages.js?v=challenge-5';
+import { STEPS } from './tutorial.js?v=challenge-5';
 import { createSound } from './sound.js';
 import { INFO, ORDER, typesOn, makeDemo } from './guide.js';
 
@@ -49,7 +49,7 @@ const aids = createAids();   // undo 1 · hint 2 per stage
 const migrated = migrateSave({ stars: load('stars', []), seen: load('seen', []) }, STAGES.length);
 let stars = migrated.stars;
 save('stars', stars); save('seen', migrated.seen); save('ver', 2);
-// 초급 (easy) warns when the stage can no longer be cleared; 고급 (hard) never does. null = not chosen yet.
+// 도움 안내 (easy) warns when the stage can no longer be cleared; 직접 도전 (hard) never does. null = not chosen yet.
 let level = ['easy', 'hard'].includes(load('level', null)) ? load('level', null) : null;
 // crash
 let C = null;             // { daily, Rs, Ri, score, shown, combo, fever, stopT, elapsed, level, spawnT, wave, items, prog, cleared, warned }
@@ -1069,8 +1069,9 @@ function buildStages(ch) {
     b.addEventListener('click', () => { sound.unlock(); sound.click(); startPuzzle(i); });
     grid.append(b);
   }
-  $('chNo').textContent = `CHAPTER ${ch + 1} · ${C0.from}–${C0.to}`;
+  $('chNo').textContent = `CHAPTER ${ch + 1} / ${CHAPTERS.length} · ${C0.from}–${C0.to}`;
   $('chName').textContent = C0.name;
+  $('chGuide').textContent = C0.guide || '';
   $('chStars').textContent = `★ ${chStars} / ${(C0.to - C0.from + 1) * 3}`;
   $('chPrev').disabled = ch === 0;
   $('chNext').disabled = ch === CHAPTERS.length - 1 || !unlocked(CHAPTERS[ch + 1].from - 1);
