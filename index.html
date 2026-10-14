@@ -15,9 +15,10 @@
   /* Recently played: a row of icons */
   #recent { margin-bottom: 20px; }
   #recent .row { display: flex; gap: 10px; }
-  #recent a { flex: 0 0 calc((100% - 20px) / 3); min-width: 0; display: grid; justify-items: center; gap: 6px; padding: 10px 6px; border-radius: 14px; background: var(--card); color: inherit; text-decoration: none; font-size: 13px; text-align: center; }
-  #recent a img { width: 48px; height: 48px; border-radius: 12px; }
-  #recent a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #recent button { flex: 0 0 calc((100% - 20px) / 3); min-width: 0; display: grid; justify-items: center; gap: 6px; padding: 10px 6px; border: 0; border-radius: 14px; background: var(--card); color: inherit; font: inherit; font-size: 13px; text-align: center; cursor: pointer; }
+  #recent button:hover { background: var(--card-hi); }
+  #recent button img { width: 48px; height: 48px; border-radius: 12px; }
+  #recent button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Tree */
   details { margin: 0; }
@@ -71,6 +72,14 @@
   .admin-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .admin-actions button { border: 1px solid var(--line); border-radius: 10px; padding: 9px 13px; background: #171326; color: var(--fg); font: inherit; cursor: pointer; }
   .admin-actions button[type="submit"] { border-color: var(--accent); background: var(--accent); color: #241e3a; font-weight: 700; }
+  #game-dialog { width: min(1100px, 100vw); height: min(940px, 100dvh); max-width: none; max-height: none; padding: 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: #080611; color: var(--fg); box-shadow: 0 20px 80px #000c; }
+  #game-dialog::backdrop { background: #080611eF; }
+  #game-dialog:focus-visible, #game-dialog button:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+  .game-shell-head { height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px 0 16px; background: var(--card); }
+  .game-shell-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game-shell-head button { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 9px; padding: 6px 12px; background: #171326; color: var(--fg); font: inherit; cursor: pointer; }
+  #game-frame { display: block; width: 100%; height: calc(100% - 48px); border: 0; background: #080611; }
+  @media (max-width: 600px) { #game-dialog { width: 100vw; height: 100dvh; border: 0; border-radius: 0; } }
 </style>
 </head>
 <body>
@@ -97,6 +106,13 @@
       <button type="submit">확인</button>
     </div>
   </form>
+</dialog>
+<dialog id="game-dialog" aria-labelledby="game-title">
+  <div class="game-shell-head">
+    <strong id="game-title">게임</strong>
+    <button id="game-close" type="button" aria-label="게임을 닫고 목록으로 돌아가기">목록</button>
+  </div>
+  <iframe id="game-frame" title="선택한 게임" allow="autoplay; fullscreen; gamepad" allowfullscreen></iframe>
 </dialog>
 <script>
 // The game list. To add a game: one line here, in the right group. `added` drives the NEW badge for 30 days;
@@ -132,6 +148,7 @@ let statusOverrides = {};
 let cloudStatusLoaded = false;
 let currentAdminPassword = '';
 let showDevGames = false;
+try { sessionStorage.removeItem('hub-admin-unlocked'); } catch { /* session storage may be unavailable */ }
 
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 const isNew = g => g.added && !visited[g.id] && (Date.now() - Date.parse(g.added)) / 864e5 < NEW_DAYS;
@@ -179,6 +196,12 @@ function withAdminStatusControl(g, card) {
   return el('div', { className: 'game-admin-row' }, card, select);
 }
 
+function playableCard(g, img, title) {
+  const button = el('button', { className: 'game', type: 'button' }, img, title);
+  button.addEventListener('click', () => open(g.id));
+  return button;
+}
+
 function gameRow(g) {
   const title = el('span', {}, g.name);
   const status = gameStatus(g);
@@ -194,25 +217,51 @@ function gameRow(g) {
   const img = el('img', { src: 'icons/' + (g.icon || g.id + '.png'), alt: '' });
   img.onerror = () => { img.style.visibility = 'hidden'; };
   if (g.wip) return withAdminStatusControl(g, el('div', { className: 'game wip' }, img, title));
-  if (status === 'hidden' && showDevGames) {
-    const a = el('a', { className: 'game', href: `${g.id}/` }, img, title);
-    a.addEventListener('click', () => open(g.id));
-    return withAdminStatusControl(g, a);
-  }
-  if (status) {
+  if (status && !showDevGames) {
     const button = el('button', { className: 'game game-unavailable', type: 'button' }, img, title);
     button.addEventListener('click', () => showStatusMessage(status));
     return withAdminStatusControl(g, button);
   }
-  const a = el('a', { className: 'game', href: `${g.id}/` }, img, title);
-  a.addEventListener('click', () => open(g.id));
-  return withAdminStatusControl(g, a);
+  return withAdminStatusControl(g, playableCard(g, img, title));
 }
 
 function open(id) {
   visited[id] = true; save('hub-visited', visited);
   save('hub-recent', [id, ...recent.filter(x => x !== id)].slice(0, 3));
+  const game = [...GAMES, ...DEV_GAMES].find(item => item.id === id);
+  if (!game) return;
+  const gameDialog = document.getElementById('game-dialog');
+  const gameFrame = document.getElementById('game-frame');
+  document.getElementById('game-title').textContent = game.name;
+  gameFrame.title = game.name;
+  try {
+    if (showDevGames) sessionStorage.setItem('hub-admin-unlocked', 'true');
+    else sessionStorage.removeItem('hub-admin-unlocked');
+  } catch { /* session storage may be unavailable */ }
+  gameFrame.src = id + '/';
+  gameDialog.showModal();
 }
+
+const gameDialog = document.getElementById('game-dialog');
+const gameFrame = document.getElementById('game-frame');
+function closeGame() {
+  if (gameDialog.open) gameDialog.close();
+  gameFrame.src = 'about:blank';
+}
+document.getElementById('game-close').addEventListener('click', closeGame);
+gameDialog.addEventListener('close', () => { gameFrame.src = 'about:blank'; });
+window.addEventListener('message', event => {
+  if (event.origin !== location.origin || event.source !== gameFrame.contentWindow) return;
+  if (event.data?.type === 'game-hub-close') {
+    closeGame();
+  } else if (event.data?.type === 'game-access-blocked') {
+    const status = event.data.status;
+    closeGame();
+    if (['development', 'maintenance'].includes(status)) showStatusMessage(status);
+    else if (status === 'hidden') alert('숨김 상태의 게임은 관리자 모드에서만 실행할 수 있습니다.');
+    else alert('게임 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  }
+});
 
 // A collapsible group; its open/closed state is remembered per path.
 function group(path, label, count, children, sub) {
@@ -252,12 +301,12 @@ function renderTree() {
 function renderRecent() {
   const row = document.querySelector('#recent .row');
   row.replaceChildren();
-  const rec = recent.map(id => visibleGames().find(g => g.id === id && !g.wip && !gameStatus(g))).filter(Boolean);
+  const rec = recent.map(id => visibleGames().find(g => g.id === id && !g.wip && (showDevGames || !gameStatus(g)))).filter(Boolean);
   if (rec.length) {
     for (const g of rec) {
-      const a = el('a', { href: `${g.id}/` }, el('img', { src: 'icons/' + (g.icon || g.id + '.png'), alt: '' }), el('span', {}, g.name));
-      a.addEventListener('click', () => open(g.id));
-      row.append(a);
+      const button = el('button', { type: 'button' }, el('img', { src: 'icons/' + (g.icon || g.id + '.png'), alt: '' }), el('span', {}, g.name));
+      button.addEventListener('click', () => open(g.id));
+      row.append(button);
     }
   }
   document.getElementById('recent').hidden = rec.length === 0;
@@ -324,6 +373,7 @@ adminButton.addEventListener('click', () => {
   if (showDevGames) {
     showDevGames = false;
     currentAdminPassword = '';
+    try { sessionStorage.removeItem('hub-admin-unlocked'); } catch { /* session storage may be unavailable */ }
     adminButton.textContent = '관리자';
     renderTree();
     renderRecent();
@@ -343,6 +393,7 @@ adminForm.addEventListener('submit', async event => {
     await callAdminFunction({ action: 'authenticate', password: adminPassword.value });
     currentAdminPassword = adminPassword.value;
     showDevGames = true;
+    try { sessionStorage.setItem('hub-admin-unlocked', 'true'); } catch { /* session storage may be unavailable */ }
     adminButton.textContent = '관리자 잠금';
     renderTree();
     renderRecent();

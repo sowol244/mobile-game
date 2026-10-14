@@ -3,7 +3,6 @@
 	<head>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, viewport-fit=cover">
-		<script>try { if (sessionStorage.getItem('hub-admin-unlocked') !== 'true') location.replace('../'); } catch { location.replace('../'); }</script>
 		<title>DEAD ROUTE 1-1 · CLOSED HIGHWAY</title>
 		<style>
 html, body, #canvas {
@@ -154,7 +153,8 @@ body {
 
 		</style>
 
-	</head>
+	<script src="../game-access.js" data-game-id="godot-survivor-run" data-default-status="hidden" data-requires-admin="true"></script>
+</head>
 	<body>
 		<canvas id="canvas">
 			Your browser does not support the canvas tag.
@@ -170,8 +170,8 @@ body {
 			<div id="status-notice"></div>
 		</div>
 
-		<script src="dead-route-1-1-4712c07727.js"></script>
-		<script>
+		<script type="application/x-game-gated" data-script-src="dead-route-1-1-4712c07727.js"></script>
+		<script type="application/x-game-gated">
 const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"dead-route-1-1-4712c07727","experimentalVK":false,"fileSizes":{"dead-route-1-1-4712c07727.pck":3537884,"dead-route-1-1-4712c07727.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);

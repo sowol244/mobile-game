@@ -81,6 +81,7 @@
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
 
+<script src="../game-access.js" data-game-id="meteor-dodge"></script>
 </head>
 <body>
 <div id="app">
@@ -145,7 +146,7 @@
   </div>
 </div>
 
-<script>
+<script type="application/x-game-gated">
 (() => {
   const $ = id => document.getElementById(id);
   const cv = $('c'), ctx = cv.getContext('2d'), stage = $('stage');

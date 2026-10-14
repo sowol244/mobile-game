@@ -291,6 +291,7 @@
   @media (max-height: 700px) and (orientation: portrait) { .key { height: 52px; } .tool { height: 46px; } #app { gap: 8px; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; transition: none !important; } }
 </style>
+<script src="../game-access.js" data-game-id="sudoku"></script>
 </head>
 <body>
 <div id="app">
@@ -397,6 +398,6 @@
   </div>
   <div id="busy" hidden><span class="spin"></span>만드는 중…</div>
 </div>
-<script type="module" src="main.js"></script>
+<script type="application/x-game-gated" data-script-type="module" data-script-src="main.js"></script>
 </body>
 </html>
