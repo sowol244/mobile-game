@@ -459,6 +459,7 @@ export function fillCount(board) { let n = 0; for (const row of board) for (cons
 
 /* ---------- 오늘의 크래시: 30 tilts, the same waves for everyone ---------- */
 export const DAILY_TILTS = 30, DAILY_FREE = 3;
+export const DAILY_ITEMS = Object.freeze({ shuffle: 1, bomb: 1 });
 // The wave number sets the block types (not the player's moves), so everyone sees the same blocks.
 export const dailyLevel = wave => 1 + Math.floor(wave / 3);
 // Points for one resolved move. Endless: explosion points + 20 per combo step.
@@ -470,8 +471,9 @@ export function moveScore(res, combo, daily = false) {
 }
 export function createDaily(seed) {
   const Rs = rng(seed);
+  const Ri = rng(seed ^ 0xa511e9b3);
   const state = crashStart(Rs, 3);
-  return { state, Rs, wave: planWave(Rs, dailyLevel(0)), n: 0, left: DAILY_TILTS, used: 0, free: 0, combo: 0, score: 0, cleared: 0, over: false };
+  return { state, Rs, Ri, wave: planWave(Rs, dailyLevel(0)), n: 0, left: DAILY_TILTS, used: 0, free: 0, combo: 0, score: 0, cleared: 0, items: { ...DAILY_ITEMS }, over: false };
 }
 // Lands the next wave and scores it; if its own explosions empty the board, the following wave comes right behind it.
 function landWave(g) {
@@ -509,6 +511,39 @@ export function dailyTilt(g, dir) {
   if (!fillCount(g.state.board)) { g.free = 0; if (!spawn && g.left > 0) spawn = landWave(g); } // nothing left to tilt
   g.over = g.left <= 0 && g.free <= 0;
   return { tilt, spawn, free };
+}
+// A daily tool is one of the same 30 actions. Its charge and random stream are fixed per run.
+export function dailyItem(g, kind) {
+  if (g.over || g.left <= 0 || g.free > 0 || !['shuffle', 'bomb'].includes(kind) || g.items[kind] <= 0) return null;
+  const steps = [];
+  let extra = 0;
+  if (kind === 'shuffle') {
+    shuffleColors(g.state.board, g.Ri);
+    steps.push({ type: 'shuffle', board: cloneBoard(g.state.board) });
+  } else {
+    const color = commonColor(g.state.board);
+    if (color < 0) return null;
+    const ex = colorBomb(g.state.board, color);
+    if (!ex) return null;
+    extra = ex.cells.length;
+    steps.push({ type: 'boom', chain: 1, cells: ex.cells, lasers: ex.lasers, gained: extra * 10, board: cloneBoard(g.state.board) });
+  }
+  g.items[kind]--;
+  const res = resolve(g.state, g.state.gravity, { lines: true, force: true });
+  res.gained += extra * 10; res.cleared += extra;
+  if (extra) res.chain = Math.max(1, res.chain + 1);
+  steps.push(...res.steps);
+  g.combo = nextCombo(g.combo, res);
+  g.score += moveScore(res, g.combo, true);
+  g.cleared += res.cleared;
+  g.left--; g.used++;
+  let spawn = null;
+  if (g.combo >= FEVER_COMBO) g.free = DAILY_FREE;
+  else if (g.left > 0) spawn = landWave(g);
+  if (!fillCount(g.state.board)) { g.free = 0; if (!spawn && g.left > 0) spawn = landWave(g); }
+  if (spawn) steps.push(...spawn.steps);
+  g.over = g.left <= 0 && g.free <= 0;
+  return { kind, steps, spawn, free: false };
 }
 
 /* ---------- puzzle aids: per-stage limits ---------- */

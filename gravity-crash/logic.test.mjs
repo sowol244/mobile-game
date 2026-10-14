@@ -5,7 +5,7 @@ import {
   starsFor, rng, planWave, spawnWave, blockedLines, crashStart, entryCell, nextCombo, FEVER_COMBO, colorBomb, commonColor,
   shuffleColors, fillCount, deadClear, crashLevel, spawnInterval, boardKey, mk, createAids, UNDO_LIMIT, HINT_LIMIT, migrateSave,
   fullLines, LINE_BONUS, BLOCK_LEVELS, typesAtLevel, randomBlock, waveSize, hasBoom, unjam, darkMove, needsShake, STUCK_LIMIT, STUCK_FILL,
-  DAILY_TILTS, DAILY_FREE, dailyLevel, moveScore, createDaily, dailyTilt, cloneBoard,
+  DAILY_TILTS, DAILY_FREE, DAILY_ITEMS, dailyLevel, moveScore, createDaily, dailyTilt, dailyItem, cloneBoard,
 } from './logic.js';
 import { STAGES, CHAPTERS } from './stages.js';
 import { STEPS } from './tutorial.js';
@@ -454,6 +454,32 @@ test('daily: everyone gets the same waves, whatever they do, and the block types
   assert.ok(typesAtLevel(dailyLevel(29)).length === 4, 'all four block types show up within one daily');
   const early = createDaily(3);
   assert.ok(early.wave.every(w => w.b.t === 'n'), 'the first wave is plain colors');
+});
+
+test('daily tools: fixed shuffle and color-bomb charges each use one action and preserve the shared wave sequence', () => {
+  const seed = 20261014, shuffled = createDaily(seed), tilted = createDaily(seed);
+  assert.deepEqual(DAILY_ITEMS, { shuffle: 1, bomb: 1 });
+  assert.deepEqual(shuffled.items, DAILY_ITEMS);
+  const first = dailyItem(shuffled, 'shuffle');
+  const turn = dailyTilt(tilted, tilted.state.gravity === 'down' ? 'up' : 'down');
+  assert.ok(first && turn);
+  assert.equal(first.steps[0].type, 'shuffle');
+  assert.equal(shuffled.left, DAILY_TILTS - 1);
+  assert.equal(shuffled.used, 1);
+  assert.equal(shuffled.items.shuffle, 0);
+  assert.deepEqual(sigOf(shuffled.wave), sigOf(tilted.wave), 'tool randomness must not change upcoming waves');
+  assert.equal(dailyItem(shuffled, 'shuffle'), null, 'a spent charge cannot be reused');
+
+  const bomb = createDaily(seed);
+  bomb.state.board = parseBoard(pad(['c c c c . . . . .']));
+  bomb.state.gravity = 'down';
+  const cleared = dailyItem(bomb, 'bomb');
+  assert.ok(cleared && cleared.steps[0].type === 'boom');
+  assert.equal(bomb.items.bomb, 0);
+  assert.equal(bomb.left, DAILY_TILTS - 1);
+  assert.equal(bomb.used, 1);
+  assert.ok(bomb.score >= 40, 'the color bomb clear contributes to score');
+  assert.equal(dailyItem(bomb, 'stop'), null, 'unsupported tools are rejected');
 });
 
 test('daily: a combo of 5 gives 3 free tilts (no wave, double points); an empty board never stalls; blocks over a taken entry cell are dropped', () => {

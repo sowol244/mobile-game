@@ -3,7 +3,7 @@
 import {
   N, DIRS, DV, OPP, cloneBoard, cloneState, settle, resolve, stageState, goalMet, solve, starsFor, createAids, migrateSave,
   rng, dailySeed, crashLevel, spawnInterval, planWave, blockedLines, spawnWave, crashStart, entryCell,
-  BLOCK_LEVELS, darkMove, needsShake, unjam, createDaily, dailyTilt, dailyLevel, moveScore, DAILY_TILTS, DAILY_FREE,
+  BLOCK_LEVELS, darkMove, needsShake, unjam, createDaily, dailyTilt, dailyItem, dailyLevel, moveScore, DAILY_TILTS, DAILY_FREE,
   shuffleColors, commonColor, colorBomb, nextCombo, FEVER_COMBO, FEVER_TIME, fillCount, parseBoard, mk,
 } from './logic.js';
 import { STAGES, CHAPTERS } from './stages.js';
@@ -788,6 +788,22 @@ function dailyMove(dir) {
   });
   hud();
 }
+function useDailyItem(kind) {
+  if (phase !== 'play' || !C || C.free > 0) return;
+  if (busy()) { lockFlash = 0.25; sound.locked(); return; }
+  const lv0 = dailyLevel(C.n), r = dailyItem(C, kind);
+  if (!r) { sound.bump(); return; }
+  sound.item(); if (r.spawn) sound.spawn();
+  playSteps(r.steps, () => {
+    if (C.combo >= 2) pops.push({ text: `COMBO ${C.combo}`, x: W / 2, y: Lay.by + Lay.bs * 0.58, color: '#00f0ff', size: 18, t: 0, life: 0.9 });
+    if (C.combo >= FEVER_COMBO && C.free === DAILY_FREE) { sound.fever(); warp = 1.5; flash = 0.4; pops.push({ text: '그라비티 프리! ×3', kr: true, x: W / 2, y: Lay.by + Lay.bs * 0.45, color: '#ffe600', size: 28, t: 0, life: 1.6 }); }
+    const lv = dailyLevel(C.n);
+    if (lv !== lv0) { C.level = lv; levelToast(lv); }
+    if (C.score > C.best) C.best = C.score;
+    hud();
+  });
+  hud();
+}
 function dailyBest() { const d = load('daily', null); return d && d.seed === dailySeed() ? d.best : 0; }
 function crashOver() {
   const daily = mode === 'daily';
@@ -814,9 +830,9 @@ function crashOver() {
   else if (isBest) { best = C.score; save('best', best); }
   setTimeout(() => {
     hideBar(); pauseBtn.hidden = true;
-    titleEl.textContent = daily ? (isBest ? '오늘의 새 기록!' : '이동 끝!') : (isBest ? '새 기록!' : '게임 오버');
+    titleEl.textContent = daily ? (isBest ? '오늘의 새 기록!' : '챌린지 완료!') : (isBest ? '새 기록!' : '게임 오버');
     msgEl.innerHTML = (isBest ? `${daily ? '오늘의 ' : ''}최고 기록을 갱신했어요!` : `${daily ? '오늘 ' : ''}최고 기록은 <b>${prevBest}</b>점이에요.`)
-      + (daily ? `<br>이동 ${DAILY_TILTS}번을 모두 썼어요.` : '<br>예고된 칸이 막혀서 판이 넘쳤어요.');
+      + (daily ? `<br>행동 ${DAILY_TILTS}회를 모두 사용했어요.` : '<br>예고된 칸이 막혀서 판이 넘쳤어요.');
     finalEl.textContent = C.score; finalEl.hidden = false; toastEl.textContent = '';
     startBtn.textContent = '다시 하기';
     buttons(false); panel('main');
@@ -966,7 +982,11 @@ function hud() {
     if (daily) {
       H.gfill.style.width = (feverOn() ? (C.free / DAILY_FREE) * 100 : Math.min(1, C.combo / FEVER_COMBO) * 100) + '%';
       H.glabel.textContent = feverOn() ? `프리 ×${C.free}` : C.combo >= 1 ? `×${C.combo}` : '';
-      H.rLabel.textContent = '남은 이동'; H.rVal.textContent = C.left; H.rVal.classList.toggle('low', C.left <= 3 && !feverOn());
+      H.rLabel.textContent = '남은 행동'; H.rVal.textContent = C.left; H.rVal.classList.toggle('low', C.left <= 3 && !feverOn());
+      setTools([
+        { ic: '⇄', l: '셔플', k: '1', n: '×' + C.items.shuffle, on: C.items.shuffle > 0 && C.free === 0, act: () => useDailyItem('shuffle') },
+        { ic: '✹', l: '컬러 붐', k: '2', n: '×' + C.items.bomb, on: C.items.bomb > 0 && C.free === 0 && commonColor(st.board) >= 0, act: () => useDailyItem('bomb') },
+      ]);
       $('iprog').hidden = true;
       return;
     }
@@ -985,11 +1005,13 @@ let toolActs = [];
 function setTools(list) {
   list.forEach((t, i) => {
     const el = tools[i];
+    if (!t) { el.btn.hidden = true; el.btn.disabled = true; return; }
+    el.btn.hidden = false;
     el.ic.textContent = t.ic; el.l.textContent = t.l; el.k.textContent = t.k; el.n.textContent = t.n;
     el.btn.disabled = !t.on; el.btn.classList.toggle('ready', !!t.on && (t.ready ?? (C ? true : false)));
     el.btn.setAttribute('aria-label', t.l);
   });
-  toolActs = list.map(t => t.act);
+  toolActs = list.map(t => t && t.act);
 }
 tools.forEach((t, i) => t.btn.addEventListener('click', () => { if (phase === 'play' && toolActs[i]) toolActs[i](); }));
 function hideBar() { barEl.hidden = true; }
@@ -1001,25 +1023,24 @@ function resetFx() { introPulse = null; anim = null; parts = []; pops = []; shak
 function enterPlay() {
   sound.setQuiet(false);
   phase = 'play'; overlay.hidden = true; pauseBtn.hidden = false;
-  barEl.hidden = mode === 'tutorial' || mode === 'daily'; // the daily has no items: only your 30 tilts count
+  barEl.hidden = mode === 'tutorial';
 }
 function showTitle() {
   phase = 'title'; mode = 'crash'; C = null; tut = null; attract = null; resetFx();
   pauseBtn.hidden = true; hideBar(); tutCoach(false);
   titleEl.innerHTML = TITLE; msgEl.innerHTML = INTRO; finalEl.hidden = true; toastEl.textContent = '';
   startBtn.textContent = '시작';
-  H.lLabel.textContent = '최고 기록'; H.lVal.textContent = best; H.mLabel.textContent = ''; H.gauge.hidden = true; H.glabel.textContent = '';
+  H.lLabel.textContent = '오늘 챌린지 최고'; H.lVal.textContent = dailyBest(); H.mLabel.textContent = ''; H.gauge.hidden = true; H.glabel.textContent = '';
   H.rLabel.textContent = '퍼즐 ★'; H.rVal.textContent = `${starCount()}/${STAGES.length * 3}`; H.rVal.classList.remove('low');
   buttons(true); panel('main');
 }
 const starCount = () => stars.reduce((a, b) => a + (b || 0), 0);
 function refreshModes() {
   $('mPuzzleR').textContent = `★ ${starCount()}/${STAGES.length * 3}`;
-  $('mCrashR').textContent = best ? `최고 ${best}` : '';
   const d = dailyBest();
   $('mDailyR').textContent = d ? `오늘 ${d}` : '';
   const now = new Date();
-  $('mDailyD').textContent = `${now.getMonth() + 1}월 ${now.getDate()}일 · 이동 ${DAILY_TILTS}번, 모두 같은 블록`;
+  $('mDailyD').textContent = `${now.getMonth() + 1}월 ${now.getDate()}일 · 모두 같은 파도 · 행동 ${DAILY_TILTS}회`;
 }
 // Stage select: one chapter (≤12 stages) per page; ‹ › buttons, chapter dots, swipe or ←/→ to turn pages.
 let chapter = -1;
@@ -1094,14 +1115,11 @@ function fillRows(el, rows, label) {
   el.hidden = !rows.length;
 }
 function renderTop() {
-  const top = load('top', []).filter(e => e.mode !== 'daily'); // older saves mixed in daily scores of other days
-  fillRows($('rows'), top, '크래시');
-  $('rankNote').textContent = top.length ? '' : '아직 크래시 기록이 없어요. 한 판 해 보세요!';
   const d = load('dtop', null), today = d && d.seed === dailySeed() ? d.rows : [];
   fillRows($('rowsDaily'), today, '오늘');
-  $('dailyNote').textContent = today.length ? '' : '오늘은 아직 기록이 없어요.';
+  $('dailyNote').textContent = today.length ? '' : '오늘의 챌린지 기록이 아직 없어요.';
   const now = new Date();
-  $('dailyHead').textContent = `오늘의 크래시 · ${now.getMonth() + 1}월 ${now.getDate()}일`;
+  $('dailyHead').textContent = `오늘의 챌린지 · ${now.getMonth() + 1}월 ${now.getDate()}일`;
   const cleared = stars.filter(s => s > 0).length;
   $('puzNote').innerHTML = `퍼즐 <b>${cleared}/${STAGES.length}</b> 스테이지 · <b>★ ${starCount()}</b>`;
 }
@@ -1116,10 +1134,10 @@ function buildHelp() {
     [{ t: 'h' }, '<b>블랙홀</b>은 주변 3개+를 한 색으로 바꿔요.'],
     [{ t: 'n', c: 2 }, '<b>퍼즐</b>: 정해진 횟수 안에 색 블록을 모두!'],
     [{ t: 'line' }, '<b>가로·세로 줄</b>이 가득 차면 <b>라인 크래시</b>!'],
-    [{ t: 'warn' }, '<b>크래시</b>: 예고된 칸이 막히면 게임 오버.'],
-    [{ t: 'daily' }, '<b>오늘의 크래시</b>: 이동 30번으로 점수 겨루기.'],
+    [{ t: 'warn' }, '<b>파도 미리보기</b>에서 다음 블록과 막힐 칸을 확인해요.'],
+    [{ t: 'daily' }, '<b>오늘의 크래시 챌린지</b>: 매일 같은 파도에 30회 행동으로 점수 겨루기.'],
+    [{ t: 'item' }, '<b>셔플·컬러 붐</b>은 각 1회 쓸 수 있고, 사용하면 행동 1회를 써요.'],
     [{ t: 'n', c: 3 }, '<b>5콤보</b>면 5초간 <b>그라비티 프리</b>!'],
-    [{ t: 'item' }, '블록 30개를 부술 때마다 <b>아이템</b> 1개.'],
   ];
   const ul = $('helpList'); ul.replaceChildren();
   for (const [b, html] of items) {
@@ -1155,7 +1173,6 @@ function paintLevel() { for (const b of document.querySelectorAll('[data-level]'
 for (const b of document.querySelectorAll('#pDiff [data-level]')) b.addEventListener('click', () => { sound.click(); setLevel(b.dataset.level); buildStages(); panel('stages'); });
 for (const b of document.querySelectorAll('#lvl [data-level]')) b.addEventListener('click', () => { if (level !== b.dataset.level) { sound.click(); setLevel(b.dataset.level); } });
 paintLevel();
-$('mCrash').addEventListener('click', () => { sound.unlock(); sound.click(); startCrash(false); });
 $('mDaily').addEventListener('click', () => { sound.unlock(); sound.click(); startCrash(true); });
 $('stagesBack').addEventListener('click', () => { if (phase === 'result') { showTitle(); } else { refreshModes(); panel('mode'); } });
 helpBtn.addEventListener('click', () => { buildHelp(); panel('help'); });
