@@ -5,7 +5,7 @@ import {
   rng, dailySeed, crashLevel, spawnInterval, planWave, blockedLines, spawnWave, crashStart, entryCell,
   BLOCK_LEVELS, darkMove, needsShake, unjam, createDaily, dailyTilt, dailyItem, dailyLevel, moveScore, DAILY_TILTS, DAILY_FREE,
   shuffleColors, commonColor, colorBomb, nextCombo, FEVER_COMBO, FEVER_TIME, fillCount, parseBoard, mk,
-} from './logic.js?v=challenge-2';
+} from './logic.js?v=challenge-3';
 import { STAGES, CHAPTERS } from './stages.js';
 import { STEPS } from './tutorial.js';
 import { createSound } from './sound.js';
@@ -832,7 +832,7 @@ function crashOver() {
     hideBar(); pauseBtn.hidden = true;
     titleEl.textContent = daily ? (isBest ? '오늘의 새 기록!' : '챌린지 완료!') : (isBest ? '새 기록!' : '게임 오버');
     msgEl.innerHTML = (isBest ? `${daily ? '오늘의 ' : ''}최고 기록을 갱신했어요!` : `${daily ? '오늘 ' : ''}최고 기록은 <b>${prevBest}</b>점이에요.`)
-      + (daily ? `<br>행동 ${DAILY_TILTS}회를 모두 사용했어요.` : '<br>예고된 칸이 막혀서 판이 넘쳤어요.');
+      + (daily ? `<br>${DAILY_TILTS}번 이동을 모두 사용했어요.` : '<br>예고된 칸이 막혀서 판이 넘쳤어요.');
     finalEl.textContent = C.score; finalEl.hidden = false; toastEl.textContent = '';
     startBtn.textContent = '다시 하기';
     buttons(false); panel('main');
@@ -982,7 +982,7 @@ function hud() {
     if (daily) {
       H.gfill.style.width = (feverOn() ? (C.free / DAILY_FREE) * 100 : Math.min(1, C.combo / FEVER_COMBO) * 100) + '%';
       H.glabel.textContent = feverOn() ? `프리 ×${C.free}` : C.combo >= 1 ? `×${C.combo}` : '';
-      H.rLabel.textContent = '남은 행동'; H.rVal.textContent = C.left; H.rVal.classList.toggle('low', C.left <= 3 && !feverOn());
+      H.rLabel.textContent = '남은 이동'; H.rVal.textContent = C.left; H.rVal.classList.toggle('low', C.left <= 3 && !feverOn());
       setTools([
         { ic: '⇄', l: '셔플', k: '1', n: '×' + C.items.shuffle, on: C.items.shuffle > 0 && C.free === 0, act: () => useDailyItem('shuffle') },
         { ic: '✹', l: '컬러 붐', k: '2', n: '×' + C.items.bomb, on: C.items.bomb > 0 && C.free === 0 && commonColor(st.board) >= 0, act: () => useDailyItem('bomb') },
@@ -1040,7 +1040,7 @@ function refreshModes() {
   const d = dailyBest();
   $('mDailyR').textContent = d ? `오늘 ${d}` : '';
   const now = new Date();
-  $('mDailyD').textContent = `${now.getMonth() + 1}월 ${now.getDate()}일 · 모두 같은 파도 · 행동 ${DAILY_TILTS}회`;
+  $('mDailyD').textContent = `${now.getMonth() + 1}월 ${now.getDate()}일 · ${DAILY_TILTS}번 이동`;
 }
 // Stage select: one chapter (≤12 stages) per page; ‹ › buttons, chapter dots, swipe or ←/→ to turn pages.
 let chapter = -1;
@@ -1135,8 +1135,8 @@ function buildHelp() {
     [{ t: 'n', c: 2 }, '<b>퍼즐</b>: 정해진 횟수 안에 색 블록을 모두!'],
     [{ t: 'line' }, '<b>가로·세로 줄</b>이 가득 차면 <b>라인 크래시</b>!'],
     [{ t: 'warn' }, '<b>파도 미리보기</b>에서 다음 블록과 막힐 칸을 확인해요.'],
-    [{ t: 'daily' }, '<b>오늘의 크래시 챌린지</b>: 매일 같은 파도에 30회 행동으로 점수 겨루기.'],
-    [{ t: 'item' }, '<b>셔플·컬러 붐</b>은 각 1회 쓸 수 있고, 사용하면 행동 1회를 써요.'],
+    [{ t: 'daily' }, '<b>오늘의 챌린지</b>: 매일 30번 이동으로 점수 겨루기.'],
+    [{ t: 'item' }, '<b>셔플·컬러 붐</b>은 각 1회 쓸 수 있고, 사용하면 이동 1회를 써요.'],
     [{ t: 'n', c: 3 }, '<b>5콤보</b>면 5초간 <b>그라비티 프리</b>!'],
   ];
   const ul = $('helpList'); ul.replaceChildren();
