@@ -10,11 +10,11 @@ export const STEPS = [
     rows: pad(['c c c . . . . . c']),
   },
   {
-    text: '같은 색 <b>4개 이상</b>이 붙으면 터져요. 색이 달라도 규칙은 같으니, 중력을 바꿔 모아 보세요!',
-    goal: 'clear', limit: 3,
+    text: '같은 색 <b>4개 이상</b>이 붙으면 터져요. 색이 달라도 규칙은 같으니, 같은 색끼리 모아 보세요!',
+    goal: 'clear', limit: 2,
     rows: pad([
-      '. p . . . c . . .',
-      'c p . p . p c . c',
+      '. p . p . p . p .',
+      'c . c . c . c . .',
     ]),
   },
 ];

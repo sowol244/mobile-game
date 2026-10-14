@@ -6,8 +6,8 @@ import {
   BLOCK_LEVELS, darkMove, needsShake, unjam, createDaily, dailyTilt, dailyItem, dailyLevel, moveScore, DAILY_TILTS, DAILY_FREE,
   shuffleColors, commonColor, colorBomb, nextCombo, FEVER_COMBO, FEVER_TIME, fillCount, parseBoard, mk,
 } from './logic.js?v=challenge-5';
-import { STAGES, CHAPTERS } from './stages.js?v=challenge-5';
-import { STEPS } from './tutorial.js?v=challenge-5';
+import { STAGES, CHAPTERS, STAGE_FOCUS } from './stages.js?v=challenge-6';
+import { STEPS } from './tutorial.js?v=challenge-6';
 import { createSound } from './sound.js';
 import { INFO, ORDER, typesOn, makeDemo } from './guide.js';
 
@@ -628,19 +628,33 @@ function puzzleAfter() {
 function puzzleResult(ok) {
   if (phase !== 'play') return;
   const def = STAGES[stageIdx];
+  const chapterDef = CHAPTERS[chapterOf(stageIdx)];
+  const chapterEnd = stageIdx + 1 === chapterDef.to;
+  const lastStage = stageIdx === STAGES.length - 1;
+  const previousStars = stars[stageIdx] || 0;
   phase = 'result'; hideBar();
   const s = ok ? starsFor(movesUsed, def.par, hinted) : 0;
-  if (ok) { stars[stageIdx] = Math.max(stars[stageIdx] || 0, s); save('stars', stars); sound.clear(); }
+  if (ok) { stars[stageIdx] = Math.max(previousStars, s); save('stars', stars); sound.clear(); }
   else sound.fail();
-  $('rTitle').textContent = ok ? (s === 3 ? '완벽해요!' : '클리어!') : '실패';
-  $('rMsg').innerHTML = ok
-    ? `${movesUsed}번 만에 풀었어요. (최소 <b>${def.par}</b>번)${hinted ? '<br>힌트를 써서 별은 최대 2개예요.' : ''}`
-    : '이동 횟수를 다 썼어요.';
+  const firstClear = ok && previousStars === 0;
+  const newStarRecord = ok && s > previousStars;
+  $('rTitle').textContent = !ok ? '실패'
+    : lastStage && firstClear ? '캠페인 완주!'
+      : chapterEnd && firstClear ? `${chapterDef.name} 완주!`
+        : newStarRecord && previousStars > 0 ? '별 기록 갱신!'
+          : s === 3 ? '완벽해요!' : '클리어!';
+  const resultLines = ok
+    ? [`${movesUsed}번 만에 풀었어요. (최소 <b>${def.par}</b>번)`]
+    : ['이동 횟수를 다 썼어요.'];
+  if (ok && hinted) resultLines.push('힌트를 써서 별은 최대 2개예요.');
+  if (ok && newStarRecord && previousStars > 0) resultLines.push(`최고 기록이 ★ ${stars[stageIdx]}개로 올라갔어요.`);
+  if (firstClear && lastStage) resultLines.push(`100단계 완주 · ★ ${starCount()} / ${STAGES.length * 3}`);
+  else if (firstClear && chapterEnd) resultLines.push(`${CHAPTERS[chapterOf(stageIdx) + 1].name} 챕터가 열렸어요.`);
+  $('rMsg').innerHTML = resultLines.join('<br>');
   const starEls = [...$('rStars').children];
   starEls.forEach(e => e.classList.remove('on'));
   starEls.forEach((e, i) => { if (i < s) setTimeout(() => { e.classList.add('on'); sound.star(i); }, 350 + i * 260); });
-  const lastStage = stageIdx === STAGES.length - 1;
-  $('rNext').textContent = ok ? (lastStage ? '스테이지 목록' : '다음 스테이지') : '다시 하기';
+  $('rNext').textContent = ok ? (lastStage ? '전체 기록 보기' : chapterEnd ? '다음 챕터' : '다음 스테이지') : '다시 하기';
   $('rRetry').hidden = !ok;
   panel('result');
 }
@@ -1054,25 +1068,27 @@ function buildStages(ch) {
   const C0 = CHAPTERS[ch];
   const grid = $('grid'); grid.replaceChildren();
   grid.classList.remove('slide-l', 'slide-r'); void grid.offsetWidth; if (dir) grid.classList.add(dir);
-  let chStars = 0;
+  let chStars = 0, chCleared = 0;
   for (let i = C0.from - 1; i <= C0.to - 1; i++) {
     const s = STAGES[i];
     chStars += stars[i] || 0;
+    if (stars[i] > 0) chCleared++;
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'st' + (i === cur ? ' cur' : ''); b.disabled = !unlocked(i);
     const no = document.createElement('span'); no.className = 'no'; no.textContent = i + 1;
     const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name;
+    const focus = document.createElement('span'); focus.className = 'focus'; focus.textContent = STAGE_FOCUS[i];
     const sr = document.createElement('span'); sr.className = 'sr';
     for (let k = 0; k < 3; k++) { const e = document.createElement(k < (stars[i] || 0) ? 'i' : 'span'); e.textContent = '★'; sr.append(e); }
-    b.append(no, nm, sr);
-    b.setAttribute('aria-label', `${i + 1}단계 ${s.name}${stars[i] ? `, 별 ${stars[i]}개` : ''}`);
+    b.append(no, nm, focus, sr);
+    b.setAttribute('aria-label', `${i + 1}단계 ${s.name}, 핵심 ${STAGE_FOCUS[i]}${stars[i] ? `, 별 ${stars[i]}개` : ''}`);
     b.addEventListener('click', () => { sound.unlock(); sound.click(); startPuzzle(i); });
     grid.append(b);
   }
   $('chNo').textContent = `CHAPTER ${ch + 1} / ${CHAPTERS.length} · ${C0.from}–${C0.to}`;
   $('chName').textContent = C0.name;
   $('chGuide').textContent = C0.guide || '';
-  $('chStars').textContent = `★ ${chStars} / ${(C0.to - C0.from + 1) * 3}`;
+  $('chStars').textContent = `완료 ${chCleared}/${C0.to - C0.from + 1} · ★ ${chStars}/${(C0.to - C0.from + 1) * 3}`;
   $('chPrev').disabled = ch === 0;
   $('chNext').disabled = ch === CHAPTERS.length - 1 || !unlocked(CHAPTERS[ch + 1].from - 1);
   const dots = $('dots'); dots.replaceChildren();
@@ -1086,7 +1102,7 @@ function buildStages(ch) {
     d.addEventListener('click', () => { sound.click(); buildStages(k); });
     dots.append(d);
   });
-  $('starTotal').textContent = `★ ${starCount()} / ${STAGES.length * 3}`;
+  $('starTotal').textContent = `완료 ${stars.filter(s => s > 0).length}/${STAGES.length} · ★ ${starCount()}/${STAGES.length * 3}`;
 }
 function turnChapter(step) {
   const k = chapter + step;
