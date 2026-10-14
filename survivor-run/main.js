@@ -1,5 +1,5 @@
 import { createGame, resizeGame, updateGame, STAGE_DURATION } from './game.js?v=1-1-20261014b';
-import { drawScene } from './render.js?v=1-1-20261014';
+import { drawScene } from './render.js?v=1-1-20261014c';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014';
 
 const $ = id => document.getElementById(id);
@@ -304,4 +304,5 @@ function frame(now) {
 
 showTitle();
 requestAnimationFrame(frame);
+
 

@@ -1,6 +1,29 @@
 import { roadHalfWidth, laneX } from './game.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const tintedSpriteCache = new WeakMap();
+
+function tintedSprite(image, tint) {
+  let variants = tintedSpriteCache.get(image);
+  if (!variants) {
+    variants = new Map();
+    tintedSpriteCache.set(image, variants);
+  }
+  if (variants.has(tint)) return variants.get(tint);
+
+  // The main game canvas is opaque (alpha:false), so source-atop there colors
+  // the whole sprite rectangle. Build the tint on a transparent layer first.
+  const layer = document.createElement('canvas');
+  layer.width = image.naturalWidth;
+  layer.height = image.naturalHeight;
+  const layerContext = layer.getContext('2d');
+  layerContext.drawImage(image, 0, 0);
+  layerContext.globalCompositeOperation = 'source-atop';
+  layerContext.fillStyle = tint;
+  layerContext.fillRect(0, 0, layer.width, layer.height);
+  variants.set(tint, layer);
+  return layer;
+}
 
 function roundRect(g, x, y, w, h, r, fill, stroke, lineWidth = 1) {
   r = Math.min(r, w * 0.5, h * 0.5);
@@ -245,11 +268,13 @@ function drawSprite(g, image, x, y, width, height, bob, rotation, alpha, tint = 
     const imageY = -height + (bob || 0);
     g.drawImage(image, -width / 2, imageY, width, height);
     if (tint) {
-      g.globalCompositeOperation = 'source-atop';
-      g.globalAlpha = 0.72;
-      g.fillStyle = tint;
-      g.fillRect(-width / 2, imageY, width, height);
+      const flash = tintedSprite(image, tint);
       g.globalCompositeOperation = 'source-over';
+      g.globalAlpha = (alpha == null ? 1 : alpha) * 0.72;
+      g.shadowColor = 'transparent';
+      g.shadowBlur = 0;
+      g.shadowOffsetY = 0;
+      g.drawImage(flash, -width / 2, imageY, width, height);
       g.globalAlpha = alpha == null ? 1 : alpha;
     }
     g.shadowBlur = 0;
@@ -490,4 +515,5 @@ export function drawScene(ctx, s, w, h, now, title, assets) {
   ctx.fillStyle = vignette; ctx.fillRect(0, 0, w, h);
   if (s.flash > 0) { ctx.fillStyle = 'rgba(255,66,48,' + (s.flash * 0.34) + ')'; ctx.fillRect(0, 0, w, h); }
 }
+
 
