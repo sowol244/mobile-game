@@ -227,8 +227,6 @@ body {
 h1 { margin: 0; color: var(--gold); font: 400 clamp(36px, 10vw, 54px)/.94 var(--title); text-wrap: balance; text-shadow: 0 3px 0 #80532b, 0 5px 14px rgba(0,0,0,.4); }
 #pHelp h1, #pRank h1, #pTutorial h1 { font-size: 36px; }
 .panel > p { margin: 0; color: #e1e5d9; font-size: 15px; line-height: 1.5; text-wrap: balance; }
-.mission-chips { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; }
-.mission-chips span { padding: 5px 9px; border: 1px solid rgba(234,193,108,.24); border-radius: 99px; color: #f3dca6; background: rgba(188,126,54,.14); font-size: 11px; }
 #result { width: 100%; padding: 10px; border: 1px solid rgba(154,189,112,.32); border-radius: 12px; color: #d4edaa !important; background: rgba(118,154,80,.12); font-size: 15px !important; font-variant-numeric: tabular-nums; }
 .buttons { width: min(100%, 330px); display: grid; gap: 9px; }
 button, .sub { font: 16px var(--font); cursor: pointer; touch-action: manipulation; }

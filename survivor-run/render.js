@@ -1,6 +1,10 @@
-import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=1-1-20261015a';
+import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=1-1-20261015g';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const smoothstep = value => {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+};
 const tintedSpriteCache = new WeakMap();
 const BARREL_VISUALS = {
   companion: { colors: ['#80909a', '#4d6269', '#29363b'], accent: '#a9c6c8', tag: '지원 사수', stencil: '동료' },
@@ -441,7 +445,7 @@ function drawZombie(g, zombie, h, time, assets) {
   drawSprite(g, image, zombie.x, zombie.y + bob + (zombie.dead ? (1 - dying) * 9 : 0), width, height, 0, rotation, dying, zombie.hitFlash > 0 ? '#fff0bd' : null);
   if (!zombie.dead && zombie.hp < zombie.maxHp) {
     const barW = 30 * scale;
-    roundRect(g, zombie.x - barW / 2, zombie.y - height - 5, barW, 5 * scale, 2, 'rgba(10,15,14,.9)', 'rgba(255,255,255,.6)');
+    roundRect(g, zombie.x - barW / 2, zombie.y - height - 5, barW, 5 * scale, 2, 'rgba(10,15,14,.9)');
     roundRect(g, zombie.x - barW / 2, zombie.y - height - 5, barW * clamp(zombie.hp / zombie.maxHp, 0, 1), 5 * scale, 2, '#ffca61');
   }
 }
@@ -475,31 +479,63 @@ function drawBoss(g, boss, w, h, time, assets) {
   const collapsing = boss.deathTimer != null;
   const fall = collapsing ? clamp(1 - boss.deathTimer / boss.deathDuration, 0, 1) : 0;
   const warningProgress = boss.warning > 0 ? clamp(1 - boss.warning / (boss.warningTotal || 1.25), 0, 1) : 0;
-  const lunge = boss.warning > 0 ? clamp((warningProgress - 0.68) / 0.32, 0, 1) : 0;
+  const recovery = clamp((boss.attackRecover || 0) / 0.58, 0, 1);
+  const lunge = boss.warning > 0 ? smoothstep((warningProgress - 0.68) / 0.32) : 0;
   const crouch = boss.warning > 0 ? Math.sin(Math.min(1, warningProgress / 0.72) * Math.PI * 0.5) * (1 - lunge * 0.75) : 0;
   const impact = boss.stomp > 0 ? Math.pow(boss.stomp / 0.42, 2) : 0;
   const hitShake = boss.hitShake > 0 ? Math.sin(time * 92) * boss.hitShake * 18 : 0;
-  const breath = collapsing ? 0 : Math.sin(time * 3.1) * 0.055;
-  const bob = collapsing ? 0 : Math.sin(time * 4.7) * 10 + Math.sin(time * 2.1 + 0.7) * 3.5;
-  const aimDirection = boss.attackLane == null ? 0 : Math.sign(laneX(w, h, boss.y, boss.attackLane) - boss.x);
+  const breath = collapsing ? 0 : Math.sin(time * 3.1) * 0.04;
+  const idleBob = Math.sin(time * 4.7) * 2.2 + Math.sin(time * 2.1 + 0.7) * 1.2;
+  const walkingSpeed = clamp(Math.abs(boss.moveSpeed || 0) / Math.max(1, w * 0.17), 0, 1);
+  const walkPhase = boss.walkPhase || 0;
+  const walkFrame = Math.sin(walkPhase) > 0 ? assets.bruteWalkB : assets.bruteWalkA;
+  const hasWalkFrame = walkFrame?.complete && walkFrame.naturalWidth;
+  const gait = !collapsing && boss.warning <= 0 && recovery < 0.02 && hasWalkFrame
+    ? walkingSpeed * clamp((walkingSpeed - 0.04) / 0.25, 0, 1)
+    : 0;
+  const bob = collapsing ? 0 : idleBob + Math.abs(Math.sin(walkPhase * 2)) * gait * 3.8;
+  const movingDirection = Math.sign(boss.moveSpeed || 0);
+  const aimDirection = boss.warning > 0 || recovery > 0.02
+    ? (boss.attackDirection || 0)
+    : movingDirection * 0.35;
   const rotation = collapsing
     ? -fall * 0.72
-    : Math.sin(time * 1.35) * 0.12 + aimDirection * (crouch * 0.09 + lunge * 0.24) + hitShake * 0.004;
+    : movingDirection * gait * 0.045 + aimDirection * (crouch * 0.09 + lunge * 0.24) + hitShake * 0.004;
   const alpha = collapsing ? 1 - fall * 0.48 : 1;
   const width = size * (1 + breath + crouch * 0.055 + lunge * 0.075 + impact * 0.1);
   const height = size * 1.05 * (1 - breath * 0.6 - crouch * 0.105 + lunge * 0.17 - impact * 0.17);
   const offsetX = aimDirection * lunge * size * 0.14 + hitShake;
   const offsetY = boss.y + 38 + bob + crouch * 12 - lunge * size * 0.22 + impact * size * 0.08 + fall * size * 0.22;
-  if (!collapsing) drawFootstepDust(g, boss.x + offsetX, boss.y + 40, 1.8, boss.phase * 5.2, '#80766b');
-  const attackPose = boss.warning > 0 && !collapsing
-    ? clamp((warningProgress - 0.2) / 0.52, 0, 1)
-    : 0;
+  if (!collapsing && gait > 0.08) {
+    for (const side of [-1, 1]) {
+      const footPhase = walkPhase + (side > 0 ? Math.PI : 0);
+      const plant = 0.5 + Math.cos(footPhase) * 0.5;
+      const slide = Math.sin(footPhase) * size * 0.035;
+      g.save();
+      g.globalAlpha = gait * (0.09 + plant * 0.12);
+      g.fillStyle = 'rgba(6,8,8,.72)';
+      g.beginPath();
+      g.ellipse(boss.x + offsetX + side * size * 0.14 + slide, offsetY + 1, size * (0.105 + plant * 0.025), size * 0.027, 0, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+    }
+  }
+  const windupPose = boss.warning > 0 ? smoothstep((warningProgress - 0.12) / 0.56) : 0;
+  const attackPose = collapsing ? 0 : Math.max(windupPose, recovery);
   const tint = boss.hitFlash > 0 ? '#f2bc86' : null;
-  if (attackPose > 0 && assets.bruteAttack?.complete && assets.bruteAttack.naturalWidth) {
-    drawSprite(g, assets.brute, boss.x + offsetX, offsetY, width, height, 0, rotation, alpha * (1 - attackPose), tint);
-    drawSprite(g, assets.bruteAttack, boss.x + offsetX, offsetY, width * 1.02, height * 1.02, 0, rotation, alpha * attackPose, tint);
-  } else {
-    drawSprite(g, assets.brute, boss.x + offsetX, offsetY, width, height, 0, rotation, alpha, tint);
+  const attackReady = assets.bruteAttack?.complete && assets.bruteAttack.naturalWidth;
+  const attackMix = attackReady ? attackPose : 0;
+  const walkMix = gait * (1 - attackMix);
+  const idleMix = (1 - attackMix) * (1 - walkMix);
+  if (idleMix > 0.01) {
+    drawSprite(g, assets.brute, boss.x + offsetX, offsetY, width, height, 0, rotation, alpha * idleMix, tint);
+  }
+  if (walkMix > 0.01) {
+    drawSprite(g, walkFrame, boss.x + offsetX, offsetY, width, height, 0, rotation, alpha * walkMix, tint);
+  }
+  if (attackMix > 0.01) {
+    drawSprite(g, assets.brute, boss.x + offsetX, offsetY, width, height, 0, rotation, alpha * (1 - attackMix), tint);
+    drawSprite(g, assets.bruteAttack, boss.x + offsetX, offsetY, width * 1.02, height * 1.02, 0, rotation, alpha * attackMix, tint);
   }
   if (boss.stomp > 0) {
     const progress = 1 - boss.stomp / 0.42;
@@ -528,10 +564,10 @@ function drawSupport(g, s, time, assets) {
     const alpha = companion.life > 0
       ? clamp(1 - companion.appear / 0.4, 0.08, 1)
       : clamp(companion.exit / 0.42, 0, 1);
-    const stride = time * 17 + companion.id * 2.2;
+    const stride = time * 12 + companion.id * 1.5;
     const step = Math.sin(stride);
-    const bob = Math.abs(step) * 3.8;
-    const runSway = step * 2.2;
+    const bob = Math.abs(step) * 2.6;
+    const runSway = step * 0.7;
     const generated = companion.id % 2 === 1;
     const standingImage = generated ? assets.supportSurvivorA : assets.supportSurvivorB;
     const runningImage = generated ? assets.supportSurvivorARun : assets.supportSurvivorBRun;
@@ -540,8 +576,8 @@ function drawSupport(g, s, time, assets) {
     const drawX = companion.x + runSway;
     const muzzleX = drawX + (flipX ? -12 : 12);
     const muzzleY = companion.y - 48 + bob;
-    drawFootstepDust(g, companion.x, companion.y, 0.6, stride, '#958b74');
-    drawSprite(g, image, drawX, companion.y + bob, 36, 62, 0, step * 0.08 - companion.recoil * 0.025, alpha, null, flipX);
+    drawFootstepDust(g, companion.x, companion.y, 0.45, stride, '#958b74');
+    drawSprite(g, image, drawX, companion.y + bob, 36, 62, 0, step * 0.045 - companion.recoil * 0.025, alpha, null, flipX);
     drawSupportMuzzle(g, muzzleX, muzzleY, companion.muzzleFlash, '#d9b27a');
   }
 
@@ -662,11 +698,11 @@ function drawBullet(g, bullet) {
   g.save();
   g.translate(bullet.x, bullet.y);
   g.rotate(Math.atan2(bullet.vy, bullet.vx) - Math.PI / 2);
-  const color = bullet.owner === 'drone' ? '#a4c1c3' : bullet.owner === 'companion' ? '#c19a5c' : bullet.rapid ? '#d4b362' : bullet.weapon === 'smg' ? '#d9bd84' : '#c8c0a7';
+  const color = bullet.owner === 'drone' ? '#9bb5b7' : bullet.owner === 'companion' ? '#b18b54' : bullet.rapid ? '#c7a358' : bullet.weapon === 'smg' ? '#c3a066' : '#bd9655';
   g.shadowColor = color;
   g.shadowBlur = 3;
   const grad = g.createLinearGradient(0, -7, 0, 5);
-  grad.addColorStop(0, 'rgba(226,204,154,0)'); grad.addColorStop(0.55, color); grad.addColorStop(1, '#eee3c5');
+  grad.addColorStop(0, 'rgba(204,170,111,0)'); grad.addColorStop(0.55, color); grad.addColorStop(1, '#e1bd79');
   const width = bullet.owner === 'drone' ? 3 : bullet.rapid ? 3 : 2.6;
   g.strokeStyle = color;
   g.lineWidth = width * 0.72;
@@ -700,56 +736,67 @@ function drawHazard(g, hazard, time) {
 function drawExplosion(g, effect, time) {
   const p = 1 - effect.life / effect.total;
   if (effect.source === 'barrel') {
-    const expand = clamp(p / 0.18, 0, 1);
-    const collapse = p < 0.2 ? 1 : clamp((0.92 - p) / 0.72, 0, 1);
-    const fireRadius = effect.radius * (0.13 + expand * 0.46) * collapse;
-    const ringRadius = effect.radius * (0.22 + expand * 1.28);
+    const expansion = smoothstep(p / 0.22);
+    const flash = clamp(1 - p / 0.14, 0, 1);
+    const fireFade = clamp((0.66 - p) / 0.42, 0, 1);
+    const fireRadius = effect.radius * (0.27 + expansion * 0.34) * fireFade;
+    const smokeGrow = smoothstep(clamp((p - 0.04) / 0.62, 0, 1));
+    const smokeFade = clamp((1.18 - p) / 0.78, 0, 1);
+    const smokeAlpha = smoothstep(clamp((p - 0.045) / 0.15, 0, 1)) * smokeFade;
     g.save();
-    const fireAlpha = clamp(1 - p * 0.94, 0, 1);
-    g.globalAlpha = fireAlpha;
-    const ground = g.createRadialGradient(effect.x, effect.y, fireRadius * 0.08, effect.x, effect.y, fireRadius * 1.28);
-    ground.addColorStop(0, 'rgba(255,229,164,.94)');
-    ground.addColorStop(0.2, 'rgba(255,178,73,.96)');
-    ground.addColorStop(0.58, 'rgba(226,81,35,.83)');
-    ground.addColorStop(1, 'rgba(112,43,31,0)');
-    g.fillStyle = ground;
-    g.beginPath(); g.ellipse(effect.x, effect.y, fireRadius * 1.18, fireRadius * 0.72, 0, 0, Math.PI * 2); g.fill();
-
-    const flicker = 0.88 + Math.sin(time * 47) * 0.08 + Math.sin(time * 71) * 0.04;
-    for (let i = 0; i < 9; i++) {
-      const angle = i * Math.PI * 2 / 9 + time * 0.7;
-      const inner = fireRadius * 0.4;
-      const outer = fireRadius * (0.75 + (i % 3) * 0.08) * flicker;
-      const half = fireRadius * (0.14 + (i % 2) * 0.035);
-      const tipX = effect.x + Math.cos(angle) * outer;
-      const tipY = effect.y + Math.sin(angle) * outer * 0.64;
-      const baseX = effect.x + Math.cos(angle) * inner;
-      const baseY = effect.y + Math.sin(angle) * inner * 0.64;
-      const perpX = -Math.sin(angle) * half;
-      const perpY = Math.cos(angle) * half * 0.64;
-      polygon(g, [
-        [baseX + perpX, baseY + perpY], [tipX, tipY], [baseX - perpX, baseY - perpY],
-      ], i % 2 ? 'rgba(244,102,39,.78)' : 'rgba(255,193,84,.82)');
-    }
-
-    const flash = clamp(1 - p / 0.34, 0, 1);
     if (flash > 0) {
-      const coreRadius = fireRadius * (0.32 + flash * 0.3);
+      const coreRadius = effect.radius * (0.19 + flash * 0.13);
       const core = g.createRadialGradient(effect.x, effect.y, 1, effect.x, effect.y, coreRadius);
-      core.addColorStop(0, 'rgba(255,255,226,.98)');
-      core.addColorStop(0.38, 'rgba(255,213,113,.96)');
-      core.addColorStop(1, 'rgba(242,91,41,0)');
-      g.globalAlpha = flash;
+      core.addColorStop(0, 'rgba(255,244,213,.96)');
+      core.addColorStop(0.22, 'rgba(255,197,112,.88)');
+      core.addColorStop(0.55, 'rgba(200,79,40,.48)');
+      core.addColorStop(1, 'rgba(83,41,31,0)');
+      g.globalAlpha = flash * 0.92;
       g.fillStyle = core;
-      g.beginPath(); g.ellipse(effect.x, effect.y, coreRadius, coreRadius * 0.72, 0, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.ellipse(effect.x, effect.y, coreRadius, coreRadius * 0.58, 0, 0, Math.PI * 2); g.fill();
     }
 
-    const ringAlpha = clamp((1 - p) * 1.25, 0, 0.9);
-    g.globalAlpha = ringAlpha;
-    g.strokeStyle = '#ffc06c'; g.lineWidth = 3.2 * (1 - p) + 0.8;
-    g.beginPath(); g.ellipse(effect.x, effect.y + 2, ringRadius, ringRadius * 0.54, 0, 0, Math.PI * 2); g.stroke();
-    g.strokeStyle = 'rgba(255,231,179,.72)'; g.lineWidth = 1.2;
-    g.beginPath(); g.ellipse(effect.x, effect.y + 2, ringRadius * 0.72, ringRadius * 0.38, 0, 0, Math.PI * 2); g.stroke();
+    const flicker = 0.94 + Math.sin(time * 61) * 0.035;
+    for (let i = 0; i < 5; i++) {
+      const angle = i * Math.PI * 2 / 5 + 0.4;
+      const offset = effect.radius * (0.06 + expansion * 0.13);
+      const x = effect.x + Math.cos(angle) * offset;
+      const y = effect.y + Math.sin(angle) * offset * 0.48;
+      const radius = fireRadius * (0.54 + (i % 3) * 0.09) * flicker;
+      const flame = g.createRadialGradient(x, y, radius * 0.04, x, y, radius);
+      flame.addColorStop(0, 'rgba(255,211,135,.82)');
+      flame.addColorStop(0.28, 'rgba(224,111,54,.75)');
+      flame.addColorStop(0.72, 'rgba(116,54,39,.42)');
+      flame.addColorStop(1, 'rgba(70,43,35,0)');
+      g.globalAlpha = fireFade * (0.72 - i * 0.055);
+      g.fillStyle = flame;
+      g.beginPath(); g.ellipse(x, y, radius, radius * (0.45 + (i % 2) * 0.1), angle * 0.2, 0, Math.PI * 2); g.fill();
+    }
+
+    const dustRadius = effect.radius * (0.28 + expansion * 0.9);
+    const dust = g.createRadialGradient(effect.x, effect.y, dustRadius * 0.12, effect.x, effect.y, dustRadius);
+    dust.addColorStop(0, 'rgba(96,72,54,.42)');
+    dust.addColorStop(0.56, 'rgba(75,66,56,.24)');
+    dust.addColorStop(1, 'rgba(47,46,42,0)');
+    const dustIn = smoothstep(clamp((p - 0.06) / 0.24, 0, 1));
+    g.globalAlpha = dustIn * clamp((1 - p * 1.1) * 0.52, 0, 0.52);
+    g.fillStyle = dust;
+    g.beginPath(); g.ellipse(effect.x, effect.y + 4, dustRadius, dustRadius * 0.34, 0, 0, Math.PI * 2); g.fill();
+
+    for (let i = 0; i < 7; i++) {
+      const angle = i * Math.PI * 2 / 7 + 0.2;
+      const drift = effect.radius * (0.1 + smokeGrow * (0.22 + (i % 3) * 0.045));
+      const x = effect.x + Math.cos(angle) * drift;
+      const y = effect.y - effect.radius * smokeGrow * (0.08 + (i % 2) * 0.055) + Math.sin(angle) * drift * 0.3;
+      const radius = effect.radius * (0.18 + smokeGrow * (0.12 + (i % 3) * 0.035));
+      const soot = g.createRadialGradient(x - radius * 0.18, y - radius * 0.24, radius * 0.04, x, y, radius);
+      soot.addColorStop(0, 'rgba(71,63,54,.82)');
+      soot.addColorStop(0.52, 'rgba(49,47,43,.66)');
+      soot.addColorStop(1, 'rgba(36,37,35,0)');
+      g.globalAlpha = smokeAlpha * (0.52 + (i % 3) * 0.09);
+      g.fillStyle = soot;
+      g.beginPath(); g.ellipse(x, y, radius, radius * (0.68 + (i % 2) * 0.1), angle * 0.14, 0, Math.PI * 2); g.fill();
+    }
     g.restore();
     return;
   }
@@ -803,6 +850,7 @@ function drawEffect(g, effect, time) {
     return;
   }
   if (effect.kind === 'barrelBreak') {
+    if (effect.explosive) return;
     g.save();
     g.globalAlpha = (1 - progress) * 0.55;
     g.strokeStyle = 'rgba(190,173,139,.68)'; g.lineWidth = 1.5;
@@ -867,9 +915,9 @@ function drawEffect(g, effect, time) {
   }
   if (effect.kind === 'hit') {
     const size = effect.radius * (0.45 + progress * 1.15);
-    const color = effect.material === 'armor' ? '#fff0b0' : effect.material === 'metal' ? '#e1bd78' : '#d9c6a3';
+    const color = effect.material === 'armor' ? '#fff0b0' : effect.material === 'metal' ? '#d0a66d' : '#b9956c';
     g.globalAlpha = 1 - progress;
-    g.strokeStyle = color; g.lineWidth = effect.material === 'armor' ? 2.8 : 2;
+    g.strokeStyle = color; g.lineWidth = effect.material === 'armor' ? 2.8 : 1.5;
     g.beginPath(); g.ellipse(effect.x, effect.y, size * 0.72, size * 0.52, 0, 0, Math.PI * 2); g.stroke();
     for (let ray = 0; ray < 6; ray++) {
       const angle = ray * Math.PI / 3 + progress * 0.24;
@@ -896,7 +944,7 @@ function drawTargetLock(g, s, time) {
   const isBoss = target === s.boss;
   const isSupply = ['weapon', 'upgrade', 'companion', 'drone', 'rocket', 'rapidfire', 'heal'].includes(target.kind);
   const isExplosive = target.kind === 'explosive';
-  const color = isBoss || isExplosive ? '#bc8067' : isSupply ? '#b2a17b' : '#b4ad96';
+  const color = isBoss || isExplosive ? '#bc8067' : isSupply ? '#a99772' : '#887b65';
   const scale = depthScale(s.h, target.y);
   const radius = Math.max(12, Math.min(30, (target.radius || 45) * scale + 8));
   const pulse = 0.72 + Math.sin(time * 8) * 0.08;
@@ -910,7 +958,7 @@ function drawTargetLock(g, s, time) {
     g.beginPath(); g.moveTo(s.x, s.y - 42); g.lineTo(target.x, target.y); g.stroke();
     g.restore();
   }
-  g.strokeStyle = color; g.lineWidth = 1.6;
+  g.strokeStyle = color; g.lineWidth = 1.25;
   const cx = target.x, cy = target.y - radius * 0.45, c = radius * 0.42;
   for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
     g.beginPath(); g.moveTo(cx + sx * radius, cy + sy * radius * 0.45); g.lineTo(cx + sx * (radius - c), cy + sy * radius * 0.45); g.lineTo(cx + sx * (radius - c), cy + sy * (radius * 0.45 - c)); g.stroke();

@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261015a';
-import { drawScene } from './render.js?v=1-1-20261015a';
+import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261015g';
+import { drawScene } from './render.js?v=1-1-20261015g';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014o';
 
 const $ = id => document.getElementById(id);
@@ -39,6 +39,8 @@ const assets = {
   runner: sprite('assets/zombie-runner.webp'),
   runnerRun: sprite('assets/zombie-runner-run.webp'),
   brute: sprite('assets/zombie-brute.webp'),
+  bruteWalkA: sprite('assets/zombie-brute-walk-a.webp'),
+  bruteWalkB: sprite('assets/zombie-brute-walk-b.webp'),
   bruteAttack: sprite('assets/zombie-brute-attack.webp'),
   supportSurvivorA: sprite('assets/support-survivor.webp'),
   supportSurvivorARun: sprite('assets/support-survivor-run.webp'),
@@ -92,7 +94,7 @@ function showTitle() {
   hud.root.hidden = true; hud.bossRoot.hidden = true; hud.tutorialHint.hidden = true;
   $('pause').hidden = true;
   $('title').innerHTML = 'DEAD<br>ROUTE';
-  $('msg').innerHTML = '숫자 보급통으로 연사·지원 사수·로켓 화력을 얻고,<br>대규모 웨이브와 최종 보스를 돌파하세요.';
+  $('msg').textContent = '폐허가 된 고속도로에서 최종 보스를 돌파하세요.';
   $('result').hidden = true; $('home').hidden = true;
   $('start').textContent = '작전 시작';
   showPanel('main'); overlay.hidden = false;
@@ -213,7 +215,7 @@ function finishGame(result) {
   $('title').innerHTML = result === 'win' ? 'ROUTE<br>SECURED' : 'MISSION<br>FAILED';
   $('msg').textContent = result === 'win'
     ? '최종 보스를 격파하고 1-1을 돌파했습니다.'
-    : game.hp <= 0 ? '체력이 소진되었습니다. 보급과 회피를 다시 노려보세요.' : '작전이 종료되었습니다.';
+    : game.hp <= 0 ? '체력이 소진되었습니다.' : '작전이 종료되었습니다.';
   const elapsed = Math.floor(game.t);
   const clock = String(Math.floor(elapsed / 60)).padStart(2, '0') + ':' + String(elapsed % 60).padStart(2, '0');
   $('result').textContent = '시간 ' + clock + ' · 보급통 ' + game.barrelsBroken + ' · 처치 ' + game.kills + ' · 점수 ' + game.score.toLocaleString('ko-KR');

@@ -1,4 +1,8 @@
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const smoothstep = value => {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+};
 
 export const BOSS_START_AT = 64;
 export const BOSS_WARNING_AT = 62;
@@ -123,7 +127,13 @@ export function resizeGame(s, w, h) {
     s.drone.x *= sx;
     s.drone.y = s.y - h * 0.16;
   }
-  if (s.boss) { s.boss.x *= sx; s.boss.y = h * 0.2; }
+  if (s.boss) {
+    s.boss.x *= sx;
+    s.boss.y = h * 0.2;
+    s.boss.moveSpeed = (s.boss.moveSpeed || 0) * sx;
+    if (s.boss.attackOriginX != null) s.boss.attackOriginX *= sx;
+    if (s.boss.attackImpactX != null) s.boss.attackImpactX *= sx;
+  }
   s.w = w;
   s.h = h;
 }
@@ -152,7 +162,7 @@ function spawnZombie(s, forcedKind, forcedLane) {
 
 function spawnBarrelOffer(s, rewards) {
   const offer = {};
-  for (const item of rewards) {
+  for (const item of rewards.slice(0, 2)) {
     const y = s.h * 0.18;
     s.barrels.push({
       lane: item.lane, kind: item.kind, hp: item.hp || BARREL_CONFIG[item.kind]?.hp || 40, maxHp: item.hp || BARREL_CONFIG[item.kind]?.hp || 40,
@@ -322,7 +332,7 @@ function spawnBarrelExplosionParticles(s, x, y, radius) {
 function barrelBreakEffect(s, barrel) {
   const color = BARREL_CONFIG[barrel.kind]?.color || '#f18a3f';
   const explosive = barrel.kind === 'explosive';
-  s.effects.push({ kind: 'barrelBreak', x: barrel.x, y: barrel.y, color, life: explosive ? 0.55 : 0.36, total: explosive ? 0.55 : 0.36 });
+  s.effects.push({ kind: 'barrelBreak', x: barrel.x, y: barrel.y, color, explosive, life: explosive ? 0.55 : 0.36, total: explosive ? 0.55 : 0.36 });
   if (explosive) {
     s.hitShake = Math.max(s.hitShake || 0, 0.22);
     spawnDebris(s, barrel.x, barrel.y - 4, 11, ['#353a38', '#705042', '#a17648', '#b58d55']);
@@ -633,15 +643,14 @@ function spawnScriptedObjects(s) {
     s.firstExplosiveSpawned = true;
     spawnExplosiveBarrel(s, 0);
   }
-  if (s.t >= 42.5 && !s.secondOfferSpawned) {
+  if (s.t >= 45 && !s.secondOfferSpawned) {
     s.secondOfferSpawned = true;
     spawnBarrelOffer(s, [
       { lane: 0, kind: 'companion', hp: 40 },
-      { lane: 1, kind: 'drone', hp: 70 },
       { lane: 2, kind: 'rocket', hp: 100 },
     ]);
   }
-  if (s.t >= 45 && !s.secondExplosiveSpawned) {
+  if (s.t >= 50 && !s.secondExplosiveSpawned) {
     s.secondExplosiveSpawned = true;
     spawnExplosiveBarrel(s, 2);
   }
@@ -677,15 +686,16 @@ function updateCompanions(s, dt, events) {
   const roadLeft = s.w * 0.5 - halfRoad;
   const roadRight = s.w * 0.5 + halfRoad;
   for (const companion of s.companions) {
-    companion.phase += dt * 9;
+    companion.phase += dt * 12;
     companion.appear = Math.max(0, companion.appear - dt);
     companion.muzzleFlash = Math.max(0, companion.muzzleFlash - dt);
     companion.recoil *= Math.exp(-dt * 12);
     if (companion.life > 0) {
       if (!companion.permanent) companion.life = Math.max(0, companion.life - dt);
       const offsetX = (companion.slot === 0 ? -1 : 1) * SUPPORT_CONFIG.companionSlotOffset;
-      const targetX = clamp(s.x + offsetX, roadLeft, roadRight);
-      companion.x += (targetX - companion.x) * Math.min(1, dt * 10);
+      const reducedPlayerTrack = s.w * 0.5 + (s.x - s.w * 0.5) * 0.82;
+      const targetX = clamp(reducedPlayerTrack + offsetX, roadLeft, roadRight);
+      companion.x += (targetX - companion.x) * Math.min(1, dt * 7);
       companion.side = companion.slot === 0 ? -1 : 1;
       companion.y = s.y + 13 + Math.sin(companion.phase) * 1.5;
       if (companion.life <= 0) {
@@ -851,6 +861,8 @@ function updateBoss(s, dt, events) {
     s.boss = {
       x: s.w * 0.5, y, hp: 350, maxHp: 350,
       phase: 0, attackTimer: 1.65, warning: 0, warningTotal: 1.25, attackLane: 1,
+      attackOriginX: s.w * 0.5, attackImpactX: s.w * 0.5, attackDirection: 0, attackRecover: 0,
+      walkPhase: 0, moveSpeed: 0,
       hitFlash: 0, hitShake: 0, stomp: 0, addTimer: 4.2,
     };
     events.push('bossStart');
@@ -868,15 +880,18 @@ function updateBoss(s, dt, events) {
     }
     return;
   }
+  const previousX = boss.x;
   boss.phase += dt;
   boss.y = s.h * 0.44 + Math.sin(boss.phase * 1.45) * s.h * 0.014;
+  const halfRoad = roadHalfWidth(s.w, s.h, boss.y);
   const idleX = s.w * 0.5
-    + Math.sin(boss.phase * 0.74) * roadHalfWidth(s.w, s.h, boss.y) * 0.92
-    + Math.sin(boss.phase * 1.19) * roadHalfWidth(s.w, s.h, boss.y) * 0.14;
+    + Math.sin(boss.phase * 0.68) * halfRoad * 0.82
+    + Math.sin(boss.phase * 0.39 + 1.4) * halfRoad * 0.08;
   boss.x = idleX;
   boss.hitFlash = Math.max(0, boss.hitFlash - dt);
   boss.hitShake = Math.max(0, (boss.hitShake || 0) - dt);
   boss.stomp = Math.max(0, (boss.stomp || 0) - dt);
+  boss.attackRecover = Math.max(0, (boss.attackRecover || 0) - dt);
   boss.addTimer -= dt;
   if (boss.addTimer <= 0) {
     spawnZombie(s, 'walker', 0);
@@ -887,11 +902,16 @@ function updateBoss(s, dt, events) {
     boss.warning -= dt;
     const windup = 1 - clamp(boss.warning / boss.warningTotal, 0, 1);
     const targetX = laneX(s.w, s.h, boss.y, boss.attackLane);
-    const lunge = clamp((windup - 0.68) / 0.32, 0, 1);
-    boss.x += (targetX - boss.x) * (0.12 + lunge * 0.48);
+    const approach = smoothstep(windup / 0.72);
+    const lunge = smoothstep((windup - 0.68) / 0.32);
+    boss.x = boss.attackOriginX + (targetX - boss.attackOriginX) * approach;
+    boss.x += (targetX - boss.x) * lunge * 0.16;
     boss.x = clamp(boss.x, s.w * 0.14, s.w * 0.86);
     if (boss.warning <= 0) {
       const x = laneX(s.w, s.h, s.h * 0.75, boss.attackLane);
+      boss.x = targetX;
+      boss.attackImpactX = boss.x;
+      boss.attackRecover = 0.58;
       s.effects.push({
         kind: 'slam', x, y: s.h * 0.75,
         radius: roadHalfWidth(s.w, s.h, s.h * 0.75) * 0.2,
@@ -904,14 +924,24 @@ function updateBoss(s, dt, events) {
       events.push('bossSlam');
     }
   } else {
-    boss.attackTimer -= dt;
-    if (boss.attackTimer <= 0) {
-      boss.attackLane = closestLane(s, s.x);
-      boss.warning = 1.25;
-      boss.warningTotal = boss.warning;
-      events.push('bossWarn');
+    if (boss.attackRecover > 0) {
+      const recovery = 1 - clamp(boss.attackRecover / 0.58, 0, 1);
+      boss.x = boss.attackImpactX + (idleX - boss.attackImpactX) * smoothstep(recovery);
+    } else {
+      boss.attackTimer -= dt;
+      if (boss.attackTimer <= 0) {
+        boss.attackLane = closestLane(s, s.x);
+        boss.attackOriginX = boss.x;
+        boss.attackDirection = Math.sign(laneX(s.w, s.h, boss.y, boss.attackLane) - boss.x);
+        boss.warning = 1.25;
+        boss.warningTotal = boss.warning;
+        events.push('bossWarn');
+      }
     }
   }
+  const lateralDistance = Math.abs(boss.x - previousX);
+  boss.moveSpeed = dt > 0 ? (boss.x - previousX) / dt : 0;
+  boss.walkPhase += lateralDistance / Math.max(1, s.w * 0.09) * Math.PI;
 }
 
 function updateObstacle(s, dt, events) {
