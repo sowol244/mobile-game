@@ -13,14 +13,14 @@
 //   1-9 fixed lamp, settings in `lamps` (kind 'radial' | 'beam', dir° 0=right 90=down, spread°, range, color, g=group)
 // `zones` are room lights: a rectangle lit evenly while its group is on.
 
-import c1 from './levels/c1.js?v=20261014-stage-fixes-1';
-import c2 from './levels/c2.js?v=20261014-stage-fixes-1';
-import c3 from './levels/c3.js?v=20261014-stage-fixes-1';
-import c4 from './levels/c4.js?v=20261014-stage-fixes-1';
-import c5 from './levels/c5.js?v=20261014-stage-fixes-1';
-import c6 from './levels/c6.js?v=20261014-stage-fixes-1';
-import c7 from './levels/c7.js?v=20261014-stage-fixes-1';
-import c8 from './levels/c8.js?v=20261014-stage-fixes-1';
+import c1 from './levels/c1.js?v=20261014-chapter5-rework-1';
+import c2 from './levels/c2.js?v=20261014-chapter5-rework-1';
+import c3 from './levels/c3.js?v=20261014-chapter5-rework-1';
+import c4 from './levels/c4.js?v=20261014-chapter5-rework-1';
+import c5 from './levels/c5.js?v=20261014-chapter5-rework-1';
+import c6 from './levels/c6.js?v=20261014-chapter5-rework-1';
+import c7 from './levels/c7.js?v=20261014-chapter5-rework-1';
+import c8 from './levels/c8.js?v=20261014-chapter5-rework-1';
 
 // Each chapter's first stage introduces one new thing (with signs); the other nine are puzzles that use it
 // together with everything before it.
@@ -37,7 +37,7 @@ export const CHAPTERS = [
 
 // Bump when the stages are rebuilt: saves from another stage set are wiped (stars, best times, unlocks, ranking),
 // settings such as 'lux-mute' are kept. Returns true when there was an old record to wipe.
-export const LEVELS_VERSION = 5;
+export const LEVELS_VERSION = 6;
 export function resetOldSave(store) {
   if (store.getItem('lux-levels') === String(LEVELS_VERSION)) return false;
   const had = store.getItem('lux-progress') !== null || store.getItem('lux-top') !== null;
