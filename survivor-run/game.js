@@ -1,6 +1,19 @@
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export const STAGE_DURATION = 75;
+export const PLAYER_BASE_Y_RATIO = 0.84;
+export const DEFENSE_LINE_Y_RATIO = 0.95;
+export const MAX_PASS_DAMAGE_PER_SECOND = 20;
+export const DIRECT_HIT_INVULNERABILITY = 0.5;
+export const MOVE_TUTORIAL_DELAY = 0.9;
+export const MOVE_TUTORIAL_DURATION = 2;
+export const ZOMBIE_DAMAGE = Object.freeze({
+  normal: Object.freeze({ pass: 3, collision: 15 }),
+  fast: Object.freeze({ pass: 4, collision: 12 }),
+  tanker: Object.freeze({ pass: 10, collision: 25 }),
+  explosive: Object.freeze({ pass: 8, collision: 20 }),
+  boss: Object.freeze({ pass: 20, collision: 35 }),
+});
 
 const WAVE_PLAN = [
   { start: 0.35, count: 8, interval: 1.08, pattern: ['walker'] },
@@ -11,7 +24,6 @@ const WAVE_PLAN = [
 ];
 
 const PHASE_CUES = [
-  { at: 0.35, label: '좌우로 움직여 자동 사격의 표적을 바꾸세요', duration: 2.5 },
   { at: 10, label: '첫 보급 선택 · 동료 또는 기관단총', duration: 2.2 },
   { at: 25, label: '강화 화력으로 좀비 웨이브를 돌파하세요', duration: 2 },
   { at: 40, label: '두 번째 보급 선택 · 화력 강화 또는 동료', duration: 2.2 },
@@ -39,8 +51,11 @@ function closestLane(s, x) {
 export function createGame(w, h) {
   return {
     w, h, t: 0, finished: null,
-    x: w * 0.5, targetX: w * 0.5, y: h * 0.78,
-    hp: 100, maxHp: 100, invulnerable: 0, flash: 0,
+    x: w * 0.5, targetX: w * 0.5, y: h * PLAYER_BASE_Y_RATIO,
+    hp: 100, maxHp: 100, invulnerable: 0, flash: 0, hitShake: 0,
+    passDamageWindow: 0, passDamageTaken: 0, defenseFlash: 0,
+    moveTutorialShown: false, moveTutorialVisible: false, moveTutorialTimer: 0,
+    hasPlayerMoved: false, showAimGuide: false,
     weapon: 'pistol', weaponLevel: { pistol: 1, smg: 0 },
     damageBonus: 0, fireTimer: 0.15, powerFlash: 0,
     companions: [], companionPower: 1,
@@ -58,7 +73,7 @@ export function resizeGame(s, w, h) {
   const sx = w / s.w, sy = h / s.h;
   s.x *= sx;
   s.targetX *= sx;
-  s.y = h * 0.78;
+  s.y = h * PLAYER_BASE_Y_RATIO;
   for (const item of [...s.zombies, ...s.barrels, ...s.obstacles, ...s.bullets, ...s.hazards, ...s.effects]) {
     item.x *= sx;
     item.y *= sy;
@@ -82,7 +97,7 @@ function spawnZombie(s, forcedKind) {
     hp, maxHp: hp, radius: kind === 'runner' ? 13 : 16,
     speed: s.h * (kind === 'runner' ? 0.42 : 0.29) * (1 + Math.min(0.2, s.t / 500)),
     phase: Math.random() * Math.PI * 2, dead: false, dying: 0,
-    hitFlash: 0, recoilX: 0, recoilY: 0, deathSide: 1,
+    hitFlash: 0, recoilX: 0, recoilY: 0, deathSide: 1, hasAppliedDamage: false,
   });
 }
 
@@ -113,16 +128,75 @@ function spawnObstacle(s, lane = 1) {
   });
 }
 
-function hurtPlayer(s, damage, events) {
-  if (s.invulnerable > 0 || s.finished) return;
-  s.hp = Math.max(0, s.hp - damage);
-  s.invulnerable = 0.6;
+function hurtPlayer(s, damage, events, options = {}) {
+  if (s.finished || (!options.ignoreInvulnerability && s.invulnerable > 0)) return 0;
+  const actualDamage = Math.min(s.hp, Math.max(0, damage));
+  if (actualDamage <= 0) return 0;
+  s.hp = clamp(s.hp - actualDamage, 0, s.maxHp);
+  if (!options.ignoreInvulnerability && options.grantInvulnerability !== false) {
+    s.invulnerable = DIRECT_HIT_INVULNERABILITY;
+  }
   s.flash = 0.22;
-  events.push('hurt');
+  s.hitShake = Math.max(s.hitShake || 0, options.source === 'breach' ? 0.1 : 0.16);
+  s.effects.push({
+    kind: 'damageNumber',
+    x: options.x == null ? s.x : options.x,
+    y: options.y == null ? s.y - 42 : options.y,
+    amount: actualDamage,
+    source: options.source || 'hit',
+    life: 0.82,
+    total: 0.82,
+  });
+  events.push({ type: 'hurt', amount: actualDamage, source: options.source || 'hit' });
   if (s.hp <= 0) {
     s.finished = 'lose';
     events.push('lose');
   }
+  return actualDamage;
+}
+
+function zombieDamageProfile(zombie) {
+  if (zombie.kind === 'runner') return ZOMBIE_DAMAGE.fast;
+  if (zombie.kind === 'tank' || zombie.kind === 'tanker') return ZOMBIE_DAMAGE.tanker;
+  if (zombie.kind === 'explosive') return ZOMBIE_DAMAGE.explosive;
+  if (zombie.kind === 'boss' || zombie.kind === 'brute') return ZOMBIE_DAMAGE.boss;
+  return ZOMBIE_DAMAGE.normal;
+}
+
+function resolveZombieContact(s, zombie, contact, events) {
+  if (zombie.dead || zombie.hasAppliedDamage) return;
+  zombie.hasAppliedDamage = true;
+  zombie.dead = true;
+  zombie.dying = 0;
+
+  const profile = zombieDamageProfile(zombie);
+  if (contact === 'collision') {
+    hurtPlayer(s, profile.collision, events, {
+      source: 'collision',
+      x: zombie.x,
+      y: zombie.y - 12,
+    });
+    return;
+  }
+
+  const damageWindow = Math.floor(s.t);
+  if (damageWindow !== s.passDamageWindow) {
+    s.passDamageWindow = damageWindow;
+    s.passDamageTaken = 0;
+  }
+  const available = Math.max(0, MAX_PASS_DAMAGE_PER_SECOND - s.passDamageTaken);
+  const requested = Math.min(profile.pass, available, s.hp);
+  const lineY = s.h * DEFENSE_LINE_Y_RATIO;
+  s.defenseFlash = Math.max(s.defenseFlash, 0.38);
+  s.effects.push({ kind: 'breach', x: zombie.x, y: lineY, life: 0.38, total: 0.38 });
+  const applied = hurtPlayer(s, requested, events, {
+    ignoreInvulnerability: true,
+    grantInvulnerability: false,
+    source: 'breach',
+    x: zombie.x,
+    y: lineY - 15,
+  });
+  s.passDamageTaken = Math.min(MAX_PASS_DAMAGE_PER_SECOND, s.passDamageTaken + applied);
 }
 
 function rewardBarrel(s, barrel, events) {
@@ -360,7 +434,7 @@ function updateBoss(s, dt, events) {
         radius: roadHalfWidth(s.w, s.h, s.h * 0.75) * 0.2,
         lane: boss.attackLane, life: 0.62, total: 0.62,
       });
-      if (closestLane(s, s.x) === boss.attackLane) hurtPlayer(s, 18, events);
+      if (closestLane(s, s.x) === boss.attackLane) hurtPlayer(s, ZOMBIE_DAMAGE.boss.pass, events, { source: 'boss' });
       boss.attackTimer = 3.05;
       events.push('bossSlam');
     }
@@ -394,13 +468,34 @@ export function updateGame(s, dt, targetX) {
   s.t = Math.min(STAGE_DURATION, s.t + dt);
   s.distance = Math.floor(s.t * 10);
   s.roadOffset = (s.roadOffset + dt * 0.42) % 1;
-  s.y = s.h * 0.76;
+  s.y = s.h * PLAYER_BASE_Y_RATIO;
   s.powerFlash = Math.max(0, s.powerFlash - dt);
+  s.defenseFlash = Math.max(0, s.defenseFlash - dt);
+  s.hitShake = Math.max(0, s.hitShake - dt);
   if (targetX != null) {
     const reach = roadHalfWidth(s.w, s.h, s.y) * 0.88;
     s.targetX = clamp(targetX, s.w * 0.5 - reach, s.w * 0.5 + reach);
   }
+  const previousX = s.x;
   s.x += (s.targetX - s.x) * Math.min(1, dt * 12);
+  if (Math.abs(s.x - previousX) > 0.5) {
+    s.hasPlayerMoved = true;
+    s.moveTutorialVisible = false;
+    s.moveTutorialTimer = 0;
+    s.showAimGuide = false;
+  }
+  if (!s.moveTutorialShown && !s.hasPlayerMoved && s.t >= MOVE_TUTORIAL_DELAY) {
+    s.moveTutorialShown = true;
+    s.moveTutorialVisible = true;
+    s.moveTutorialTimer = MOVE_TUTORIAL_DURATION;
+    s.showAimGuide = true;
+  } else if (s.moveTutorialVisible) {
+    s.moveTutorialTimer = Math.max(0, s.moveTutorialTimer - dt);
+    if (s.moveTutorialTimer <= 0) {
+      s.moveTutorialVisible = false;
+      s.showAimGuide = false;
+    }
+  }
   s.invulnerable = Math.max(0, s.invulnerable - dt);
   s.flash = Math.max(0, s.flash - dt);
 
@@ -411,6 +506,7 @@ export function updateGame(s, dt, targetX) {
   spawnWaves(s);
   spawnScriptedObjects(s);
   updateBoss(s, dt, events);
+  if (s.finished) { s.events = events; return events; }
 
   for (const zombie of s.zombies) {
     if (zombie.dead) { zombie.dying -= dt; continue; }
@@ -419,12 +515,19 @@ export function updateGame(s, dt, targetX) {
     zombie.recoilY *= Math.exp(-dt * 8);
     zombie.y += zombie.speed * dt - zombie.recoilY * dt;
     zombie.x = laneX(s.w, s.h, zombie.y, zombie.lane) + Math.sin(s.t * 2.1 + zombie.phase) * 3 + zombie.recoilX;
-    if (zombie.y >= s.y - 24) {
-      if (Math.abs(zombie.x - s.x) < zombie.radius + 20) hurtPlayer(s, zombie.kind === 'runner' ? 15 : 10, events);
-      zombie.dead = true;
-      zombie.dying = 0.22;
+    const collided = zombie.y >= s.y - 24 && Math.abs(zombie.x - s.x) < zombie.radius + 20;
+    if (collided) {
+      resolveZombieContact(s, zombie, 'collision', events);
+      if (s.finished) break;
+      continue;
+    }
+    if (zombie.y >= s.h * DEFENSE_LINE_Y_RATIO) {
+      resolveZombieContact(s, zombie, 'breach', events);
+      if (s.finished) break;
     }
   }
+  if (s.finished) { s.events = events; return events; }
+
   for (const barrel of s.barrels) {
     barrel.y += s.h * 0.19 * dt;
     barrel.x = laneX(s.w, s.h, barrel.y, barrel.lane);
@@ -432,6 +535,7 @@ export function updateGame(s, dt, targetX) {
     if (barrel.y >= s.y - 28) barrel.dead = true;
   }
   updateObstacle(s, dt, events);
+  if (s.finished) { s.events = events; return events; }
 
   s.target = findTarget(s);
   s.fireTimer -= dt;
@@ -479,10 +583,11 @@ export function updateGame(s, dt, targetX) {
     hazard.x += hazard.vx * dt;
     hazard.y += hazard.vy * dt;
     if (Math.hypot(hazard.x - s.x, hazard.y - (s.y - 10)) < hazard.radius + 22) {
-      hurtPlayer(s, hazard.damage, events);
+      hurtPlayer(s, hazard.damage, events, { source: 'hazard', x: hazard.x, y: hazard.y });
       hazard.dead = true;
     }
   }
+  if (s.finished) { s.events = events; return events; }
   for (const effect of s.effects) effect.life -= dt;
   s.zombies = s.zombies.filter(zombie => !zombie.dead || zombie.dying > 0);
   s.barrels = s.barrels.filter(barrel => !barrel.dead);
