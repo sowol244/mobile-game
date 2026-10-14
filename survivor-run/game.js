@@ -39,7 +39,7 @@ function closestLane(s, x) {
 export function createGame(w, h) {
   return {
     w, h, t: 0, finished: null,
-    x: w * 0.5, targetX: w * 0.5, y: h * 0.76,
+    x: w * 0.5, targetX: w * 0.5, y: h * 0.78,
     hp: 100, maxHp: 100, invulnerable: 0, flash: 0,
     weapon: 'pistol', weaponLevel: { pistol: 1, smg: 0 },
     damageBonus: 0, fireTimer: 0.15, powerFlash: 0,
@@ -58,7 +58,7 @@ export function resizeGame(s, w, h) {
   const sx = w / s.w, sy = h / s.h;
   s.x *= sx;
   s.targetX *= sx;
-  s.y = h * 0.76;
+  s.y = h * 0.78;
   for (const item of [...s.zombies, ...s.barrels, ...s.obstacles, ...s.bullets, ...s.hazards, ...s.effects]) {
     item.x *= sx;
     item.y *= sy;
