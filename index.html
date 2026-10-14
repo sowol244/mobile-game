@@ -30,26 +30,33 @@
   .branch { margin-left: 12px; padding-left: 14px; border-left: 2px solid var(--line); }
   .sub > summary { font-size: 15px; font-weight: 600; color: #d9d2f2; padding: 8px 4px; }
   /* A short horizontal tick from the tree line to each item */
-  .branch > details, .branch > .game { position: relative; }
-  .branch > details::before, .branch > .game::before { content: ""; position: absolute; left: -14px; top: 22px; width: 12px; border-top: 2px solid var(--line); }
-  .branch > .game::before { top: 50%; }
+  .branch > details, .branch > .game, .branch > .game-admin-row { position: relative; }
+  .branch > details::before, .branch > .game::before, .branch > .game-admin-row::before { content: ""; position: absolute; left: -14px; top: 22px; width: 12px; border-top: 2px solid var(--line); }
+  .branch > .game::before, .branch > .game-admin-row::before { top: 50%; }
   .branch > :last-child { margin-bottom: 4px; }
 
   .game { display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: center; margin: 6px 0; padding: 10px 12px; border-radius: 14px; background: var(--card); color: inherit; text-decoration: none; font-size: 17px; }
   a.game:hover { background: var(--card-hi); }
-  a.game:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .game:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button.game { width: 100%; border: 0; text-align: left; font: inherit; cursor: pointer; }
+  button.game:hover { background: var(--card-hi); }
+  .game-admin-row { display: grid; grid-template-columns: minmax(0, 1fr) 88px; align-items: center; gap: 6px; margin: 6px 0; }
+  .game-admin-row > .game { min-width: 0; margin: 0; }
+  .game-admin-row select { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 7px 3px; background: var(--card); color: var(--fg); font: inherit; font-size: 11px; }
+  .game-admin-row select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   .game img { width: 56px; height: 56px; border-radius: 12px; display: block; background: #1b1630; }
   .game small { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; line-height: 1.35; }
   .game .badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; vertical-align: 2px; }
   .badge.new { background: var(--new); color: #fff; }
   .badge.wip { background: #3a3358; color: var(--muted); }
   .badge.dev { background: #7d552b; color: #ffe2a1; }
+  .badge.maintenance { background: #70434a; color: #ffd5d9; }
   .game.wip { opacity: 0.6; }
   /* My own designs: a highlighted group at the top */
   details.own { margin-bottom: 8px; padding: 2px 10px 6px; border-radius: 18px; background: linear-gradient(160deg, rgba(255, 210, 63, 0.12), rgba(255, 93, 122, 0.08)); box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.35); }
   details.own > summary { color: var(--accent); }
   details.own > .branch { border-left-color: rgba(255, 210, 63, 0.45); }
-  details.own > .branch > .game::before { border-top-color: rgba(255, 210, 63, 0.45); }
+  details.own > .branch > .game::before, details.own > .branch > .game-admin-row::before { border-top-color: rgba(255, 210, 63, 0.45); }
   .note { margin: 22px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; }
   #admin-button { position: fixed; top: 12px; right: 12px; z-index: 5; border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px; background: var(--card); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
   #admin-button:hover { background: var(--card-hi); }
@@ -74,12 +81,13 @@
     <div class="row"></div>
   </section>
   <nav id="tree" aria-label="게임 목록"></nav>
+  <p id="admin-note" class="note" hidden>게임 상태 설정은 이 브라우저에 저장됩니다.</p>
   <p class="note">이곳의 게임들은 예고 없이 추가되거나 삭제될 수 있습니다.</p>
 </main>
 <dialog id="admin-dialog" aria-labelledby="admin-title">
   <form id="admin-form">
     <h2 id="admin-title">관리자 인증</h2>
-    <p>암호를 입력하면 개발 중인 DEAD ROUTE 두 버전이 게임 목록에 표시됩니다.</p>
+    <p>암호를 입력하세요.</p>
     <label for="admin-password">암호</label>
     <input id="admin-password" name="password" type="password" inputmode="numeric" autocomplete="off" maxlength="32" required>
     <p id="admin-error" role="status" aria-live="polite"></p>
@@ -95,16 +103,16 @@
 const GAMES = [
   { id: 'brawl-arena', name: '대난투 아레나', desc: '봇과 총을 쏘며 겨루는 난투 게임', group: ['액션'], added: '2026-10-08' },
   { id: 'meteor-dodge', name: '스타 슈터', desc: '적을 쏘며 우주를 나는 슈팅 게임', group: ['액션'] },
-  { id: 'super-jump', name: '교행이의 모험', desc: '칼로 몬스터를 베며 달리는 모험 게임', group: ['액션'] },
+  { id: 'super-jump', name: '교행이의 모험', desc: '칼로 몬스터를 베며 달리는 모험 게임', group: ['액션'], status: 'maintenance' },
   { id: 'neon-block', name: '네온 블록', desc: '블록을 채워 줄을 지우는 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'] },
   { id: 'retro-blocks', name: '레트로 블록', desc: '떨어지는 블록으로 줄을 지우는 고전 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'], added: '2026-10-09' },
   { id: 'gravity-crash', name: 'Gravity Crash', desc: '중력을 돌려 블록을 터뜨리는 퍼즐 게임', group: ['창작'], added: '2026-10-08' },
   { id: 'sudoku', name: '스도쿠', desc: '빈칸에 1~9를 채우는 숫자 퍼즐 게임', group: ['퍼즐', '숫자 퍼즐'], added: '2026-10-09' },
   { id: 'lux-umbra', name: 'Lux & Umbra', desc: '빛을 켜고 꺼서 길을 여는 퍼즐 게임', group: ['창작'], added: '2026-10-08' },
+  { id: 'survivor-run', name: 'DEAD ROUTE', desc: '길을 고르고 좀비 떼를 쓸어내는 슈팅 게임', group: ['창작'], requiresAdmin: true, icon: 'survivor-run.svg' },
 ];
-// Development builds are included only for the current page session after admin verification.
+// The Godot build is listed only for the current page session after admin verification.
 const DEV_GAMES = [
-  { id: 'survivor-run', name: 'DEAD ROUTE (일반판)', desc: '스테이지 1 · 웹 버전 · 개발 중', group: ['창작'], dev: true, icon: 'survivor-run.svg' },
   { id: 'godot-survivor-run', name: 'DEAD ROUTE (Godot판)', desc: '스테이지 1 · Godot 버전 · 개발 중', group: ['창작'], dev: true, icon: 'survivor-run.svg' },
 ];
 const ADMIN_PASSWORD_SHA256 = 'b7d7525bb8de465f1d0bb4c053a1efda4d423dbef59fe6ac7ca0cb44da7e9127';
@@ -116,25 +124,71 @@ const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } cat
 const recent = load('hub-recent', []);   // ids, most recent first
 const visited = load('hub-visited', {}); // id → true once opened (hides NEW)
 const closed = load('hub-closed', {});   // group path → true when folded
-let showDevGames = false;
+const storedStatusOverrides = load('hub-game-status', {});
+const statusOverrides = storedStatusOverrides && typeof storedStatusOverrides === 'object' && !Array.isArray(storedStatusOverrides) ? storedStatusOverrides : {};
+const isAdminUnlocked = () => { try { return sessionStorage.getItem('hub-admin-unlocked') === 'true'; } catch { return false; } };
+const setAdminUnlocked = unlocked => { try { if (unlocked) sessionStorage.setItem('hub-admin-unlocked', 'true'); else sessionStorage.removeItem('hub-admin-unlocked'); } catch { /* session storage unavailable */ } };
+let showDevGames = isAdminUnlocked();
 
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 const isNew = g => g.added && !visited[g.id] && (Date.now() - Date.parse(g.added)) / 864e5 < NEW_DAYS;
 
+function configuredStatus(g) {
+  if (Object.prototype.hasOwnProperty.call(statusOverrides, g.id)) return statusOverrides[g.id];
+  return g.status || null;
+}
+
+function gameStatus(g) {
+  if (g.requiresAdmin && !showDevGames) return 'development';
+  return configuredStatus(g);
+}
+
+function showStatusMessage(status) {
+  if (status === 'development') alert('개발 중입니다. 기다려 주세요.');
+  else if (status === 'maintenance') alert('점검 중입니다. 잠시 후 다시 이용해 주세요.');
+}
+
+function withAdminStatusControl(g, card) {
+  if (!showDevGames) return card;
+  const select = el('select');
+  select.setAttribute('aria-label', `${g.name} 상태 설정`);
+  for (const [value, label] of [['', '정상'], ['development', '개발 중'], ['maintenance', '점검 중']]) {
+    select.append(el('option', { value }, label));
+  }
+  select.value = configuredStatus(g) || '';
+  select.addEventListener('change', () => {
+    const value = select.value || null;
+    if (value === (g.status || null)) delete statusOverrides[g.id];
+    else statusOverrides[g.id] = value;
+    save('hub-game-status', statusOverrides);
+    renderTree();
+    renderRecent();
+  });
+  return el('div', { className: 'game-admin-row' }, card, select);
+}
+
 function gameRow(g) {
   const title = el('span', {}, g.name);
+  const status = gameStatus(g);
   if (g.wip) title.append(el('span', { className: 'badge wip' }, '작업 중'));
   else {
-    if (g.dev) title.append(el('span', { className: 'badge dev' }, '개발 중'));
+    if (status === 'development') title.append(el('span', { className: 'badge dev' }, '개발 중'));
+    if (status === 'maintenance') title.append(el('span', { className: 'badge maintenance' }, '점검 중'));
+    if (!status && g.dev) title.append(el('span', { className: 'badge dev' }, '개발 중'));
     if (isNew(g)) title.append(el('span', { className: 'badge new' }, 'NEW'));
   }
   title.append(el('small', {}, g.desc));
   const img = el('img', { src: 'icons/' + (g.icon || g.id + '.png'), alt: '' });
   img.onerror = () => { img.style.visibility = 'hidden'; };
-  if (g.wip) return el('div', { className: 'game wip' }, img, title);
+  if (g.wip) return withAdminStatusControl(g, el('div', { className: 'game wip' }, img, title));
+  if (status) {
+    const button = el('button', { className: 'game game-unavailable', type: 'button' }, img, title);
+    button.addEventListener('click', () => showStatusMessage(status));
+    return withAdminStatusControl(g, button);
+  }
   const a = el('a', { className: 'game', href: `${g.id}/` }, img, title);
   a.addEventListener('click', () => open(g.id));
-  return a;
+  return withAdminStatusControl(g, a);
 }
 
 function open(id) {
@@ -176,7 +230,7 @@ function renderTree() {
 function renderRecent() {
   const row = document.querySelector('#recent .row');
   row.replaceChildren();
-  const rec = recent.map(id => visibleGames().find(g => g.id === id && !g.wip)).filter(Boolean);
+  const rec = recent.map(id => visibleGames().find(g => g.id === id && !g.wip && !gameStatus(g))).filter(Boolean);
   if (rec.length) {
     for (const g of rec) {
       const a = el('a', { href: `${g.id}/` }, el('img', { src: 'icons/' + (g.icon || g.id + '.png'), alt: '' }), el('span', {}, g.name));
@@ -185,6 +239,7 @@ function renderRecent() {
     }
   }
   document.getElementById('recent').hidden = rec.length === 0;
+  document.getElementById('admin-note').hidden = !showDevGames;
 }
 
 renderTree();
@@ -195,9 +250,11 @@ const adminDialog = document.getElementById('admin-dialog');
 const adminForm = document.getElementById('admin-form');
 const adminPassword = document.getElementById('admin-password');
 const adminError = document.getElementById('admin-error');
+if (showDevGames) adminButton.textContent = '관리자 잠금';
 adminButton.addEventListener('click', () => {
   if (showDevGames) {
     showDevGames = false;
+    setAdminUnlocked(false);
     adminButton.textContent = '관리자';
     renderTree();
     renderRecent();
@@ -222,6 +279,7 @@ adminForm.addEventListener('submit', async event => {
       return;
     }
     showDevGames = true;
+    setAdminUnlocked(true);
     adminButton.textContent = '관리자 잠금';
     renderTree();
     renderRecent();
