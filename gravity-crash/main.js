@@ -5,7 +5,7 @@ import {
   rng, dailySeed, crashLevel, spawnInterval, planWave, blockedLines, spawnWave, crashStart, entryCell,
   BLOCK_LEVELS, darkMove, needsShake, unjam, createDaily, dailyTilt, dailyItem, dailyLevel, moveScore, DAILY_TILTS, DAILY_FREE,
   shuffleColors, commonColor, colorBomb, nextCombo, FEVER_COMBO, FEVER_TIME, fillCount, parseBoard, mk,
-} from './logic.js';
+} from './logic.js?v=b4059e2';
 import { STAGES, CHAPTERS } from './stages.js';
 import { STEPS } from './tutorial.js';
 import { createSound } from './sound.js';
