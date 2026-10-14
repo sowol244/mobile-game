@@ -55,6 +55,17 @@ test('every stage is rectangular, has one start, a door, three shards and only k
   }
 });
 
+test('3-5 room-light fixtures sit above the shadow platforms they control', () => {
+  const level = LEVELS.find(L => L.id === '3-5');
+  const s = createGame(level);
+  const platformZones = s.zones.filter(z => z.x === 45 && z.w === 3 && z.h === 1);
+  assert.equal(platformZones.length, 3);
+  for (const z of platformZones) {
+    assert.equal(level.rows[z.y].slice(z.x, z.x + z.w), 'SSS');
+    assert.ok(z.fixtureY + 0.96 < z.y, `fixture at ${z.fixtureY} overlaps platform at ${z.y}`);
+  }
+});
+
 // ---------- light rules ----------
 test('light blocks are solid only while lit; shadow blocks the other way round', () => {
   const s = mk(['#######', '#.....#', '#P.L.S#', '#######']);

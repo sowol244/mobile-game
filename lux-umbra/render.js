@@ -448,13 +448,14 @@ export function createRenderer(canvas) {
     for (const z of s.zones) {
       const on = z.g ? s.groups[z.g] : z.on, c = RGB[z.col];
       const cx = z.x + z.w / 2;
+      const fixtureY = z.fixtureY ?? z.y;
       for (const fx of z.w > 8 ? [z.x + z.w * 0.25, z.x + z.w * 0.75] : [cx]) {
         ctx.strokeStyle = '#0a0b12'; ctx.lineWidth = 0.04;
-        ctx.beginPath(); ctx.moveTo(fx, z.y - 0.1); ctx.lineTo(fx, z.y + 0.5); ctx.stroke();
-        ctx.fillStyle = '#0a0b12'; ctx.beginPath(); ctx.moveTo(fx - 0.35, z.y + 0.8); ctx.lineTo(fx + 0.35, z.y + 0.8); ctx.lineTo(fx + 0.15, z.y + 0.45); ctx.lineTo(fx - 0.15, z.y + 0.45); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(fx, fixtureY - 0.1); ctx.lineTo(fx, fixtureY + 0.5); ctx.stroke();
+        ctx.fillStyle = '#0a0b12'; ctx.beginPath(); ctx.moveTo(fx - 0.35, fixtureY + 0.8); ctx.lineTo(fx + 0.35, fixtureY + 0.8); ctx.lineTo(fx + 0.15, fixtureY + 0.45); ctx.lineTo(fx - 0.15, fixtureY + 0.45); ctx.closePath(); ctx.fill();
         ctx.fillStyle = on ? rgba(c, 1) : '#262a38';
         if (on) { ctx.shadowColor = rgba(c, 1); ctx.shadowBlur = 16; }
-        ctx.beginPath(); ctx.arc(fx, z.y + 0.84, 0.12, 0, TAU); ctx.fill(); ctx.shadowBlur = 0;
+        ctx.beginPath(); ctx.arc(fx, fixtureY + 0.84, 0.12, 0, TAU); ctx.fill(); ctx.shadowBlur = 0;
       }
     }
     // doors

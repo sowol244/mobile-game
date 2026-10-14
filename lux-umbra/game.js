@@ -69,7 +69,7 @@ export function createGame(def) {
     reactive: [],
     lamps: lv.lamps, levers: lv.levers.map(l => ({ ...l, touch: false, timer: 0 })), mirrors: lv.mirrors.map(m => ({ ...m, touch: false })), lenses: lv.lenses.map(l => ({ ...l, touch: false })),
     signs: lv.signs, checks: lv.checks.map(c => ({ ...c, on: false })), doors: lv.doors,
-    zones: (def.zones || []).map(z => ({ x: z.x, y: z.y, w: z.w, h: z.h, col: COL[z.color || 'w'], g: z.g || null, on: z.on ?? true })),
+    zones: (def.zones || []).map(z => ({ x: z.x, y: z.y, w: z.w, h: z.h, fixtureY: z.fixtureY ?? z.y, col: COL[z.color || 'w'], g: z.g || null, on: z.on ?? true })),
     groups: { ...(def.groups || {}) },
     p: null, fl: { on: false, dark: false, aim: LIGHT.defaultAim, col: COL.w },
     crates: lv.crates.map(c => ({ x: c.x + (1 - PHYS.cw) / 2, y: c.y, w: PHYS.cw, h: 1, vx: 0, vy: 0, hx: c.x, hy: c.y })),

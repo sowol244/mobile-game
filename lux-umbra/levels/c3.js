@@ -696,7 +696,7 @@ export default [
 
   {
     name: '시계탑', shape: 'climb',
-    zones: [{ x: 26, y: 38, w: 12, h: 6, g: 'a', on: true }, { x: 45, y: 41, w: 3, h: 1, g: 'b', on: true }, { x: 45, y: 37, w: 3, h: 1, g: 'c', on: true }, { x: 45, y: 33, w: 3, h: 1, g: 'd', on: true }, { x: 55, y: 16, w: 8, h: 17, g: 'e', on: true }],
+    zones: [{ x: 26, y: 38, w: 12, h: 6, g: 'a', on: true }, { x: 45, y: 41, w: 3, h: 1, g: 'b', on: true, fixtureY: 39.5 }, { x: 45, y: 37, w: 3, h: 1, g: 'c', on: true, fixtureY: 35.5 }, { x: 45, y: 33, w: 3, h: 1, g: 'd', on: true, fixtureY: 31.5 }, { x: 55, y: 16, w: 8, h: 17, g: 'e', on: true }],
     levers: [{ g: 'e', t: 2.2 }, { g: 'e', t: 2.35 }, 'd', 'c', { g: 'a', t: 1.9 }, 'b'],
     rooms: [['gm_ghoststeps', 4, 32, 21, 11, 1], ['clockdash', 26, 38, 12, 8, 1], ['leverwell', 39, 30, 10, 14, 1], ['clocktower', 54, 16, 10, 18, 1], ['blinkwell', 65, 5, 9, 15, 1], ['gm_shadowlid', 75, 1, 18, 8, 1, 'spikes'], ['hhigh', 94, 3, 8, 7, 1]],
     rows: [
