@@ -154,63 +154,72 @@ function depthScale(h, y) {
   return 0.48 + depth * 0.72;
 }
 
-function drawBarrel(g, barrel, w, h, time) {
+function drawBarrel(g, barrel, w, h, time, assets = {}) {
+  const style = {
+    companion: { colors: ['#d9f2ff', '#368fc9', '#174469'], glow: '#6ac8ff', tag: '지원 사수', icon: assets.rewardSupport },
+    drone: { colors: ['#f0deff', '#9252ce', '#45206e'], glow: '#b988ff', tag: '전투 드론', icon: assets.rewardDrone },
+    rocket: { colors: ['#ffe0a1', '#e27c2f', '#78361e'], glow: '#ffad49', tag: '로켓 폭격', icon: assets.rewardRocket },
+    rapidfire: { colors: ['#fff0a4', '#d3a72e', '#70521a'], glow: '#ffe063', tag: '연사 강화', icon: assets.rewardRapidfire },
+    heal: { colors: ['#d4ffd9', '#3da968', '#1c5739'], glow: '#73ef91', tag: '응급 키트', icon: assets.rewardHeal },
+    weapon: { colors: ['#c8ebff', '#2988c4', '#123f63'], glow: '#66c9ff', tag: '기관단총', icon: assets.rewardWeapon },
+    upgrade: { colors: ['#e5e0ff', '#7072cc', '#34386f'], glow: '#b6b3ff', tag: '무기 강화', icon: assets.rewardUpgrade },
+    explosive: { colors: ['#ffe0a1', '#d94d34', '#72231e'], glow: '#ff6447', tag: '폭발통', icon: assets.rewardExplosive },
+  }[barrel.kind] || { colors: ['#eee0ad', '#9b7540', '#493a2c'], glow: '#ffcd68', tag: '보급', icon: null };
   const scale = Math.max(0.58, depthScale(h, barrel.y));
-  const bh = 62 * scale;
-  const colors = barrel.kind === 'weapon'
-    ? ['#b8ecff', '#248cdb', '#073d75']
-    : barrel.kind === 'companion'
-      ? ['#d7ffc2', '#51b95f', '#1d6337']
-      : barrel.kind === 'upgrade'
-        ? ['#ffc2ff', '#a546df', '#55217d']
-        : ['#ffe17e', '#ed492e', '#85221d'];
-  const glow = barrel.kind === 'weapon' ? '#62c9ff' : barrel.kind === 'companion' ? '#83ed8d' : barrel.kind === 'upgrade' ? '#df75ff' : '#ff6544';
-  const tag = barrel.kind === 'weapon' ? '기관단총' : barrel.kind === 'companion' ? '동료 +1' : barrel.kind === 'upgrade' ? '화력 강화' : '폭발통';
+  const shakeX = barrel.hitShake > 0 ? Math.sin(time * 88 + barrel.lane) * barrel.hitShake * 28 : 0;
+  const x = barrel.x + shakeX;
   g.save();
-  g.translate(barrel.x, barrel.y);
+  g.translate(x, barrel.y);
   g.scale(scale, scale);
-  g.fillStyle = 'rgba(8,12,12,.54)';
-  g.beginPath(); g.ellipse(2, 9, 33, 11, 0, 0, Math.PI * 2); g.fill();
-  g.shadowColor = glow; g.shadowBlur = 15 + Math.sin(time * 5 + barrel.lane) * 3;
-  g.strokeStyle = glow; g.lineWidth = 2.2;
-  g.beginPath(); g.ellipse(0, 6, 29, 8, 0, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = 'rgba(5,9,10,.6)';
+  g.beginPath(); g.ellipse(2, 12, 34, 12, 0, 0, Math.PI * 2); g.fill();
+  g.shadowColor = style.glow; g.shadowBlur = 14 + Math.sin(time * 5 + barrel.lane) * 3;
+  g.strokeStyle = style.glow; g.lineWidth = 2.2;
+  g.beginPath(); g.ellipse(0, 8, 30, 8, 0, 0, Math.PI * 2); g.stroke();
   g.shadowBlur = 0;
-  const body = g.createLinearGradient(-24, 0, 26, 0);
-  body.addColorStop(0, colors[2]); body.addColorStop(0.22, colors[1]); body.addColorStop(0.52, colors[0]); body.addColorStop(0.78, colors[1]); body.addColorStop(1, colors[2]);
-  roundRect(g, -23, -27, 46, 56, 8, body, '#172022', 3);
-  if (barrel.hitFlash > 0) roundRect(g, -22, -26, 44, 54, 7, 'rgba(255,255,230,' + Math.min(0.5, barrel.hitFlash * 3) + ')');
-  g.strokeStyle = 'rgba(255,255,255,.84)'; g.lineWidth = 1.6;
-  g.beginPath(); g.moveTo(-19, -24); g.lineTo(-19, 25); g.moveTo(19, -24); g.lineTo(19, 25); g.stroke();
-  g.fillStyle = colors[1];
-  g.beginPath(); g.ellipse(0, -26, 23, 7, 0, 0, Math.PI * 2); g.fill();
+  const body = g.createLinearGradient(-27, 0, 27, 0);
+  body.addColorStop(0, style.colors[2]); body.addColorStop(0.18, style.colors[1]);
+  body.addColorStop(0.48, style.colors[0]); body.addColorStop(0.76, style.colors[1]); body.addColorStop(1, style.colors[2]);
+  roundRect(g, -25, -30, 50, 60, 8, body, '#172022', 3);
+  roundRect(g, -24, -26, 48, 4, 2, 'rgba(255,255,255,.16)', 'rgba(9,18,20,.64)', 1);
+  roundRect(g, -24, 23, 48, 4, 2, 'rgba(11,20,22,.3)', 'rgba(255,255,255,.44)', 1);
+  g.strokeStyle = 'rgba(255,255,255,.68)'; g.lineWidth = 1.6;
+  g.beginPath(); g.moveTo(-20, -22); g.lineTo(-20, 21); g.moveTo(20, -22); g.lineTo(20, 21); g.stroke();
+  g.fillStyle = style.colors[1];
+  g.beginPath(); g.ellipse(0, -29, 25, 7.5, 0, 0, Math.PI * 2); g.fill();
   g.strokeStyle = '#fff0ce'; g.lineWidth = 3;
-  g.beginPath(); g.ellipse(0, -26, 21, 6, 0, 0, Math.PI * 2); g.stroke();
-  g.strokeStyle = 'rgba(255,242,220,.85)'; g.lineWidth = 2;
-  g.beginPath(); g.moveTo(-23, -8); g.lineTo(23, -8); g.moveTo(-23, 15); g.lineTo(23, 15); g.stroke();
-  g.fillStyle = 'rgba(18,25,25,.72)';
-  roundRect(g, -17, -3, 34, 24, 5, g.fillStyle, 'rgba(255,255,255,.46)', 1);
-  g.fillStyle = '#fff9e8'; g.font = '900 17px "Black Han Sans", sans-serif';
+  g.beginPath(); g.ellipse(0, -29, 22, 6, 0, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = 'rgba(255,241,209,.8)'; g.lineWidth = 1.6;
+  g.beginPath(); g.moveTo(-25, -7); g.lineTo(25, -7); g.moveTo(-25, 17); g.lineTo(25, 17); g.stroke();
+  g.fillStyle = 'rgba(13,22,23,.84)';
+  roundRect(g, -17, 2, 34, 22, 5, g.fillStyle, 'rgba(255,255,255,.5)', 1.2);
+  if (style.icon && style.icon.complete && style.icon.naturalWidth) {
+    g.drawImage(style.icon, -10.5, -23, 21, 21);
+  } else {
+    g.fillStyle = '#fff4d3'; g.font = '900 11px "Black Han Sans", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(barrel.kind === 'companion' ? 'AR' : barrel.kind === 'drone' ? 'DR' : barrel.kind === 'rocket' ? 'RKT' : barrel.kind === 'rapidfire' ? '>>>' : barrel.kind === 'heal' ? '+' : barrel.kind === 'explosive' ? '!' : 'UP', 0, -12);
+  }
+  g.fillStyle = '#fff9e8'; g.font = '900 15px "Black Han Sans", sans-serif';
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.shadowColor = 'rgba(0,0,0,.8)'; g.shadowBlur = 3;
-  g.fillText(String(Math.max(0, Math.ceil(barrel.hp))), 0, 8);
+  g.shadowColor = 'rgba(0,0,0,.9)'; g.shadowBlur = 3;
+  g.fillText(String(Math.max(0, Math.ceil(barrel.hp))), 0, 13);
   g.shadowBlur = 0;
+  if (barrel.hitFlash > 0) {
+    roundRect(g, -24, -29, 48, 58, 7, 'rgba(255,255,230,' + Math.min(0.62, barrel.hitFlash * 4) + ')');
+  }
   g.restore();
 
-  const badgeY = barrel.y - bh * 0.62 - 13;
-  const pulse = 0.55 + Math.sin(time * 6 + barrel.lane) * 0.12;
+  const badgeY = barrel.y - 62 * scale * 0.62 - 16;
+  const pulse = 0.72 + Math.sin(time * 6 + barrel.lane) * 0.12;
+  const badgeWidth = Math.max(62, style.tag.length * 11 + 17);
   g.save();
-  g.shadowColor = glow; g.shadowBlur = 9;
-  const badgeWidth = barrel.kind === 'weapon' ? 70 : 64;
-  roundRect(g, barrel.x - badgeWidth / 2, badgeY - 11, badgeWidth, 18, 7, 'rgba(14,20,20,.96)', glow, 1.5);
+  g.shadowColor = style.glow; g.shadowBlur = 9;
+  roundRect(g, x - badgeWidth / 2, badgeY - 11, badgeWidth, 21, 8, 'rgba(14,20,20,.96)', style.glow, 1.5);
   g.shadowBlur = 0;
   g.globalAlpha = pulse;
-  g.fillStyle = '#fff7dc'; g.font = 'bold 10px Jua, sans-serif';
+  g.fillStyle = '#fff7dc'; g.font = 'bold 11px Jua, sans-serif';
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(tag, barrel.x, badgeY - 2.5);
-  roundRect(g, barrel.x - 25, badgeY + 8, 50, 22, 8, glow, '#fff5db', 1.5);
-  g.globalAlpha = 1;
-  g.fillStyle = '#101718'; g.font = '900 14px "Black Han Sans", sans-serif';
-  g.fillText(String(Math.max(0, Math.ceil(barrel.hp))), barrel.x, badgeY + 19);
+  g.fillText(style.tag, x, badgeY - 0.5);
   g.restore();
 }
 
@@ -353,34 +362,129 @@ function drawBoss(g, boss, w, h, time, assets) {
   g.fillText('대형 변이체', boss.x, by - 5);
 }
 
+function drawSupportMuzzle(g, x, y, alpha, color = '#ffe6a1') {
+  if (alpha <= 0) return;
+  g.save();
+  g.globalAlpha = Math.min(1, alpha * 9);
+  g.shadowColor = color; g.shadowBlur = 13;
+  g.fillStyle = '#fff8d8';
+  g.beginPath(); g.ellipse(x, y, 3.5, 5, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = color;
+  g.beginPath(); g.moveTo(x, y + 2); g.lineTo(x - 4, y - 4); g.lineTo(x - 2, y - 14); g.lineTo(x + 4, y - 5); g.lineTo(x + 2, y + 2); g.closePath(); g.fill();
+  g.restore();
+}
+
+function drawSupport(g, s, time, assets) {
+  for (const companion of s.companions) {
+    const alpha = companion.life > 0
+      ? clamp(1 - companion.appear / 0.4, 0.08, 1)
+      : clamp(companion.exit / 0.42, 0, 1);
+    const stride = time * 10 + companion.id * 1.8;
+    const bob = Math.abs(Math.sin(stride)) * 2.2;
+    drawFootstepDust(g, companion.x, companion.y, 0.75, stride, '#9fceb1');
+    drawSprite(g, assets.supportSoldier, companion.x, companion.y + bob, 58, 78, 0, Math.sin(stride) * 0.035 - companion.recoil * 0.025, alpha);
+    drawSupportMuzzle(g, companion.x + 19, companion.y - 49 + bob, companion.muzzleFlash, '#ffe2a0');
+  }
+
+  const drone = s.drone;
+  if (!drone) return;
+  const alpha = drone.life > 0
+    ? clamp(1 - drone.appear / 0.42, 0.08, 1)
+    : clamp(drone.exit / 0.4, 0, 1);
+  const x = drone.x, y = drone.y + Math.sin(drone.phase * 2.2) * 1.5;
+  const rotorPhase = time * 34;
+  g.save();
+  g.globalAlpha = alpha;
+  g.fillStyle = 'rgba(6,11,17,.42)';
+  g.beginPath(); g.ellipse(x, y + 22, 31, 7, 0, 0, Math.PI * 2); g.fill();
+  for (const sideX of [-1, 1]) for (const sideY of [-1, 1]) {
+    const rx = x + sideX * 25, ry = y + sideY * 15;
+    g.strokeStyle = 'rgba(117,220,255,.7)'; g.lineWidth = 2;
+    g.beginPath(); g.ellipse(rx, ry, 9, 5, 0, 0, Math.PI * 2); g.stroke();
+    g.save();
+    g.translate(rx, ry); g.rotate(rotorPhase * (sideX === sideY ? 1 : -1));
+    g.fillStyle = 'rgba(210,237,245,.84)';
+    roundRect(g, -10, -1.5, 20, 3, 1.5, g.fillStyle);
+    g.restore();
+    g.fillStyle = '#1d2934';
+    g.beginPath(); g.arc(rx, ry, 3.2, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#71e9ff';
+    g.beginPath(); g.arc(rx, ry, 1.25, 0, Math.PI * 2); g.fill();
+  }
+  if (assets.combatDrone?.complete && assets.combatDrone.naturalWidth) {
+    g.shadowColor = 'rgba(29,55,76,.8)'; g.shadowBlur = 7;
+    g.drawImage(assets.combatDrone, x - 36 - drone.recoil * 2, y - 23, 72, 48);
+    g.shadowBlur = 0;
+  }
+  const led = 0.55 + (Math.sin(time * 12) + 1) * 0.2;
+  g.fillStyle = 'rgba(89,224,255,' + led + ')';
+  g.shadowColor = '#59e0ff'; g.shadowBlur = 7;
+  g.beginPath(); g.arc(x, y + 2, 2.7, 0, Math.PI * 2); g.fill();
+  g.shadowBlur = 0;
+  drawSupportMuzzle(g, x + 7, y + 19, drone.muzzleFlash, '#84efff');
+  g.restore();
+}
+
 function drawPlayer(g, s, time, assets) {
   const h = 96, w = 80;
   const stride = time * 12;
   const bob = Math.abs(Math.sin(stride)) * 3.5;
-  for (let index = 0; index < s.companions.length; index++) {
-    const side = index === 0 ? -1 : 1;
-    const x = s.x + side * 37;
-    const companionStride = time * 10 + index * 1.8;
-    drawFootstepDust(g, x, s.y + 27, 0.76, companionStride, '#a8edaf');
-    const image = Math.sin(companionStride) > 0 && assets.playerRun ? assets.playerRun : assets.player;
-    drawSprite(g, image, x, s.y + 27 + Math.abs(Math.sin(companionStride)) * 2, 59, 78, 0, side * Math.sin(companionStride) * 0.04, 1, 'rgba(115,221,142,.52)');
-  }
   if (s.invulnerable > 0 && Math.floor(time * 18) % 2 === 0) return;
   drawFootstepDust(g, s.x, s.y + 16, 1.05, stride, '#c8b898');
   const image = Math.sin(stride) > 0 && assets.playerRun ? assets.playerRun : assets.player;
   drawSprite(g, image, s.x, s.y + 17 + bob, w, h, 0, Math.sin(stride) * 0.035, 1, s.flash > 0 ? '#ff7068' : null);
 }
 
+function drawParticles(g, particles) {
+  for (const particle of particles) {
+    const alpha = clamp(particle.life / particle.total, 0, 1);
+    g.save();
+    g.globalAlpha = alpha * (particle.kind === 'smoke' ? 0.42 : 0.92);
+    g.translate(particle.x, particle.y);
+    if (particle.kind === 'smoke') {
+      const radius = particle.size * (1.15 - alpha * 0.35);
+      g.fillStyle = particle.color || '#bac0b3';
+      g.beginPath(); g.ellipse(0, 0, radius, radius * 0.72, 0, 0, Math.PI * 2); g.fill();
+    } else {
+      g.rotate(particle.rotation || 0);
+      g.fillStyle = particle.color || '#fff0bd';
+      polygon(g, [[0, -particle.size], [particle.size * 0.52, -1], [particle.size * 0.25, particle.size], [-particle.size * 0.4, particle.size * 0.55]], g.fillStyle, 'rgba(34,31,25,.5)');
+    }
+    g.restore();
+  }
+}
+
+function drawRocketMissiles(g, missiles, assets, time) {
+  for (const missile of missiles) {
+    const flicker = 0.78 + Math.sin(time * 48 + missile.targetX) * 0.22;
+    g.save();
+    g.translate(missile.x, missile.y);
+    g.globalAlpha = 0.55 + clamp(missile.elapsed / 0.08, 0, 1) * 0.45;
+    g.shadowColor = '#ff843b'; g.shadowBlur = 12 * flicker;
+    g.fillStyle = '#ffb451';
+    g.beginPath(); g.moveTo(-4, -7); g.lineTo(0, -25 * flicker); g.lineTo(4, -7); g.closePath(); g.fill();
+    g.shadowBlur = 0;
+    if (assets.rocketProjectile?.complete && assets.rocketProjectile.naturalWidth) {
+      g.drawImage(assets.rocketProjectile, -13, -29, 26, 52);
+    } else {
+      roundRect(g, -5, -16, 10, 28, 4, '#b9c5c4', '#39454b', 1.5);
+      polygon(g, [[-5, 10], [5, 10], [0, 19]], '#e34c35', '#692d25');
+    }
+    g.restore();
+  }
+}
+
 function drawBullet(g, bullet) {
   g.save();
   g.translate(bullet.x, bullet.y);
   g.rotate(Math.atan2(bullet.vy, bullet.vx) - Math.PI / 2);
-  const color = bullet.owner === 'companion' ? '#8fffc5' : bullet.weapon === 'smg' ? '#ffc75c' : '#f7f0c4';
+  const color = bullet.owner === 'drone' ? '#76eaff' : bullet.owner === 'companion' ? '#8fffc5' : bullet.rapid ? '#ffe36f' : bullet.weapon === 'smg' ? '#ffc75c' : '#f7f0c4';
   g.shadowColor = color;
-  g.shadowBlur = bullet.owner === 'companion' ? 12 : 10;
+  g.shadowBlur = bullet.owner === 'drone' || bullet.owner === 'companion' ? 12 : 10;
   const grad = g.createLinearGradient(0, -10, 0, 9);
   grad.addColorStop(0, '#fffce9'); grad.addColorStop(0.5, color); grad.addColorStop(1, 'rgba(255,133,51,0)');
-  roundRect(g, bullet.owner === 'companion' ? -2.7 : -2, -10, bullet.owner === 'companion' ? 5.4 : 4, 17, 2, grad);
+  const width = bullet.owner === 'drone' ? 6 : bullet.owner === 'companion' ? 5.4 : 4;
+  roundRect(g, -width / 2, -10, width, 17, 2, grad);
   g.restore();
 }
 
@@ -400,7 +504,7 @@ function drawHazard(g, hazard, time) {
 
 function drawExplosion(g, effect) {
   const p = 1 - effect.life / effect.total;
-  const radius = 10 + p * effect.radius * 0.44;
+  const radius = 10 + p * effect.radius * 0.58;
   g.save();
   g.globalAlpha = 1 - p;
   g.strokeStyle = '#ffb947'; g.lineWidth = 6 * (1 - p) + 1;
@@ -408,6 +512,18 @@ function drawExplosion(g, effect) {
   const flame = g.createRadialGradient(effect.x, effect.y, 2, effect.x, effect.y, radius * 0.75);
   flame.addColorStop(0, 'rgba(255,247,166,.95)'); flame.addColorStop(0.35, 'rgba(255,154,51,.75)'); flame.addColorStop(1, 'rgba(229,55,30,0)');
   g.fillStyle = flame; g.beginPath(); g.arc(effect.x, effect.y, radius * 0.78, 0, Math.PI * 2); g.fill();
+  g.save();
+  g.translate(effect.x, effect.y);
+  g.rotate(p * 0.55);
+  g.shadowColor = '#ff8b32'; g.shadowBlur = 15 * (1 - p);
+  const burst = [];
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.PI * 2 * i / 12;
+    const reach = radius * (i % 2 ? 0.52 : 0.78);
+    burst.push([Math.cos(angle) * reach, Math.sin(angle) * reach * 0.72]);
+  }
+  polygon(g, burst, 'rgba(255,166,51,.54)', 'rgba(255,235,156,.74)');
+  g.restore();
   g.restore();
 }
 
@@ -417,6 +533,47 @@ function drawEffect(g, effect, time) {
     return;
   }
   const progress = 1 - effect.life / effect.total;
+  if (effect.kind === 'rocketWarning') {
+    const pulse = 0.72 + Math.sin(time * 24) * 0.16;
+    const radius = effect.radius * (0.82 + progress * 0.14);
+    g.save();
+    g.globalAlpha = (0.34 + progress * 0.34) * pulse;
+    g.fillStyle = 'rgba(244,85,45,.24)';
+    g.beginPath(); g.ellipse(effect.x, effect.y, radius, radius * 0.58, 0, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#ffb04f'; g.lineWidth = 2.5;
+    g.setLineDash([7, 4]);
+    g.beginPath(); g.ellipse(effect.x, effect.y, radius, radius * 0.58, 0, 0, Math.PI * 2); g.stroke();
+    g.setLineDash([]);
+    g.strokeStyle = 'rgba(255,238,190,.86)'; g.lineWidth = 1.3;
+    g.beginPath();
+    g.moveTo(effect.x - radius * 0.28, effect.y); g.lineTo(effect.x + radius * 0.28, effect.y);
+    g.moveTo(effect.x, effect.y - radius * 0.23); g.lineTo(effect.x, effect.y + radius * 0.23);
+    g.stroke();
+    g.font = 'bold 10px Jua, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#fff1cc'; g.fillText('로켓 낙하', effect.x, effect.y - radius * 0.7);
+    g.restore();
+    return;
+  }
+  if (effect.kind === 'barrelBreak') {
+    g.save();
+    g.globalAlpha = 1 - progress;
+    g.strokeStyle = effect.color; g.lineWidth = 4 * (1 - progress) + 1;
+    g.shadowColor = effect.color; g.shadowBlur = 12;
+    g.beginPath(); g.ellipse(effect.x, effect.y, 8 + progress * 32, 5 + progress * 17, 0, 0, Math.PI * 2); g.stroke();
+    g.shadowBlur = 0;
+    g.restore();
+    return;
+  }
+  if (effect.kind === 'summon') {
+    g.save();
+    g.globalAlpha = 1 - progress;
+    g.strokeStyle = effect.color; g.lineWidth = 3.5 * (1 - progress) + 1;
+    g.shadowColor = effect.color; g.shadowBlur = 14;
+    g.beginPath(); g.ellipse(effect.x, effect.y, 9 + progress * 29, 5 + progress * 16, 0, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.ellipse(effect.x, effect.y, 5 + progress * 18, 3 + progress * 10, 0, 0, Math.PI * 2); g.stroke();
+    g.restore();
+    return;
+  }
   g.save();
   if (effect.kind === 'damageNumber') {
     const y = effect.y - progress * 21;
@@ -471,7 +628,7 @@ function drawTargetLock(g, s, time) {
   const target = s.target;
   if (!target || target.dead) return;
   const isBoss = target === s.boss;
-  const isSupply = ['weapon', 'upgrade', 'companion'].includes(target.kind);
+  const isSupply = ['weapon', 'upgrade', 'companion', 'drone', 'rocket', 'rapidfire', 'heal'].includes(target.kind);
   const isExplosive = target.kind === 'explosive';
   const color = isBoss || isExplosive ? '#ff8a68' : isSupply ? '#ffe082' : '#a9efff';
   const scale = depthScale(s.h, target.y);
@@ -506,8 +663,8 @@ function drawTitleScene(g, w, h, time, assets) {
   drawRoad(g, w, h, (time * 0.00008) % 1);
   drawZombie(g, { kind: 'walker', x: w * 0.42, y: h * 0.34, radius: 14, hp: 20, maxHp: 20, phase: 1 }, h, time / 1000, assets);
   drawZombie(g, { kind: 'runner', x: w * 0.66, y: h * 0.48, radius: 14, hp: 15, maxHp: 15, phase: 2 }, h, time / 1000, assets);
-  drawBarrel(g, { kind: 'companion', x: w * 0.32, y: h * 0.59, hp: 30 }, w, h, time / 1000);
-  drawBarrel(g, { kind: 'weapon', x: w * 0.72, y: h * 0.62, hp: 40 }, w, h, time / 1000);
+  drawBarrel(g, { kind: 'companion', x: w * 0.32, y: h * 0.59, lane: 0, hp: 40 }, w, h, time / 1000, assets);
+  drawBarrel(g, { kind: 'weapon', x: w * 0.72, y: h * 0.62, lane: 2, hp: 40 }, w, h, time / 1000, assets);
   const runPhase = time / 1000 * 12;
   drawFootstepDust(g, w * 0.5, h * 0.90, 1, runPhase, '#c8b898');
   const runningPose = Math.sin(runPhase) > 0;
@@ -543,14 +700,17 @@ export function drawScene(ctx, s, w, h, now, title, assets) {
   if (s.boss) objects.push({ y: s.boss.y, kind: 'boss', item: s.boss });
   objects.sort((a, b) => a.y - b.y);
   for (const object of objects) {
-    if (object.kind === 'barrel') drawBarrel(ctx, object.item, w, h, time);
+    if (object.kind === 'barrel') drawBarrel(ctx, object.item, w, h, time, assets || {});
     else if (object.kind === 'zombie') drawZombie(ctx, object.item, h, time, assets || {});
     else if (object.kind === 'obstacle') drawObstacle(ctx, object.item, h, time);
     else drawBoss(ctx, object.item, w, h, time, assets || {});
   }
+  drawSupport(ctx, s, time, assets || {});
   drawTargetLock(ctx, s, time);
   for (const effect of s.effects) drawEffect(ctx, effect, time);
+  drawParticles(ctx, s.particles);
   for (const hazard of s.hazards) drawHazard(ctx, hazard, time);
+  drawRocketMissiles(ctx, s.missiles, assets || {}, time);
   for (const bullet of s.bullets) drawBullet(ctx, bullet);
   if (s.powerFlash > 0) {
     const alpha = Math.min(0.28, s.powerFlash * 0.24);

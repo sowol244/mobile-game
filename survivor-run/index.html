@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1a2423">
 <title>DEAD ROUTE</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap">
-<link rel="stylesheet" href="style.css?v=1-1-20261014b">
+<link rel="stylesheet" href="style.css?v=1-1-20261014c">
 </head>
 <body>
 <main id="app">
@@ -27,8 +27,33 @@
       <div class="weapon-block">
         <span class="weapon-icon" id="weaponIcon">●</span>
         <span class="weapon-copy"><b id="weapon">권총</b><small>LV. <i id="weaponLevel">1</i></small></span>
-        <span class="ally-chip" id="allyStat" hidden>동료 <b id="allyCount">0</b></span>
         <span class="kill-chip">☠ <b id="kills">0</b></span>
+      </div>
+    </div>
+    <div class="support-status" id="supportHud" aria-label="화력 지원 상태" hidden>
+      <div class="support-chip soldier" id="soldierSupport" hidden>
+        <img src="assets/reward-support.svg" alt="">
+        <span class="support-name">지원 사수 <b id="soldierCount">×1</b></span>
+        <small id="soldierTime">10초</small>
+        <span class="support-track"><i id="soldierFill"></i></span>
+      </div>
+      <div class="support-chip drone" id="droneSupport" hidden>
+        <img src="assets/reward-drone.svg" alt="">
+        <span class="support-name">전투 드론</span>
+        <small id="droneTime">8초</small>
+        <span class="support-track"><i id="droneFill"></i></span>
+      </div>
+      <div class="support-chip rocket" id="rocketSupport" hidden>
+        <img src="assets/reward-rocket.svg" alt="">
+        <span class="support-name">로켓 폭격</span>
+        <small><b id="rocketCount">3</b>발</small>
+        <span class="support-track"><i id="rocketFill"></i></span>
+      </div>
+      <div class="support-chip rapid" id="rapidSupport" hidden>
+        <img src="assets/reward-rapidfire.svg" alt="">
+        <span class="support-name">연사 강화</span>
+        <small id="rapidTime">8초</small>
+        <span class="support-track"><i id="rapidFill"></i></span>
       </div>
     </div>
   </header>
@@ -46,8 +71,8 @@
       <section class="panel" id="pMain">
         <div class="eyebrow">SURVIVAL SHOOTER · 1-1</div>
         <h1 id="title">DEAD<br>ROUTE</h1>
-        <p id="msg">보급통을 선택해 무기를 강화하고,<br>대규모 웨이브와 보스를 돌파하세요.</p>
-        <div class="mission-chips"><span>숫자 보급통 선택</span><span>자동 사격 · 좌우 이동</span><span>75초 최종 보스</span></div>
+        <p id="msg">숫자 보급통을 부숴 지원 사수·드론·로켓 화력을 얻고,<br>대규모 웨이브와 최종 보스를 돌파하세요.</p>
+        <div class="mission-chips"><span>숫자 보급통 선택</span><span>자동 사격 · 좌우 이동</span><span>동료·드론·로켓 지원</span><span>75초 최종 보스</span></div>
         <p id="result" hidden></p>
         <div class="buttons">
           <button class="primary" id="start" type="button">작전 시작</button>
@@ -85,8 +110,8 @@
           <li><b>이동</b> 화면을 좌우로 끌어 도로 안에서 움직입니다.</li>
           <li><b>자동 사격</b> 총은 자동으로 쏩니다. 원하는 목표물 쪽으로 이동하세요.</li>
           <li><b>목표 선택</b> 원하는 보급통 쪽으로 움직이면 표적 표시와 사격 방향이 따라갑니다.</li>
-          <li><b>보급통</b> 숫자는 남은 내구도입니다. 동료 또는 기관단총을 선택해 전투력을 올리세요.</li>
-          <li><b>동료</b> 합류한 전투원은 플레이어 뒤에서 자동으로 사격합니다.</li>
+          <li><b>보급통</b> 숫자는 남은 내구도입니다. 지원 사수·드론·로켓·연사·회복 중 보상을 고르세요.</li>
+          <li><b>화력 지원</b> 사수와 드론은 제한 시간동안 함께 사격하고, 로켓은 좀비 무리에 3발을 폭격합니다.</li>
           <li><b>폭발</b> 빨간 드럼통을 터뜨리면 주변 좀비와 폭발통까지 함께 휩쓸립니다.</li>
           <li><b>보스</b> 붉게 표시되는 공격 차선에서 벗어나며 최종 보스를 공격하세요.</li>
         </ul>
@@ -111,7 +136,7 @@
     </div>
   </section>
 </main>
-<script type="module" src="main.js?v=1-1-20261014f"></script>
+<script type="module" src="main.js?v=1-1-20261014g"></script>
 </body>
 </html>
 

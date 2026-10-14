@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 96">
+  <defs>
+    <linearGradient id="body" x1="0" x2="1"><stop stop-color="#586f5c"/><stop offset=".26" stop-color="#c0c7b7"/><stop offset=".58" stop-color="#798879"/><stop offset="1" stop-color="#384942"/></linearGradient>
+    <linearGradient id="nose" x1="0" x2="1"><stop stop-color="#ef7047"/><stop offset=".5" stop-color="#ffd06b"/><stop offset="1" stop-color="#ad3b2d"/></linearGradient>
+  </defs>
+  <path d="M17 12 7 23l3 6 8-4m13-13 10 11-3 6-8-4" fill="#394950" stroke="#17232a" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M20 14h8l6 48-10 16-10-16z" fill="url(#body)" stroke="#25312e" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M20 19h8l3 18h-14z" fill="#d1d5c6" stroke="#5d655c" stroke-width="2"/>
+  <path d="m17 41 14 0 2 10H15z" fill="#db9e45" stroke="#6b472c" stroke-width="2"/>
+  <path d="M16 61h16l-8 16z" fill="url(#nose)" stroke="#663126" stroke-width="3" stroke-linejoin="round"/>
+  <path d="m14 19-8-4 3-11 7 10m18 5 8-4-3-11-7 10" fill="#34464c" stroke="#17232a" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M18 18q6 4 12 0l5-13-5 3-6-7-6 7-5-3z" fill="#ff8738"/>
+  <path d="M21 18q3 2 6 0l2-9-5-5-5 6z" fill="#fff1a0"/>
+  <path d="M21 22v15m6-15v15M18 54h12" stroke="#f5ecd4" stroke-width="2" opacity=".8"/>
+</svg>

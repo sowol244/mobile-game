@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, STAGE_DURATION, applyPlayerDrag } from './game.js?v=1-1-20261014f';
-import { drawScene } from './render.js?v=1-1-20261014e';
+import { createGame, resizeGame, updateGame, STAGE_DURATION, applyPlayerDrag } from './game.js?v=1-1-20261014g';
+import { drawScene } from './render.js?v=1-1-20261014g';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014';
 
 const $ = id => document.getElementById(id);
@@ -15,7 +15,12 @@ const hud = {
   root: $('hud'), distance: $('distance'), timer: $('timer'),
   progress: $('progressFill'), healthText: $('healthText'), health: $('healthFill'),
   weapon: $('weapon'), weaponLevel: $('weaponLevel'), weaponIcon: $('weaponIcon'),
-  kills: $('kills'), allyRoot: $('allyStat'), allyCount: $('allyCount'),
+  kills: $('kills'),
+  supportRoot: $('supportHud'),
+  soldierRoot: $('soldierSupport'), soldierCount: $('soldierCount'), soldierTime: $('soldierTime'), soldierFill: $('soldierFill'),
+  droneRoot: $('droneSupport'), droneTime: $('droneTime'), droneFill: $('droneFill'),
+  rocketRoot: $('rocketSupport'), rocketCount: $('rocketCount'), rocketFill: $('rocketFill'),
+  rapidRoot: $('rapidSupport'), rapidTime: $('rapidTime'), rapidFill: $('rapidFill'),
   bossRoot: $('bossHud'), bossFill: $('bossFill'), tutorialHint: $('tutorialHint'),
 };
 const KEY_TOP = 'survivor-run-top', KEY_TUT = 'dead-route-tutorial';
@@ -34,11 +39,22 @@ const assets = {
   runner: sprite('assets/zombie-runner.webp'),
   runnerRun: sprite('assets/zombie-runner-run.webp'),
   brute: sprite('assets/zombie-brute.webp'),
+  supportSoldier: sprite('assets/support-soldier.svg'),
+  combatDrone: sprite('assets/combat-drone.svg'),
+  rocketProjectile: sprite('assets/rocket-projectile.svg'),
+  rewardSupport: sprite('assets/reward-support.svg'),
+  rewardDrone: sprite('assets/reward-drone.svg'),
+  rewardRocket: sprite('assets/reward-rocket.svg'),
+  rewardRapidfire: sprite('assets/reward-rapidfire.svg'),
+  rewardHeal: sprite('assets/reward-heal.svg'),
+  rewardWeapon: sprite('assets/reward-weapon.svg'),
+  rewardUpgrade: sprite('assets/reward-upgrade.svg'),
+  rewardExplosive: sprite('assets/reward-explosive.svg'),
 };
 const tutorials = [
   ['이동', '화면을 좌우로 끌어 도로 안에서 움직입니다. PC에서는 A/D 또는 ←/→ 키를 사용하세요.'],
   ['자동 사격', '총은 자동으로 발사됩니다. 원하는 좀비나 보급통 쪽으로 움직이면 표적이 바뀝니다.'],
-  ['보급과 회피', '숫자 내구도를 0으로 만들면 보상을 얻습니다. 동료는 함께 사격하고 붉은 보스 공격은 차선을 바꿔 피하세요.'],
+  ['보급과 회피', '숫자 내구도를 0으로 만들면 지원 사수·드론·로켓을 얻습니다. 붉은 보스 공격은 차선을 바꿔 피하세요.'],
 ];
 
 let state = 'title', game = null, lastFrame = performance.now();
@@ -79,7 +95,7 @@ function showTitle() {
   hud.root.hidden = true; hud.bossRoot.hidden = true; hud.tutorialHint.hidden = true;
   $('pause').hidden = true;
   $('title').innerHTML = 'DEAD<br>ROUTE';
-  $('msg').innerHTML = '보급통을 선택해 무기를 강화하고,<br>대규모 웨이브와 보스를 돌파하세요.';
+  $('msg').innerHTML = '숫자 보급통을 부숴 지원 사수·드론·로켓 화력을 얻고,<br>대규모 웨이브와 최종 보스를 돌파하세요.';
   $('result').hidden = true; $('home').hidden = true;
   $('start').textContent = '작전 시작';
   showPanel('main'); overlay.hidden = false;
@@ -114,8 +130,27 @@ function updateHud() {
   hud.weaponLevel.textContent = String(game.weaponLevel[game.weapon] || 1);
   hud.kills.textContent = String(game.kills);
   hud.tutorialHint.hidden = !game.moveTutorialVisible;
-  hud.allyRoot.hidden = game.companions.length === 0;
-  hud.allyCount.textContent = String(game.companions.length);
+  const soldiers = game.companions.filter(companion => companion.life > 0);
+  const soldierLife = soldiers.length ? Math.min(...soldiers.map(companion => companion.life)) : 0;
+  const soldierMax = soldiers.length ? Math.max(...soldiers.map(companion => companion.maxLife)) : 1;
+  hud.soldierRoot.hidden = soldiers.length === 0;
+  hud.soldierCount.textContent = '×' + soldiers.length;
+  hud.soldierTime.textContent = Math.ceil(soldierLife) + '초';
+  hud.soldierFill.style.width = Math.max(0, soldierLife / soldierMax * 100) + '%';
+  const drone = game.drone && game.drone.life > 0 ? game.drone : null;
+  hud.droneRoot.hidden = !drone;
+  if (drone) {
+    hud.droneTime.textContent = Math.ceil(drone.life) + '초';
+    hud.droneFill.style.width = Math.max(0, drone.life / drone.maxLife * 100) + '%';
+  }
+  const rockets = game.rocketAmmo + game.missiles.length;
+  hud.rocketRoot.hidden = rockets <= 0;
+  hud.rocketCount.textContent = String(rockets);
+  hud.rocketFill.style.width = Math.min(100, rockets / 6 * 100) + '%';
+  hud.rapidRoot.hidden = game.rapidFireTimer <= 0;
+  hud.rapidTime.textContent = Math.ceil(game.rapidFireTimer) + '초';
+  hud.rapidFill.style.width = Math.max(0, Math.min(100, game.rapidFireTimer / 12 * 100)) + '%';
+  hud.supportRoot.hidden = soldiers.length === 0 && !drone && rockets <= 0 && game.rapidFireTimer <= 0;
   hud.bossRoot.hidden = !game.boss;
   if (game.boss) hud.bossFill.style.width = Math.max(0, game.boss.hp / game.boss.maxHp * 100) + '%';
 }
@@ -135,6 +170,7 @@ function handleEvents(events) {
     else if (event === 'hit') sfx.hit();
     else if (event === 'barrelDown') sfx.pick();
     else if (event === 'explosion') sfx.explosion();
+    else if (event === 'rocketBlast') sfx.explosion();
     else if (event === 'hurt' || (event && typeof event === 'object' && event.type === 'hurt')) {
       if (!hurtSoundPlayed) { sfx.hurt(); hurtSoundPlayed = true; }
     }
@@ -145,7 +181,7 @@ function handleEvents(events) {
     else if (event === 'win') sfx.win();
     else if (event === 'lose' || event === 'timeout') sfx.lose();
     else if (event && typeof event === 'object' && event.type === 'reward') {
-      sfx.upgrade(); announce(event.label, 1.8);
+      sfx.upgrade(); announce(event.label, 0.85);
     } else if (event && typeof event === 'object' && event.type === 'cue') {
       announce(event.label, event.duration);
     }
