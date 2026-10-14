@@ -13,14 +13,14 @@
 //   1-9 fixed lamp, settings in `lamps` (kind 'radial' | 'beam', dir° 0=right 90=down, spread°, range, color, g=group)
 // `zones` are room lights: a rectangle lit evenly while its group is on.
 
-import c1 from './levels/c1.js';
-import c2 from './levels/c2.js';
-import c3 from './levels/c3.js';
-import c4 from './levels/c4.js';
-import c5 from './levels/c5.js';
-import c6 from './levels/c6.js';
-import c7 from './levels/c7.js';
-import c8 from './levels/c8.js';
+import c1 from './levels/c1.js?v=20261014-titles-1';
+import c2 from './levels/c2.js?v=20261014-titles-1';
+import c3 from './levels/c3.js?v=20261014-titles-1';
+import c4 from './levels/c4.js?v=20261014-titles-1';
+import c5 from './levels/c5.js?v=20261014-titles-1';
+import c6 from './levels/c6.js?v=20261014-titles-1';
+import c7 from './levels/c7.js?v=20261014-titles-1';
+import c8 from './levels/c8.js?v=20261014-titles-1';
 
 // Each chapter's first stage introduces one new thing (with signs); the other nine are puzzles that use it
 // together with everything before it.
