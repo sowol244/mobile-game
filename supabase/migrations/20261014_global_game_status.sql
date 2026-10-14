@@ -13,6 +13,7 @@ on conflict (id) do nothing;
 alter table public.game_status_config enable row level security;
 revoke all on table public.game_status_config from anon, authenticated;
 grant select on table public.game_status_config to anon, authenticated;
+grant select, update on table public.game_status_config to service_role;
 
 drop policy if exists "Anyone can read game statuses"
   on public.game_status_config;
