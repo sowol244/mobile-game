@@ -165,15 +165,15 @@ function depthScale(h, y) {
 
 function drawBarrel(g, barrel, w, h, time) {
   const style = {
-    companion: { colors: ['#80909a', '#4d6269', '#29363b'], accent: '#8ba0a4', tag: '지원 사수', stencil: 'SQUAD' },
-    drone: { colors: ['#9a9994', '#5e6262', '#303432'], accent: '#a39b81', tag: '전투 드론', stencil: 'UAV' },
-    rocket: { colors: ['#aa7950', '#6e432b', '#342921'], accent: '#c4844b', tag: '로켓 폭격', stencil: 'RKT' },
-    rapidfire: { colors: ['#a39463', '#6d6036', '#343125'], accent: '#cfad51', tag: '연사 +30%', stencil: 'AUTO' },
-    heal: { colors: ['#929783', '#59694d', '#2d372d'], accent: '#8f9a78', tag: '응급 키트', stencil: 'MED' },
-    weapon: { colors: ['#929b99', '#5b6a68', '#2c3432'], accent: '#93a19d', tag: '기관단총', stencil: 'SMG' },
-    upgrade: { colors: ['#93665a', '#663d36', '#2e2725'], accent: '#bd7866', tag: '공격력 +25%', stencil: 'ATK' },
-    explosive: { colors: ['#9b5c49', '#713a32', '#372b27'], accent: '#ad7050', tag: '폭발통', stencil: 'DANGER' },
-  }[barrel.kind] || { colors: ['#999585', '#706b59', '#39372f'], accent: '#99917a', tag: '보급', stencil: 'SUPPLY' };
+    companion: { colors: ['#80909a', '#4d6269', '#29363b'], stencil: '동료' },
+    drone: { colors: ['#9a9994', '#5e6262', '#303432'], stencil: '드론' },
+    rocket: { colors: ['#aa7950', '#6e432b', '#342921'], stencil: '로켓' },
+    rapidfire: { colors: ['#a39463', '#6d6036', '#343125'], stencil: '연사' },
+    heal: { colors: ['#929783', '#59694d', '#2d372d'], stencil: '치료' },
+    weapon: { colors: ['#929b99', '#5b6a68', '#2c3432'], stencil: 'SMG' },
+    upgrade: { colors: ['#93665a', '#663d36', '#2e2725'], stencil: '화력' },
+    explosive: { colors: ['#9b5c49', '#713a32', '#372b27'], stencil: '위험' },
+  }[barrel.kind] || { colors: ['#999585', '#706b59', '#39372f'], stencil: '보급' };
   const scale = Math.max(0.58, depthScale(h, barrel.y));
   const shakeX = barrel.hitShake > 0 ? Math.sin(time * 88 + barrel.lane) * barrel.hitShake * 28 : 0;
   const x = barrel.x + shakeX;
@@ -204,11 +204,11 @@ function drawBarrel(g, barrel, w, h, time) {
     g.fillStyle = '#282822'; g.font = '900 9px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText('!', 0, -15);
   }
-  roundRect(g, -18, 1, 36, 14, 2, 'rgba(22,27,24,.82)', 'rgba(210,202,178,.46)', 0.8);
-  g.fillStyle = '#dfd7bf'; g.font = 'bold 7px monospace';
+  roundRect(g, -23, 1, 46, 14, 2, 'rgba(18,22,20,.96)', 'rgba(230,218,190,.78)', 0.8);
+  g.fillStyle = '#fff0cc'; g.font = '900 ' + (9 / scale).toFixed(1) + 'px sans-serif';
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(style.stencil, 0, 8);
-  g.fillStyle = '#f0e9d5'; g.font = '900 15px "Black Han Sans", sans-serif';
+  g.fillStyle = '#f0e9d5'; g.font = '900 ' + (14 / scale).toFixed(1) + 'px "Black Han Sans", sans-serif';
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.shadowColor = 'rgba(0,0,0,.76)'; g.shadowBlur = 2;
   g.fillText(String(Math.max(0, Math.ceil(barrel.hp))), 0, 22);
@@ -216,17 +216,6 @@ function drawBarrel(g, barrel, w, h, time) {
   if (barrel.hitFlash > 0) {
     roundRect(g, -27, -29, 54, 57, 4, 'rgba(245,239,215,' + Math.min(0.42, barrel.hitFlash * 3) + ')');
   }
-  g.restore();
-
-  const badgeY = barrel.y - 69 * scale * 0.62 - 17;
-  const badgeWidth = Math.max(66, style.tag.length * 10 + 18);
-  g.save();
-  roundRect(g, x - badgeWidth / 2, badgeY - 10, badgeWidth, 20, 3, 'rgba(19,23,21,.94)', 'rgba(179,177,157,.56)', 1);
-  g.fillStyle = style.accent;
-  g.fillRect(x - badgeWidth / 2 + 1, badgeY - 9, 3, 18);
-  g.fillStyle = '#ece6d4'; g.font = 'bold 10px "Arial", sans-serif';
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(style.tag, x + 1, badgeY);
   g.restore();
 }
 
@@ -741,10 +730,17 @@ function drawTargetLock(g, s, time) {
     g.beginPath(); g.moveTo(cx + sx * radius, cy + sy * radius * 0.45); g.lineTo(cx + sx * (radius - c), cy + sy * radius * 0.45); g.lineTo(cx + sx * (radius - c), cy + sy * (radius * 0.45 - c)); g.stroke();
   }
   if (isSupply || isExplosive) {
-    const label = isExplosive ? '폭발통 조준' : '집중 사격';
-    roundRect(g, target.x - 31, target.y - radius - 23, 62, 17, 2, 'rgba(23,23,18,.86)', 'rgba(174,159,129,.58)', 1);
-    g.fillStyle = '#ded4be'; g.font = 'bold 9px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(label, target.x, target.y - radius - 14.5);
+    const rewardLabel = {
+      companion: '동료 지원', drone: '전투 드론', rocket: '로켓 폭격',
+      rapidfire: '연사 +30%', heal: '응급 키트', weapon: '기관단총', upgrade: '공격력 +25%',
+    }[target.kind];
+    const label = isExplosive ? '폭발통' : rewardLabel || '보급품';
+    const labelWidth = Math.max(48, label.length * 10 + 16);
+    const labelY = target.y - radius - 14;
+    roundRect(g, target.x - labelWidth / 2, labelY - 9, labelWidth, 18, 2, 'rgba(23,23,18,.94)', 'rgba(174,159,129,.72)', 1);
+    g.fillStyle = isExplosive ? '#ffc27d' : '#f2e8d1';
+    g.font = 'bold 10px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(label, target.x, labelY);
   }
   g.restore();
 }
