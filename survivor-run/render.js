@@ -338,7 +338,7 @@ function drawBoss(g, boss, w, h, time, assets) {
 }
 
 function drawPlayer(g, s, time, assets) {
-  const h = 104, w = 86;
+  const h = 96, w = 80;
   const stride = time * 12;
   const bob = Math.abs(Math.sin(stride)) * 3.5;
   for (let index = 0; index < s.companions.length; index++) {
@@ -456,10 +456,10 @@ function drawTitleScene(g, w, h, time, assets) {
   drawBarrel(g, { kind: 'companion', x: w * 0.32, y: h * 0.59, hp: 30 }, w, h, time / 1000);
   drawBarrel(g, { kind: 'weapon', x: w * 0.72, y: h * 0.62, hp: 40 }, w, h, time / 1000);
   const runPhase = time / 1000 * 12;
-  drawFootstepDust(g, w * 0.5, h * 0.88, 1, runPhase, '#c8b898');
+  drawFootstepDust(g, w * 0.5, h * 0.90, 1, runPhase, '#c8b898');
   const runningPose = Math.sin(runPhase) > 0;
   const playerImage = runningPose && assets.playerRun ? assets.playerRun : assets.player;
-  drawSprite(g, playerImage, w * 0.5, h * 0.88 + Math.abs(Math.sin(runPhase)) * 3, 95, 116, 0, Math.sin(runPhase) * 0.035, 1);
+  drawSprite(g, playerImage, w * 0.5, h * 0.90 + Math.abs(Math.sin(runPhase)) * 3, 87, 106, 0, Math.sin(runPhase) * 0.035, 1);
   const shade = g.createLinearGradient(0, 0, 0, h);
   shade.addColorStop(0, 'rgba(12,21,20,.07)');
   shade.addColorStop(0.45, 'rgba(10,17,17,.2)');
