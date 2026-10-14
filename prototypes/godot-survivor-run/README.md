@@ -1,4 +1,4 @@
-# Survivor Run — Godot web prototype
+# DEAD ROUTE — Godot web prototype
 
 A small Godot 4 / GDScript comparison build. It keeps the existing browser game intact and reuses only four lightweight character images from it.
 
@@ -15,4 +15,4 @@ A small Godot 4 / GDScript comparison build. It keeps the existing browser game 
 3. Serve that folder over HTTP (for example, run `python -m http.server 8000` from the exported folder) and open `http://localhost:8000` in a browser. A local web server is needed for WebAssembly builds; opening the exported HTML with `file://` is not sufficient.
 4. For a mobile comparison, open the hosted URL in a phone browser in portrait orientation and compare loading time, first interaction, character readability, touch response, and frame smoothness against `survivor-run/`.
 
-The project uses Godot's GL Compatibility renderer for WebGL 2 and includes no audio, plugins, or imported content packs. The four source WEBP images total 256.33 KiB. A Godot 4.7.2 release export measured 40,703,680 bytes (38.82 MiB), including a 39,514,754-byte WebAssembly runtime. That build is a temporary local artifact; browser play verification and site deployment are still pending.
+The project uses Godot's GL Compatibility renderer for WebGL 2 and includes no audio, plugins, or imported content packs. The four source WEBP images total 256.33 KiB. The separate web preview is hosted at `https://sowol244.github.io/mobile-game/godot-survivor-run/` and is intentionally not added to the main game list. The Godot 4.7.2 release export totals 40,703,806 bytes (38.82 MiB), including a 39,514,754-byte WebAssembly runtime. In the Codex internal browser at 360×640, the title screen, combat, automatic fire, and horizontal drag movement were checked.

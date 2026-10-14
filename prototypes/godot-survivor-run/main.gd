@@ -439,4 +439,9 @@ func _draw_center(text: String, baseline: float, size: int, color: Color) -> voi
 
 
 func _draw_text(text: String, position: Vector2, size: int, color: Color, alignment: int = HORIZONTAL_ALIGNMENT_LEFT) -> void:
-	draw_string(ThemeDB.fallback_font, position, text, alignment, _screen_size.x, size, color)
+	var draw_position := position
+	var draw_width := _screen_size.x
+	if alignment == HORIZONTAL_ALIGNMENT_RIGHT:
+		draw_position.x = 0.0
+		draw_width = position.x
+	draw_string(ThemeDB.fallback_font, draw_position, text, alignment, draw_width, size, color)

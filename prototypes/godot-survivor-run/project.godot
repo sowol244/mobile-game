@@ -1,9 +1,9 @@
-; Godot 4 portrait web prototype for Survivor Run.
+; Godot 4 portrait web prototype for DEAD ROUTE.
 config_version=5
 
 [application]
 
-config/name="Survivor Run — Godot Prototype"
+config/name="DEAD ROUTE — Godot Prototype"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 
