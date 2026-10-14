@@ -1,7 +1,18 @@
-import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js';
+import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=1-1-20261014v';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const tintedSpriteCache = new WeakMap();
+const BARREL_VISUALS = {
+  companion: { colors: ['#80909a', '#4d6269', '#29363b'], accent: '#a9c6c8', tag: '지원 사수', stencil: '동료' },
+  drone: { colors: ['#9a9994', '#5e6262', '#303432'], accent: '#bcb39a', tag: '전투 드론', stencil: '드론' },
+  rocket: { colors: ['#aa7950', '#6e432b', '#342921'], accent: '#e7aa65', tag: '로켓 폭격', stencil: '로켓' },
+  rapidfire: { colors: ['#a39463', '#6d6036', '#343125'], accent: '#f0d177', tag: '연사 +30%', stencil: '연사' },
+  heal: { colors: ['#929783', '#59694d', '#2d372d'], accent: '#bdd093', tag: '응급 키트', stencil: '치료' },
+  weapon: { colors: ['#929b99', '#5b6a68', '#2c3432'], accent: '#c1d0cb', tag: '기관단총', stencil: 'SMG' },
+  upgrade: { colors: ['#93665a', '#663d36', '#2e2725'], accent: '#e19a82', tag: '공격력 +25%', stencil: '화력' },
+  explosive: { colors: ['#9b5c49', '#713a32', '#372b27'], accent: '#ffae60', tag: '폭발통', stencil: '위험' },
+  supply: { colors: ['#999585', '#706b59', '#39372f'], accent: '#d4c69d', tag: '보급품', stencil: '보급' },
+};
 
 function tintedSprite(image, tint) {
   let variants = tintedSpriteCache.get(image);
@@ -68,13 +79,74 @@ function wreck(g, x, y, scale) {
   g.restore();
 }
 
-function drawRoad(g, w, h, offset) {
+function drawStreetLamp(g, x, y, scale, side, phase) {
+  g.save();
+  g.translate(x, y);
+  g.scale(scale, scale);
+  g.strokeStyle = '#202727'; g.lineWidth = 7; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(0, 0); g.lineTo(-side * 4, -78); g.lineTo(-side * 10, -83); g.stroke();
+  g.strokeStyle = '#727975'; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(-1, -4); g.lineTo(-side * 5, -73); g.lineTo(-side * 11, -78); g.stroke();
+  g.fillStyle = '#303838';
+  polygon(g, [[-side * 7, -82], [-side * 3, -88], [side * 1, -86], [side * 4, -80]], '#303838', '#171e1f');
+  const glow = 0.42 + (Math.sin(phase) + 1) * 0.16;
+  g.shadowColor = '#efb863'; g.shadowBlur = 9 * glow;
+  g.fillStyle = 'rgba(246,187,98,' + glow + ')';
+  g.beginPath(); g.ellipse(-side * 1, -82, 3, 2, 0, 0, Math.PI * 2); g.fill();
+  g.shadowBlur = 0;
+  g.strokeStyle = 'rgba(28,35,35,.72)'; g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(-side * 8, -78); g.lineTo(-side * 18, -49); g.stroke();
+  g.restore();
+}
+
+function drawRoadSign(g, x, y, scale, side, variant) {
+  g.save();
+  g.translate(x, y);
+  g.scale(scale, scale);
+  g.rotate(side * -0.12);
+  g.strokeStyle = '#242a2a'; g.lineWidth = 5; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(0, 0); g.lineTo(side * 3, -37); g.stroke();
+  const sx = side * 3;
+  polygon(g, [[sx - 14, -57], [sx + 14, -57], [sx + 17, -31], [sx - 17, -31]], '#9e4736', '#272c2b');
+  polygon(g, [[sx - 10, -52], [sx + 10, -52], [sx + 12, -37], [sx - 12, -37]], '#d7c7a3', '#4b4033');
+  g.strokeStyle = '#a44635'; g.lineWidth = 3;
+  if (variant % 2) {
+    g.beginPath(); g.moveTo(sx - 7, -47); g.lineTo(sx + 7, -41); g.moveTo(sx + 6, -48); g.lineTo(sx - 6, -40); g.stroke();
+  } else {
+    g.beginPath(); g.moveTo(sx, -49); g.lineTo(sx, -43); g.stroke();
+    g.fillStyle = '#a44635'; g.beginPath(); g.arc(sx, -40, 1.7, 0, Math.PI * 2); g.fill();
+  }
+  polygon(g, [[-7, -4], [2, -10], [10, -5], [7, 1], [-5, 2]], '#71695a', '#303534');
+  g.restore();
+}
+
+function drawRubble(g, x, y, scale, side) {
+  g.save();
+  g.translate(x, y);
+  g.scale(scale, scale);
+  g.fillStyle = 'rgba(5,8,8,.32)';
+  g.beginPath(); g.ellipse(0, 2, 24, 5, 0, 0, Math.PI * 2); g.fill();
+  polygon(g, [[-20, 1], [-15, -8], [-7, -4], [-4, -15], [5, -10], [11, -14], [20, -5], [17, 2]], '#625f55', '#2d3331');
+  polygon(g, [[-16, -3], [-12, -8], [-8, -5], [-9, -1]], '#a29a84', '#4d4c43');
+  polygon(g, [[2, -5], [7, -12], [11, -7], [8, -3]], '#837b68', '#494a42');
+  g.strokeStyle = '#363c3b'; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(side * 5, -10); g.lineTo(side * 14, -20); g.lineTo(side * 17, -22); g.stroke();
+  g.restore();
+}
+
+function drawRoad(g, w, h, offset, assets = {}) {
   const horizon = h * 0.13;
   const sky = g.createLinearGradient(0, 0, 0, h);
   sky.addColorStop(0, '#707572'); sky.addColorStop(0.23, '#555b59'); sky.addColorStop(0.48, '#39413f'); sky.addColorStop(1, '#1e2926');
   g.fillStyle = sky; g.fillRect(0, 0, w, h);
 
-  g.fillStyle = '#353b3b'; g.fillRect(0, horizon + 3, w, h - horizon - 3);
+  const roadside = g.createLinearGradient(0, horizon, 0, h);
+  roadside.addColorStop(0, '#505552'); roadside.addColorStop(0.42, '#353c3a'); roadside.addColorStop(1, '#222a29');
+  g.fillStyle = roadside; g.fillRect(0, horizon + 3, w, h - horizon - 3);
+  const vergeTop = roadHalfWidth(w, h, horizon);
+  const vergeBottom = roadHalfWidth(w, h, h);
+  polygon(g, [[w / 2 - vergeTop - 21, horizon], [w / 2 - vergeTop - 6, horizon], [w / 2 - vergeBottom - 9, h], [w / 2 - vergeBottom - 34, h]], '#514e43');
+  polygon(g, [[w / 2 + vergeTop + 6, horizon], [w / 2 + vergeTop + 21, horizon], [w / 2 + vergeBottom + 34, h], [w / 2 + vergeBottom + 9, h]], '#514e43');
   const ruinHeights = [0.12, 0.2, 0.15, 0.23, 0.17];
   for (const side of [-1, 1]) {
     for (let i = 0; i < ruinHeights.length; i++) {
@@ -84,14 +156,44 @@ function drawRoad(g, w, h, offset) {
       const base = horizon + 28;
       const tone = ['#414746', '#484d4b', '#3a403f'][i % 3];
       polygon(g, [[x, base - height + 8], [x + width * 0.28, base - height], [x + width * 0.53, base - height + 5], [x + width * 0.73, base - height - 3], [x + width, base - height + 7], [x + width, base], [x, base]], tone, '#303635');
-      g.fillStyle = 'rgba(186,157,113,.27)';
-      for (let row = 0; row < 3; row++) {
-        for (let col = 0; col < 2; col++) {
-          const wx = x + width * (0.2 + col * 0.42);
-          const wy = base - height * 0.76 + row * height * 0.22;
-          if (wy < base - 8) g.fillRect(wx, wy, Math.max(1.3, width * 0.08), Math.max(2, height * 0.055));
+      g.fillStyle = 'rgba(186,157,113,.28)';
+      for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 3; col++) {
+          const wx = x + width * (0.14 + col * 0.34);
+          const wy = base - height * 0.78 + row * height * 0.18;
+          if (wy < base - 8 && (row + col + i) % 4 !== 0) {
+            g.fillRect(wx, wy, Math.max(1.4, width * 0.075), Math.max(2.2, height * 0.045));
+          }
         }
       }
+      g.strokeStyle = 'rgba(22,28,28,.64)'; g.lineWidth = Math.max(0.8, width * 0.025);
+      g.beginPath(); g.moveTo(x + width * 0.68, base - height * 0.54); g.lineTo(x + width * 0.59, base - height * 0.38); g.lineTo(x + width * 0.71, base - height * 0.22); g.stroke();
+    }
+  }
+
+  const backdrop = assets.roadsideBackdrop;
+  if (backdrop?.complete && backdrop.naturalWidth) {
+    const coverScale = Math.max(w / backdrop.naturalWidth, h / backdrop.naturalHeight);
+    const backdropWidth = backdrop.naturalWidth * coverScale;
+    const backdropHeight = backdrop.naturalHeight * coverScale;
+    g.save();
+    g.globalAlpha = 0.82;
+    g.drawImage(backdrop, (w - backdropWidth) / 2, (h - backdropHeight) / 2, backdropWidth, backdropHeight);
+    g.restore();
+  }
+
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 5; i++) {
+      const depth = ((i / 5 + offset * 0.56 + (side > 0 ? 0.17 : 0)) % 1);
+      const y = horizon + depth * (h - horizon);
+      const half = roadHalfWidth(w, h, y);
+      const scale = 0.18 + depth * 0.78;
+      const x = clamp(w * 0.5 + side * (half + 18 * scale), 8, w - 8);
+      const kind = (i + (side > 0 ? 1 : 0)) % 4;
+      if (kind === 0) drawStreetLamp(g, x, y, scale, side, offset * 15 + i);
+      else if (kind === 1) drawRoadSign(g, x, y, scale, side, i);
+      else if (kind === 2) drawRubble(g, x, y, scale, side);
+      else wreck(g, x, y, scale * 0.62);
     }
   }
 
@@ -144,6 +246,19 @@ function drawRoad(g, w, h, offset) {
     }
   }
 
+  for (let i = 0; i < 9; i++) {
+    const depth = ((i / 9 + offset * 1.12) % 1);
+    const y = horizon + depth * (h - horizon);
+    const half = roadHalfWidth(w, h, y);
+    const scale = 0.3 + depth * 0.8;
+    const x = w / 2 + Math.sin(i * 17.3) * half * 0.62;
+    g.strokeStyle = 'rgba(21,25,26,' + (0.18 + depth * 0.18) + ')';
+    g.lineWidth = Math.max(0.7, scale * 1.1);
+    g.beginPath();
+    g.moveTo(x, y); g.lineTo(x + 3 * scale, y + 5 * scale); g.lineTo(x - 2 * scale, y + 10 * scale); g.lineTo(x + 5 * scale, y + 15 * scale);
+    g.stroke();
+  }
+
   for (let i = 0; i < 12; i++) {
     const depth = ((i / 12 + offset * 1.45) % 1);
     const y = horizon + depth * (h - horizon);
@@ -164,16 +279,7 @@ function depthScale(h, y) {
 }
 
 function drawBarrel(g, barrel, w, h, time) {
-  const style = {
-    companion: { colors: ['#80909a', '#4d6269', '#29363b'], stencil: '동료' },
-    drone: { colors: ['#9a9994', '#5e6262', '#303432'], stencil: '드론' },
-    rocket: { colors: ['#aa7950', '#6e432b', '#342921'], stencil: '로켓' },
-    rapidfire: { colors: ['#a39463', '#6d6036', '#343125'], stencil: '연사' },
-    heal: { colors: ['#929783', '#59694d', '#2d372d'], stencil: '치료' },
-    weapon: { colors: ['#929b99', '#5b6a68', '#2c3432'], stencil: 'SMG' },
-    upgrade: { colors: ['#93665a', '#663d36', '#2e2725'], stencil: '화력' },
-    explosive: { colors: ['#9b5c49', '#713a32', '#372b27'], stencil: '위험' },
-  }[barrel.kind] || { colors: ['#999585', '#706b59', '#39372f'], stencil: '보급' };
+  const style = BARREL_VISUALS[barrel.kind] || BARREL_VISUALS.supply;
   const scale = Math.max(0.58, depthScale(h, barrel.y));
   const shakeX = barrel.hitShake > 0 ? Math.sin(time * 88 + barrel.lane) * barrel.hitShake * 28 : 0;
   const x = barrel.x + shakeX;
@@ -215,6 +321,42 @@ function drawBarrel(g, barrel, w, h, time) {
   g.shadowBlur = 0;
   if (barrel.hitFlash > 0) {
     roundRect(g, -27, -29, 54, 57, 4, 'rgba(245,239,215,' + Math.min(0.42, barrel.hitFlash * 3) + ')');
+  }
+  g.restore();
+}
+
+function drawBarrelBadges(g, barrels, w, h) {
+  const placed = [];
+  const badges = [];
+  g.save();
+  g.font = '900 12px sans-serif';
+  for (const barrel of barrels.filter(item => !item.dead && item.y > 0 && item.y < h).sort((a, b) => a.y - b.y || a.x - b.x)) {
+    const style = BARREL_VISUALS[barrel.kind] || BARREL_VISUALS.supply;
+    const width = Math.max(68, g.measureText(style.tag).width + 22);
+    const scale = Math.max(0.58, depthScale(h, barrel.y));
+    const badgeX = clamp(barrel.x, width / 2 + 4, w - width / 2 - 4);
+    const baseY = barrel.y - 31 * scale - 14;
+    let row = 0;
+    while (row < 8 && placed.some(other => (
+      Math.abs(badgeX - other.x) < (width + other.width) / 2 + 7
+      && Math.abs(baseY - row * 24 - other.y) < 23
+    ))) row++;
+    const badgeY = Math.max(12, baseY - row * 24);
+    placed.push({ x: badgeX, y: badgeY, width });
+    badges.push({ barrel, style, x: badgeX, y: badgeY, width });
+  }
+  for (const { barrel, style, x, y, width } of badges) {
+    const pulse = barrel.hitFlash > 0 ? 0.82 + Math.sin(barrel.hitFlash * 48) * 0.12 : 1;
+    g.save();
+    g.globalAlpha = pulse;
+    g.shadowColor = 'rgba(0,0,0,.7)'; g.shadowBlur = 7; g.shadowOffsetY = 3;
+    roundRect(g, x - width / 2, y - 11, width, 22, 4, 'rgba(13,17,17,.97)', 'rgba(219,205,174,.88)', 1.2);
+    g.shadowBlur = 0; g.shadowOffsetY = 0;
+    roundRect(g, x - width / 2 + 1, y - 9, 4, 18, 2, style.accent);
+    g.fillStyle = '#fff1d6'; g.font = '900 12px sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(style.tag, x + 2, y);
+    g.restore();
   }
   g.restore();
 }
@@ -362,18 +504,28 @@ function drawBoss(g, boss, w, h, time, assets) {
   const crouch = boss.warning > 0 ? Math.sin(Math.min(1, warningProgress / 0.72) * Math.PI * 0.5) * (1 - lunge * 0.75) : 0;
   const impact = boss.stomp > 0 ? Math.pow(boss.stomp / 0.42, 2) : 0;
   const hitShake = boss.hitShake > 0 ? Math.sin(time * 92) * boss.hitShake * 18 : 0;
-  const breath = collapsing ? 0 : Math.sin(time * 3.1) * 0.035;
-  const bob = collapsing ? 0 : Math.sin(time * 4.7) * 7 + Math.sin(time * 2.1 + 0.7) * 2.5;
+  const breath = collapsing ? 0 : Math.sin(time * 3.1) * 0.055;
+  const bob = collapsing ? 0 : Math.sin(time * 4.7) * 10 + Math.sin(time * 2.1 + 0.7) * 3.5;
   const aimDirection = boss.attackLane == null ? 0 : Math.sign(laneX(w, h, boss.y, boss.attackLane) - boss.x);
   const rotation = collapsing
     ? -fall * 0.72
-    : Math.sin(time * 1.35) * 0.07 + aimDirection * (crouch * 0.075 + lunge * 0.17) + hitShake * 0.004;
+    : Math.sin(time * 1.35) * 0.12 + aimDirection * (crouch * 0.09 + lunge * 0.24) + hitShake * 0.004;
   const alpha = collapsing ? 1 - fall * 0.48 : 1;
   const width = size * (1 + breath + crouch * 0.055 + lunge * 0.075 + impact * 0.1);
   const height = size * 1.05 * (1 - breath * 0.6 - crouch * 0.105 + lunge * 0.17 - impact * 0.17);
-  const offsetX = aimDirection * lunge * size * 0.08 + hitShake;
-  const offsetY = boss.y + 38 + bob + crouch * 9 - lunge * size * 0.16 + impact * size * 0.08 + fall * size * 0.22;
-  drawSprite(g, assets.brute, boss.x + offsetX, offsetY, width, height, 0, rotation, alpha, boss.hitFlash > 0 ? '#f2bc86' : null);
+  const offsetX = aimDirection * lunge * size * 0.14 + hitShake;
+  const offsetY = boss.y + 38 + bob + crouch * 12 - lunge * size * 0.22 + impact * size * 0.08 + fall * size * 0.22;
+  if (!collapsing) drawFootstepDust(g, boss.x + offsetX, boss.y + 40, 1.8, boss.phase * 5.2, '#80766b');
+  const attackPose = boss.warning > 0 && !collapsing
+    ? clamp((warningProgress - 0.2) / 0.52, 0, 1)
+    : 0;
+  const tint = boss.hitFlash > 0 ? '#f2bc86' : null;
+  if (attackPose > 0 && assets.bruteAttack?.complete && assets.bruteAttack.naturalWidth) {
+    drawSprite(g, assets.brute, boss.x + offsetX, offsetY, width, height, 0, rotation, alpha * (1 - attackPose), tint);
+    drawSprite(g, assets.bruteAttack, boss.x + offsetX, offsetY, width * 1.02, height * 1.02, 0, rotation, alpha * attackPose, tint);
+  } else {
+    drawSprite(g, assets.brute, boss.x + offsetX, offsetY, width, height, 0, rotation, alpha, tint);
+  }
   if (boss.stomp > 0) {
     const progress = 1 - boss.stomp / 0.42;
     g.save();
@@ -401,15 +553,20 @@ function drawSupport(g, s, time, assets) {
     const alpha = companion.life > 0
       ? clamp(1 - companion.appear / 0.4, 0.08, 1)
       : clamp(companion.exit / 0.42, 0, 1);
-    const stride = time * 10 + companion.id * 1.8;
-    const bob = Math.abs(Math.sin(stride)) * 2.2;
+    const stride = time * 17 + companion.id * 2.2;
+    const step = Math.sin(stride);
+    const bob = Math.abs(step) * 4.2;
+    const runSway = step * 2.2;
     const generated = companion.id % 2 === 1;
-    const image = generated ? assets.supportSurvivorA : assets.supportSurvivorB;
+    const standingImage = generated ? assets.supportSurvivorA : assets.supportSurvivorB;
+    const runningImage = generated ? assets.supportSurvivorARun : assets.supportSurvivorBRun;
+    const image = step > 0 && runningImage?.complete && runningImage.naturalWidth ? runningImage : standingImage;
     const flipX = companion.side > 0;
-    const muzzleX = companion.x + (flipX ? -21 : 21);
-    const muzzleY = companion.y - 78 + bob;
-    drawFootstepDust(g, companion.x, companion.y, 0.78, stride, '#958b74');
-    drawSprite(g, image, companion.x, companion.y + bob, 62, 100, 0, Math.sin(stride) * 0.025 - companion.recoil * 0.018, alpha, null, flipX);
+    const drawX = companion.x + runSway;
+    const muzzleX = drawX + (flipX ? -13 : 13);
+    const muzzleY = companion.y - 54 + bob;
+    drawFootstepDust(g, companion.x, companion.y, 0.66, stride, '#958b74');
+    drawSprite(g, image, drawX, companion.y + bob, 40, 70, 0, step * 0.08 - companion.recoil * 0.025, alpha, null, flipX);
     drawSupportMuzzle(g, muzzleX, muzzleY, companion.muzzleFlash, '#d9b27a');
   }
 
@@ -565,8 +722,62 @@ function drawHazard(g, hazard, time) {
   g.restore();
 }
 
-function drawExplosion(g, effect) {
+function drawExplosion(g, effect, time) {
   const p = 1 - effect.life / effect.total;
+  if (effect.source === 'barrel') {
+    const expand = clamp(p / 0.18, 0, 1);
+    const collapse = p < 0.2 ? 1 : clamp((0.92 - p) / 0.72, 0, 1);
+    const fireRadius = effect.radius * (0.13 + expand * 0.46) * collapse;
+    const ringRadius = effect.radius * (0.22 + expand * 1.28);
+    g.save();
+    const fireAlpha = clamp(1 - p * 0.94, 0, 1);
+    g.globalAlpha = fireAlpha;
+    const ground = g.createRadialGradient(effect.x, effect.y, fireRadius * 0.08, effect.x, effect.y, fireRadius * 1.28);
+    ground.addColorStop(0, 'rgba(255,229,164,.94)');
+    ground.addColorStop(0.2, 'rgba(255,178,73,.96)');
+    ground.addColorStop(0.58, 'rgba(226,81,35,.83)');
+    ground.addColorStop(1, 'rgba(112,43,31,0)');
+    g.fillStyle = ground;
+    g.beginPath(); g.ellipse(effect.x, effect.y, fireRadius * 1.18, fireRadius * 0.72, 0, 0, Math.PI * 2); g.fill();
+
+    const flicker = 0.88 + Math.sin(time * 47) * 0.08 + Math.sin(time * 71) * 0.04;
+    for (let i = 0; i < 9; i++) {
+      const angle = i * Math.PI * 2 / 9 + time * 0.7;
+      const inner = fireRadius * 0.4;
+      const outer = fireRadius * (0.75 + (i % 3) * 0.08) * flicker;
+      const half = fireRadius * (0.14 + (i % 2) * 0.035);
+      const tipX = effect.x + Math.cos(angle) * outer;
+      const tipY = effect.y + Math.sin(angle) * outer * 0.64;
+      const baseX = effect.x + Math.cos(angle) * inner;
+      const baseY = effect.y + Math.sin(angle) * inner * 0.64;
+      const perpX = -Math.sin(angle) * half;
+      const perpY = Math.cos(angle) * half * 0.64;
+      polygon(g, [
+        [baseX + perpX, baseY + perpY], [tipX, tipY], [baseX - perpX, baseY - perpY],
+      ], i % 2 ? 'rgba(244,102,39,.78)' : 'rgba(255,193,84,.82)');
+    }
+
+    const flash = clamp(1 - p / 0.34, 0, 1);
+    if (flash > 0) {
+      const coreRadius = fireRadius * (0.32 + flash * 0.3);
+      const core = g.createRadialGradient(effect.x, effect.y, 1, effect.x, effect.y, coreRadius);
+      core.addColorStop(0, 'rgba(255,255,226,.98)');
+      core.addColorStop(0.38, 'rgba(255,213,113,.96)');
+      core.addColorStop(1, 'rgba(242,91,41,0)');
+      g.globalAlpha = flash;
+      g.fillStyle = core;
+      g.beginPath(); g.ellipse(effect.x, effect.y, coreRadius, coreRadius * 0.72, 0, 0, Math.PI * 2); g.fill();
+    }
+
+    const ringAlpha = clamp((1 - p) * 1.25, 0, 0.9);
+    g.globalAlpha = ringAlpha;
+    g.strokeStyle = '#ffc06c'; g.lineWidth = 3.2 * (1 - p) + 0.8;
+    g.beginPath(); g.ellipse(effect.x, effect.y + 2, ringRadius, ringRadius * 0.54, 0, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = 'rgba(255,231,179,.72)'; g.lineWidth = 1.2;
+    g.beginPath(); g.ellipse(effect.x, effect.y + 2, ringRadius * 0.72, ringRadius * 0.38, 0, 0, Math.PI * 2); g.stroke();
+    g.restore();
+    return;
+  }
   const radius = 6 + p * effect.radius * 0.76;
   g.save();
   const flash = clamp(1 - p / 0.22, 0, 1);
@@ -591,7 +802,7 @@ function drawExplosion(g, effect) {
 
 function drawEffect(g, effect, time) {
   if (effect.kind === 'explosion') {
-    drawExplosion(g, effect);
+    drawExplosion(g, effect, time);
     return;
   }
   const progress = 1 - effect.life / effect.total;
@@ -729,24 +940,11 @@ function drawTargetLock(g, s, time) {
   for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
     g.beginPath(); g.moveTo(cx + sx * radius, cy + sy * radius * 0.45); g.lineTo(cx + sx * (radius - c), cy + sy * radius * 0.45); g.lineTo(cx + sx * (radius - c), cy + sy * (radius * 0.45 - c)); g.stroke();
   }
-  if (isSupply || isExplosive) {
-    const rewardLabel = {
-      companion: '동료 지원', drone: '전투 드론', rocket: '로켓 폭격',
-      rapidfire: '연사 +30%', heal: '응급 키트', weapon: '기관단총', upgrade: '공격력 +25%',
-    }[target.kind];
-    const label = isExplosive ? '폭발통' : rewardLabel || '보급품';
-    const labelWidth = Math.max(48, label.length * 10 + 16);
-    const labelY = target.y - radius - 14;
-    roundRect(g, target.x - labelWidth / 2, labelY - 9, labelWidth, 18, 2, 'rgba(23,23,18,.94)', 'rgba(174,159,129,.72)', 1);
-    g.fillStyle = isExplosive ? '#ffc27d' : '#f2e8d1';
-    g.font = 'bold 10px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(label, target.x, labelY);
-  }
   g.restore();
 }
 
 function drawTitleScene(g, w, h, time, assets) {
-  drawRoad(g, w, h, (time * 0.00008) % 1);
+  drawRoad(g, w, h, (time * 0.00008) % 1, assets);
   drawZombie(g, { kind: 'walker', x: w * 0.42, y: h * 0.34, radius: 14, hp: 20, maxHp: 20, phase: 1 }, h, time / 1000, assets);
   drawZombie(g, { kind: 'runner', x: w * 0.66, y: h * 0.48, radius: 14, hp: 15, maxHp: 15, phase: 2 }, h, time / 1000, assets);
   drawBarrel(g, { kind: 'companion', x: w * 0.32, y: h * 0.59, lane: 0, hp: 40 }, w, h, time / 1000);
@@ -776,7 +974,7 @@ export function drawScene(ctx, s, w, h, now, title, assets) {
     ctx.restore();
     return;
   }
-  drawRoad(ctx, w, h, offset);
+  drawRoad(ctx, w, h, offset, assets);
   drawDefenseLine(ctx, w, h, s.defenseFlash);
   const time = s.t;
   const objects = [];
@@ -793,8 +991,8 @@ export function drawScene(ctx, s, w, h, now, title, assets) {
   }
   drawSupport(ctx, s, time, assets || {});
   drawTargetLock(ctx, s, time);
-  for (const effect of s.effects) drawEffect(ctx, effect, time);
   drawParticles(ctx, s.particles);
+  for (const effect of s.effects) drawEffect(ctx, effect, time);
   for (const hazard of s.hazards) drawHazard(ctx, hazard, time);
   drawRocketMissiles(ctx, s.missiles, assets || {}, time);
   for (const bullet of s.bullets) drawBullet(ctx, bullet);
@@ -804,6 +1002,7 @@ export function drawScene(ctx, s, w, h, now, title, assets) {
     glow.addColorStop(0, 'rgba(190,160,111,' + alpha + ')'); glow.addColorStop(1, 'rgba(151,121,79,0)');
     ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h);
   }
+  drawBarrelBadges(ctx, s.barrels, w, h);
   drawPlayer(ctx, s, time, assets || {});
 
   if (s.invulnerable > 0) {

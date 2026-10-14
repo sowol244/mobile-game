@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261014o';
-import { drawScene } from './render.js?v=1-1-20261014o';
+import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261014v';
+import { drawScene } from './render.js?v=1-1-20261014v';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014o';
 
 const $ = id => document.getElementById(id);
@@ -39,8 +39,12 @@ const assets = {
   runner: sprite('assets/zombie-runner.webp'),
   runnerRun: sprite('assets/zombie-runner-run.webp'),
   brute: sprite('assets/zombie-brute.webp'),
+  bruteAttack: sprite('assets/zombie-brute-attack.webp'),
   supportSurvivorA: sprite('assets/support-survivor.webp'),
+  supportSurvivorARun: sprite('assets/support-survivor-run.webp'),
   supportSurvivorB: sprite('assets/support-survivor-b.webp'),
+  supportSurvivorBRun: sprite('assets/support-survivor-b-run.webp'),
+  roadsideBackdrop: sprite('assets/roadside-backdrop.webp'),
   combatDrone: sprite('assets/combat-drone.svg'),
   rocketProjectile: sprite('assets/rocket-projectile.svg'),
 };

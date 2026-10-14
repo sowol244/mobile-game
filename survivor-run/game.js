@@ -303,11 +303,33 @@ function spawnExplosionParticles(s, x, y, radius) {
   }
 }
 
+function spawnBarrelExplosionParticles(s, x, y, radius) {
+  spawnSmoke(s, x, y, 9, Math.min(62, radius * 0.5), ['#504a41', '#756254', '#9b5f37']);
+  spawnDebris(s, x, y, 15, ['#353a38', '#705042', '#a17648', '#b58d55']);
+  for (let i = 0; i < 14; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 78 + Math.random() * 150;
+    addParticle(s, {
+      kind: 'ember', x, y,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 28,
+      life: 0.24 + Math.random() * 0.22, total: 0.46,
+      size: 1.8 + Math.random() * 2.4,
+      color: ['#ffd17b', '#f39b4f', '#d85732'][i % 3],
+    });
+  }
+}
+
 function barrelBreakEffect(s, barrel) {
   const color = BARREL_CONFIG[barrel.kind]?.color || '#f18a3f';
-  s.effects.push({ kind: 'barrelBreak', x: barrel.x, y: barrel.y, color, life: 0.28, total: 0.28 });
-  spawnSmoke(s, barrel.x, barrel.y - 4, 5, 23, ['#625e52', '#797468', '#82725b']);
-  spawnDebris(s, barrel.x, barrel.y - 4, 7);
+  const explosive = barrel.kind === 'explosive';
+  s.effects.push({ kind: 'barrelBreak', x: barrel.x, y: barrel.y, color, life: explosive ? 0.55 : 0.36, total: explosive ? 0.55 : 0.36 });
+  if (explosive) {
+    s.hitShake = Math.max(s.hitShake || 0, 0.22);
+    spawnDebris(s, barrel.x, barrel.y - 4, 11, ['#353a38', '#705042', '#a17648', '#b58d55']);
+  } else {
+    spawnSmoke(s, barrel.x, barrel.y - 4, 5, 23, ['#625e52', '#797468', '#82725b']);
+    spawnDebris(s, barrel.x, barrel.y - 4, 7);
+  }
 }
 
 function summonEffect(s, x, y) {
@@ -457,8 +479,8 @@ function addExplosion(s, x, y, radius, events) {
       s.boss.hitFlash = 0.16;
       if (s.boss.hp <= 0) defeatBoss(s, events);
     }
-    s.effects.push({ kind: 'explosion', x: point.x, y: point.y, life: 0.72, total: 0.72, radius });
-    spawnExplosionParticles(s, point.x, point.y, radius);
+    s.effects.push({ kind: 'explosion', source: 'barrel', x: point.x, y: point.y, life: 1.45, total: 1.45, radius });
+    spawnBarrelExplosionParticles(s, point.x, point.y, radius);
   }
   events.push('explosion');
 }
@@ -672,7 +694,7 @@ function updateCompanions(s, dt, events) {
       companion.fireTimer -= dt;
       if (companion.fireTimer <= 0) {
         const muzzleSide = companion.side < 0 ? 1 : -1;
-        shoot(s, events, 'companion', companion.x + muzzleSide * 20, companion.y - 78, 0.5);
+        shoot(s, events, 'companion', companion.x + muzzleSide * 14, companion.y - 58, 0.5);
         companion.fireTimer = SUPPORT_CONFIG.companionFireInterval;
         companion.recoil = 1;
         companion.muzzleFlash = 0.085;
@@ -824,7 +846,7 @@ function updateBoss(s, dt, events) {
   s.bossAlertTimer = Math.max(0, s.bossAlertTimer - dt);
   if (s.t >= BOSS_START_AT && !s.bossStarted) {
     s.bossStarted = true;
-    const y = s.h * 0.28;
+    const y = s.h * 0.44;
     s.boss = {
       x: s.w * 0.5, y, hp: 350, maxHp: 350,
       phase: 0, attackTimer: 1.65, warning: 0, warningTotal: 1.25, attackLane: 1,
@@ -846,10 +868,10 @@ function updateBoss(s, dt, events) {
     return;
   }
   boss.phase += dt;
-  boss.y = s.h * 0.28 + Math.sin(boss.phase * 1.45) * s.h * 0.014;
+  boss.y = s.h * 0.44 + Math.sin(boss.phase * 1.45) * s.h * 0.014;
   const idleX = s.w * 0.5
-    + Math.sin(boss.phase * 0.74) * roadHalfWidth(s.w, s.h, boss.y) * 0.68
-    + Math.sin(boss.phase * 1.19) * roadHalfWidth(s.w, s.h, boss.y) * 0.1;
+    + Math.sin(boss.phase * 0.74) * roadHalfWidth(s.w, s.h, boss.y) * 0.92
+    + Math.sin(boss.phase * 1.19) * roadHalfWidth(s.w, s.h, boss.y) * 0.14;
   boss.x = idleX;
   boss.hitFlash = Math.max(0, boss.hitFlash - dt);
   boss.hitShake = Math.max(0, (boss.hitShake || 0) - dt);
