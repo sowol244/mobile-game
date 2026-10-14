@@ -66,7 +66,7 @@ function secButtons(afterRun) { $('codeBtn').hidden = afterRun; helpBtn.hidden =
 function showTitle() {
   state = 'title'; app.classList.remove('is-playing'); tutorial = null; torchBtn.classList.remove('hinting'); input.enabled = false; input.reset();
   pauseBtn.hidden = true; retryBtn.hidden = true; banner('');
-  eyebrow.hidden = false; titleEl.textContent = '룩스 앤 움브라';
+  eyebrow.hidden = true; titleEl.textContent = 'LUX & UMBRA';
   msgEl.textContent = '빛을 켜고 꺼서 길을 여는 퍼즐 게임';
   finalEl.hidden = true; startBtn.textContent = '시작';
   secButtons(false); panel('main');
