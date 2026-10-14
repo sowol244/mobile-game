@@ -7,7 +7,7 @@
 <style>
   :root { --bg: #14111f; --card: #241e3a; --card-hi: #2e2650; --fg: #fdf6e3; --muted: #9a93b8; --line: #4a4170; --accent: #ffd23f; --new: #ff5d7a; }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 28px 16px 32px; font-family: system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; background: var(--bg); color: var(--fg); }
+  body { margin: 0; padding: 56px 16px 32px; font-family: system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; background: var(--bg); color: var(--fg); }
   main { max-width: 440px; margin: 0 auto; }
   h1 { font-size: 24px; margin: 0 0 18px; }
   h2 { font-size: 14px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
@@ -51,9 +51,22 @@
   details.own > .branch { border-left-color: rgba(255, 210, 63, 0.45); }
   details.own > .branch > .game::before { border-top-color: rgba(255, 210, 63, 0.45); }
   .note { margin: 22px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; }
+  #admin-button { position: fixed; top: 12px; right: 12px; z-index: 5; border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px; background: var(--card); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
+  #admin-button:hover { background: var(--card-hi); }
+  #admin-button:focus-visible, #admin-dialog button:focus-visible, #admin-dialog input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  #admin-dialog { width: min(360px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 18px; padding: 22px; background: var(--card); color: var(--fg); box-shadow: 0 20px 80px #0009; }
+  #admin-dialog::backdrop { background: #080611c9; }
+  #admin-dialog h2 { margin: 0 0 8px; color: var(--fg); font-size: 18px; }
+  #admin-dialog p { margin: 0 0 16px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+  #admin-dialog input { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; background: #171326; color: var(--fg); font: inherit; font-size: 18px; letter-spacing: .2em; }
+  #admin-error { min-height: 1.4em; margin: 8px 0 12px !important; color: #ff9aaa !important; }
+  .admin-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .admin-actions button { border: 1px solid var(--line); border-radius: 10px; padding: 9px 13px; background: #171326; color: var(--fg); font: inherit; cursor: pointer; }
+  .admin-actions button[type="submit"] { border-color: var(--accent); background: var(--accent); color: #241e3a; font-weight: 700; }
 </style>
 </head>
 <body>
+<button id="admin-button" type="button" aria-haspopup="dialog">관리자</button>
 <main>
   <h1>모바일게임 작업실 (by 석)</h1>
   <section id="recent" hidden>
@@ -63,6 +76,19 @@
   <nav id="tree" aria-label="게임 목록"></nav>
   <p class="note">이곳의 게임들은 예고 없이 추가되거나 삭제될 수 있습니다.</p>
 </main>
+<dialog id="admin-dialog" aria-labelledby="admin-title">
+  <form id="admin-form">
+    <h2 id="admin-title">관리자 인증</h2>
+    <p>암호를 입력하면 개발 중인 DEAD ROUTE 두 버전이 게임 목록에 표시됩니다.</p>
+    <label for="admin-password">암호</label>
+    <input id="admin-password" name="password" type="password" inputmode="numeric" autocomplete="off" maxlength="32" required>
+    <p id="admin-error" role="status" aria-live="polite"></p>
+    <div class="admin-actions">
+      <button id="admin-cancel" type="button">취소</button>
+      <button type="submit">확인</button>
+    </div>
+  </form>
+</dialog>
 <script>
 // The game list. To add a game: one line here, in the right group. `added` drives the NEW badge for 30 days;
 // `wip: true` lists it greyed out without a link.
@@ -75,8 +101,13 @@ const GAMES = [
   { id: 'gravity-crash', name: 'Gravity Crash', desc: '중력을 돌려 블록을 터뜨리는 퍼즐 게임', group: ['창작'], added: '2026-10-08' },
   { id: 'sudoku', name: '스도쿠', desc: '빈칸에 1~9를 채우는 숫자 퍼즐 게임', group: ['퍼즐', '숫자 퍼즐'], added: '2026-10-09' },
   { id: 'lux-umbra', name: 'Lux & Umbra', desc: '빛을 켜고 꺼서 길을 여는 퍼즐 게임', group: ['창작'], added: '2026-10-08' },
-  { id: 'survivor-run', name: 'DEAD ROUTE', desc: '길을 고르고 좀비 떼를 쓸어내는 슈팅 게임', group: ['창작'], dev: true, icon: 'survivor-run.svg' },
 ];
+// Development builds are included only for the current page session after admin verification.
+const DEV_GAMES = [
+  { id: 'survivor-run', name: 'DEAD ROUTE (일반판)', desc: '스테이지 1 · 웹 버전 · 개발 중', group: ['창작'], dev: true, icon: 'survivor-run.svg' },
+  { id: 'godot-survivor-run', name: 'DEAD ROUTE (Godot판)', desc: '스테이지 1 · Godot 버전 · 개발 중', group: ['창작'], dev: true, icon: 'survivor-run.svg' },
+];
+const ADMIN_PASSWORD_SHA256 = 'b7d7525bb8de465f1d0bb4c053a1efda4d423dbef59fe6ac7ca0cb44da7e9127';
 const TOP = [{ name: "석's 오리지널", key: '창작', icon: '💡', own: true }, { name: '액션', icon: '🎮' }, { name: '퍼즐', icon: '🧩' }];
 const NEW_DAYS = 30;
 
@@ -85,6 +116,7 @@ const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } cat
 const recent = load('hub-recent', []);   // ids, most recent first
 const visited = load('hub-visited', {}); // id → true once opened (hides NEW)
 const closed = load('hub-closed', {});   // group path → true when folded
+let showDevGames = false;
 
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 const isNew = g => g.added && !visited[g.id] && (Date.now() - Date.parse(g.added)) / 864e5 < NEW_DAYS;
@@ -121,31 +153,83 @@ function group(path, label, count, children, sub) {
 }
 
 const tree = document.getElementById('tree');
-for (const top of TOP) {
-  const key = top.key || top.name;
-  const games = GAMES.filter(g => g.group[0] === key);
-  const items = [];
-  for (const g of games.filter(g => g.group.length === 1)) items.push(gameRow(g));
-  const subs = [...new Set(games.filter(g => g.group[1]).map(g => g.group[1]))];
-  for (const s of subs) {
-    const inSub = games.filter(g => g.group[1] === s);
-    items.push(group(`${key}/${s}`, s, inSub.length, inSub.map(gameRow), true));
+function visibleGames() { return showDevGames ? [...GAMES, ...DEV_GAMES] : GAMES; }
+
+function renderTree() {
+  tree.replaceChildren();
+  for (const top of TOP) {
+    const key = top.key || top.name;
+    const games = visibleGames().filter(g => g.group[0] === key);
+    const items = [];
+    for (const g of games.filter(g => g.group.length === 1)) items.push(gameRow(g));
+    const subs = [...new Set(games.filter(g => g.group[1]).map(g => g.group[1]))];
+    for (const s of subs) {
+      const inSub = games.filter(g => g.group[1] === s);
+      items.push(group(`${key}/${s}`, s, inSub.length, inSub.map(gameRow), true));
+    }
+    const d = group(key, `${top.icon} ${top.name}`, games.length, items, false);
+    if (top.own) d.classList.add('own');
+    tree.append(d);
   }
-  const d = group(key, `${top.icon} ${top.name}`, games.length, items, false);
-  if (top.own) d.classList.add('own');
-  tree.append(d);
 }
 
-const rec = recent.map(id => GAMES.find(g => g.id === id && !g.wip)).filter(Boolean);
-if (rec.length) {
+function renderRecent() {
   const row = document.querySelector('#recent .row');
-  for (const g of rec) {
-    const a = el('a', { href: `${g.id}/` }, el('img', { src: 'icons/' + (g.icon || g.id + '.png'), alt: '' }), el('span', {}, g.name));
-    a.addEventListener('click', () => open(g.id));
-    row.append(a);
+  row.replaceChildren();
+  const rec = recent.map(id => visibleGames().find(g => g.id === id && !g.wip)).filter(Boolean);
+  if (rec.length) {
+    for (const g of rec) {
+      const a = el('a', { href: `${g.id}/` }, el('img', { src: 'icons/' + (g.icon || g.id + '.png'), alt: '' }), el('span', {}, g.name));
+      a.addEventListener('click', () => open(g.id));
+      row.append(a);
+    }
   }
-  document.getElementById('recent').hidden = false;
+  document.getElementById('recent').hidden = rec.length === 0;
 }
+
+renderTree();
+renderRecent();
+
+const adminButton = document.getElementById('admin-button');
+const adminDialog = document.getElementById('admin-dialog');
+const adminForm = document.getElementById('admin-form');
+const adminPassword = document.getElementById('admin-password');
+const adminError = document.getElementById('admin-error');
+adminButton.addEventListener('click', () => {
+  if (showDevGames) {
+    showDevGames = false;
+    adminButton.textContent = '관리자';
+    renderTree();
+    renderRecent();
+    return;
+  }
+  adminError.textContent = '';
+  adminPassword.value = '';
+  adminDialog.showModal();
+  adminPassword.focus();
+});
+document.getElementById('admin-cancel').addEventListener('click', () => adminDialog.close());
+adminDialog.addEventListener('close', () => { adminError.textContent = ''; adminPassword.value = ''; });
+adminForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  adminError.textContent = '';
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(adminPassword.value));
+    const hash = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+    if (hash !== ADMIN_PASSWORD_SHA256) {
+      adminError.textContent = '암호가 올바르지 않습니다.';
+      adminPassword.select();
+      return;
+    }
+    showDevGames = true;
+    adminButton.textContent = '관리자 잠금';
+    renderTree();
+    renderRecent();
+    adminDialog.close();
+  } catch {
+    adminError.textContent = '이 브라우저에서는 암호 확인을 사용할 수 없습니다.';
+  }
+});
 </script>
 </body>
 </html>
