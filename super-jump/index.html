@@ -54,10 +54,14 @@
   #sec { display: flex; gap: 8px; }
   #sec .sub { flex: 1 1 0; min-width: 0; height: 44px; padding: 0 6px; font: inherit; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; box-sizing: border-box; color: var(--accent); background: transparent; border: 1px solid rgba(255, 210, 63, 0.6); border-radius: 999px; text-decoration: none; cursor: pointer; }
   #sec .sub:focus-visible { outline: 3px solid var(--hud); outline-offset: 3px; }
+  .tut-actions { display: flex; flex-direction: column; gap: 10px; width: min(340px, 100%); }
+  .tut-actions .go { width: 100%; min-height: 52px; }
+  .tut-actions .sub { width: 100%; min-height: 44px; font: inherit; font-size: 15px; color: var(--accent); background: transparent; border: 1px solid rgba(255, 210, 63, 0.6); border-radius: 999px; cursor: pointer; }
   .back { width: min(340px, 100%); height: 52px; }
   #overlay h1 { margin: 0; font-size: 36px; font-weight: 400; color: var(--accent); text-wrap: balance; }
   #overlay p { margin: 0; color: #d9d4ee; font-size: 16px; line-height: 1.55; text-wrap: balance; }
   #overlay .big { font-family: var(--pixel); font-size: 18px; color: var(--hud); }
+  #tutBody { white-space: pre-line; }
   button.go { font: inherit; font-size: 22px; color: #231a00; background: var(--accent); border: 0; border-radius: 999px; padding: 10px 34px; cursor: pointer; }
   button.go:focus-visible, .pbtn:focus-visible { outline: 3px solid var(--hud); outline-offset: 3px; }
   #pad { height: 104px; display: flex; justify-content: space-between; align-items: center; gap: 10px; touch-action: none; }
@@ -146,7 +150,27 @@
           <li><b>보스</b> GOAL 앞 보스를 쓰러뜨리면 스테이지 끝! <b>!</b> 신호를 보고 피하세요.</li>
           <li><b>목표</b> 하트를 모두 잃으면 게임 오버. 스테이지를 깨면 하트 1개 회복, 모두 5스테이지.</li>
         </ul>
+        <button class="go" id="tutorialReplay" type="button">조작 튜토리얼 다시 보기</button>
         <button class="go back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pTutorial" hidden>
+        <div id="tutChoice">
+          <h1>조작을 익힐까요?</h1>
+          <p>처음 모험을 시작하기 전에 기본 조작을 짧게 볼 수 있어요.</p>
+          <div class="tut-actions">
+            <button class="go" id="tutDo" type="button">튜토리얼 하기</button>
+            <button class="sub" id="tutSkip" type="button">건너뛰기</button>
+          </div>
+        </div>
+        <div id="tutGuide" hidden>
+          <h1 id="tutHead">좌우 이동</h1>
+          <p class="big" id="tutCount"></p>
+          <p id="tutBody"></p>
+          <div class="tut-actions">
+            <button class="go" id="tutNext" type="button">다음</button>
+            <button class="sub" id="tutExit" type="button">건너뛰기</button>
+          </div>
+        </div>
       </div>
       <div class="panel" id="pShop" hidden>
         <h1>상점</h1>
@@ -184,7 +208,7 @@
   const $ = id => document.getElementById(id);
   const hud = { score: $('score'), coins: $('coins'), stg: $('stg'), hp: $('hp'), lv: $('lv'), exp: $('expfill') };
   const overlay = $('overlay'), titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), startBtn = $('start');
-  const pMain = $('pMain'), pHelp = $('pHelp'), pRank = $('pRank'), pShop = $('pShop'), shopList = $('shopList'), shopCoins = $('shopCoins'), shopNote = $('shopNote'), helpBtn = $('helpBtn'), rankBtn = $('rankBtn'), homeBtn = $('home'), menuLink = $('toMenu'), rowsEl = $('rows'), rankNote = $('rankNote');
+  const pMain = $('pMain'), pHelp = $('pHelp'), pTutorial = $('pTutorial'), pRank = $('pRank'), pShop = $('pShop'), shopList = $('shopList'), shopCoins = $('shopCoins'), shopNote = $('shopNote'), helpBtn = $('helpBtn'), rankBtn = $('rankBtn'), homeBtn = $('home'), menuLink = $('toMenu'), rowsEl = $('rows'), rankNote = $('rankNote');
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, k) => a + (b - a) * k;
   const rnd = (a, b) => a + Math.random() * (b - a);
@@ -193,11 +217,14 @@
   let COLS = 150, GOALX = 140 * T, theme, stageIdx = 0;
   let grid, enemies, coinsList, drops, saws, bumps, pops, p, camX, state, deadT = 0, goalT = 0, tAnim = 0, lastSafe, banner = null, godMode = false;
   let shop, boss, shots, slashes, shakeT = 0;
-  let portals = [], portalCd = 0, uiLabel = '', vstyle, chests, keyItems, crackList, movers, props, jets = [], keyCount = 0, doorHintT = 0, miniDirty = true, miniCv = null;
+  let portals = [], portalCd = 0, uiLabel = '', vstyle, chests, keyItems, crackList, movers, props, jets = [], crumbleTiles = [], keyCount = 0, doorHintT = 0, miniDirty = true, miniCv = null;
   // shield = hits it will still soak up; waveT = seconds of 검기 left (the clock starts with the first swing after buying)
   let score = 0, coinCount = 0, hp = MAX_HP, shield = 0, waveT = 0, waveOn = false;
   // other items: maxHp grows with 하트 그릇 (up to 5), lives = spare lives, the rest are timers / counts / this-stage flags
   let hintSeen = false; try { hintSeen = localStorage.getItem('gyo-climb-hint') === '1'; } catch (e) {}
+  const TUTORIAL_KEY = 'gyo-tutorial-v1';
+  let tutorialDone = false; try { tutorialDone = localStorage.getItem(TUTORIAL_KEY) === '1'; } catch (e) {}
+  let tutorialFromHelp = false, tutorialStep = 0;
   let lvl = 1, exp = 0;   // EXP and level (logic below, HUD reads these)
   const EXP_NEED = [0, 40, 110, 260, 460];   // total EXP to reach levels 2..5
   const expFrac = () => lvl >= 5 ? 1 : (exp - EXP_NEED[lvl - 1]) / (EXP_NEED[lvl] - EXP_NEED[lvl - 1]);
@@ -276,7 +303,7 @@
       ['flat', 8, { mons: [['bat', 4, 4], ['slime', 6]], coins: [[2, 3, 2]] }], ['down', 2],
       ['flat', 9, { mons: [['boar', 6]] }], ['pit', 3],
       ['flat', 9, { mons: [['beetle', 5]], bricks: [[3, 3, 4]], coins: [[3, 6, 3]] }], ['saw', 6],
-      ['flat', 7, { plats: [[4, 2, 3]], sign: 1 }],
+      ['flat', 7, { springs: [[1, 0, 2]], plats: [[4, 5, 3]], coins: [[4, 6, 3]], sign: 1 }],
       ['cave', 20, 5, { shaft: 13, mons: [['boar', 7], ['bat', 11, 2], ['beetle', 16]], coins: [[3, 1, 1]], tcoins: [[1, 1, 4], [8, 1, 3]], tmons: [['bat', 6, 4]], chests: [[17, 'random', 1]] }],
       ['flat', 6], ['up', 3],
       ['flat', 8, { mons: [['bat', 3, 4], ['beetle', 5]], coins: [[1, 2, 3]] }], ['wall', 2, 2],
@@ -310,7 +337,7 @@
       ['flat', 8, { mons: [['beetle', 4], ['bat', 6, 4]], coins: [[1, 2, 3]] }], ['spikes', 2],
       ['flat', 8, { mons: [['boar', 5]] }], ['down', 3],
       ['flat', 8, { mons: [['slime', 4]], coins: [[2, 3, 2]] }], ['saw', 6],
-      ['jets', 7],
+      ['jets', 7, { plats: [[1, 4, 2], [5, 4, 2]], coins: [[1, 5, 2], [5, 5, 2]] }],
       ['flat', 10, { vines: [[4, 7]], plats: [[5, 6, 3]], chests: [[6, 'random', 7]], mons: [['bat', 2, 4]] }], ['pit', 3],
       ['flat', 9, { mons: [['beetle', 5]], bricks: [[3, 3, 4]], coins: [[3, 6, 3]] }], ['up', 2, 2],
       ['flat', 8, { mons: [['boar', 4]], coins: [[1, 2, 3]] }], ['wall', 2, 2],
@@ -406,7 +433,7 @@
       ['flat', 9, { mons: [['boar', 5]], coins: [[2, 3, 2]] }], ['wall', 3, 2],
       ['flat', 8, { mons: [['wisp', 5, 4]] }], ['saw', 6],
       ['flat', 6], ['up', 1],
-      ['split', 30, { chests: [[15, 'random', 9]], vines: [[8, 9, { from: 5, ladder: true }]], portals: [[11, 8, 26, 0]], pm: [['knight', 13, 8]], plats: [[9, 8, 7], [1, 2, 3], [6, 4, 3], [11, 5, 2], [15, 4, 3], [20, 5, 3], [25, 4, 3]], mons: [['knight', 7], ['beetle', 13], ['knight', 19], ['slime', 25], ['bat', 10, 7], ['wisp', 18, 7], ['bat', 24, 7]] }],
+      ['split', 30, { chests: [[15, 'random', 9]], vines: [[8, 9, { from: 5, ladder: true }]], portals: [[11, 8, 26, 0]], pm: [['knight', 13, 8]], plats: [[9, 8, 7], [1, 2, 3], [6, 4, 3], [11, 5, 2], [15, 4, 3], [20, 5, 3], [25, 4, 3]], crumbles: [[9, 8, 2]], mons: [['knight', 7], ['beetle', 13], ['knight', 19], ['slime', 25], ['bat', 10, 7], ['wisp', 18, 7], ['bat', 24, 7]] }],
       ['down', 1],
       ['flat', 3], ['jets', 7],
       ['flat', 8, { mons: [['knight', 5]] }], ['up', 2, 2],
@@ -420,7 +447,7 @@
     ],
   ];
 
-  // Tiles: 1 ground, 2 brick, 5 ledge, 6 stone wall, 7 spikes, 9 arena gate, 10 cracked stone (sword breaks it), 11 locked door, 12 vine (climbable, not solid)
+  // Tiles: 1 ground, 2 brick, 5 ledge, 6 stone wall, 7 spikes, 9 arena gate, 10 cracked stone, 11 locked door, 12 vine, 13 spring, 14 crumble
   function compile(layout) {
     const H = [], pits = new Set(), put = [], spikes = [], jets = [], vstyles = [], portals = [], saws = [], mons = [], coins = [], signs = [], chests = [], keys = [], movers = [], cracks = [], caves = [], later = [], segs = [];
     let x = 0, h = 0, goal = null, shop = null, boss = null;
@@ -475,6 +502,8 @@
           for (let k = 0; k < n; k++) put.push([x0 + off + k, rowAt(x0 + off + k, dy), 5]);
           if (kind === 'split' && dy > 2) for (let k = 0; k < n - 1; k++) coins.push([x0 + off + k, rowAt(x0 + off + k, dy + 1)]);
         });
+        (ex.springs || []).forEach(([off, dy, n]) => { for (let k = 0; k < n; k++) put.push([x0 + off + k, rowAt(x0 + off + k, dy), 13]); });
+        (ex.crumbles || []).forEach(([off, dy, n]) => { for (let k = 0; k < n; k++) put.push([x0 + off + k, rowAt(x0 + off + k, dy), 14]); });
         (ex.vines || []).forEach(([off, top, o]) => { const c = x0 + off; for (let dy = o?.from || 1; dy <= top; dy++) put.push([c, surf(c) - dy, 12]); if (o?.ladder) vstyles.push(c); });
         (ex.movers || []).forEach(([off, dy, w, right, up, sec]) => movers.push([x0 + off, rowAt(x0 + off, dy), w, right, up, sec]));
         (ex.chests || []).forEach(([off, what, dy]) => chests.push([x0 + off, rowAt(x0 + off, dy), what]));
@@ -580,6 +609,7 @@
     const set = (x, y, t) => { if (x >= 0 && x < COLS && y >= 0 && y < ROWS) grid[y][x] = t; };
     for (let x = 0; x < COLS; x++) { if (S.pits.has(x)) continue; for (let r = 13 - S.H[x]; r <= 14; r++) set(x, r, 1); }   // ground column up to its own height
     for (const [x, r, t] of S.put) set(x, r, t);
+    crumbleTiles = S.put.filter(([, , t]) => t === 14).map(([x, row]) => ({ x, row, timer: null, broken: false }));
     vstyle = new Uint8Array(COLS); S.vstyles.forEach(c => { vstyle[c] = 1; });
     enemies = S.mons.map(([k, x, ty]) => { const e = makeMon(k, x, ty); e.tint = [0, 1, 3, 2, 0][i]; return e; });   // slimes take the colour of the place
     saws = S.saws.map(([x0, x1, row]) => ({ x: x0 * T + 8, y: row * T - 8, x0: x0 * T + 8, x1: x1 * T + 8, vx: 55, r: 8, rot: 0 }));
@@ -605,7 +635,7 @@
     miniDirty = true; $('jump').textContent = '점프'; $('atk').textContent = '칼';
   }
 
-  const newPlayer = () => ({ x: 3 * T, y: 12 * T, w: 12, h: 16, vx: 0, vy: 0, onGround: true, face: 1, coyote: 0, jumpBuf: 0, walk: 0, inv: 0, hurtT: 0, swing: 0, cd: 0, atkBuf: 0, swingId: 0, stepUp: true });
+  const newPlayer = () => ({ x: 3 * T, y: 12 * T, w: 12, h: 16, vx: 0, vy: 0, onGround: true, face: 1, coyote: 0, jumpBuf: 0, walk: 0, inv: 0, hurtT: 0, swing: 0, cd: 0, atkBuf: 0, swingId: 0, stepUp: true, bounceTile: null });
 
   function startStage(i) {
     stageIdx = i; buildLevel(i);
@@ -615,6 +645,35 @@
   }
   function newGame() { score = 0; coinCount = 0; resetItems(); startStage(0); }
   function gateTiles(g, shut) { const top = 12 - STAGES[stageIdx].boss.h; for (let r = top - GATE_H + 1; r <= top; r++) grid[r][g.col] = shut ? 9 : 0; miniDirty = true; }
+
+  function handleSpecialGround() {
+    if (p.bounceTile && (p.y + p.h < p.bounceTile.row * T - 2 || grid[p.bounceTile.row]?.[p.bounceTile.col] !== 13)) p.bounceTile = null;
+    if (!p.onGround) return;
+    const row = Math.floor((p.y + p.h + 1) / T), c0 = Math.floor(p.x / T), c1 = Math.floor((p.x + p.w - 0.001) / T);
+    let spring = null;
+    for (let c = c0; c <= c1; c++) {
+      if (grid[row]?.[c] === 13) spring = { col: c, row };
+      if (grid[row]?.[c] === 14) {
+        const tile = crumbleTiles.find(x => x.x === c && x.row === row && !x.broken);
+        if (tile && tile.timer === null) tile.timer = 0.75;
+      }
+    }
+    if (spring && !p.bounceTile && !p.auto) {
+      p.bounceTile = spring; p.vy = -560; p.onGround = false; p.coyote = 0; p.jumpBuf = 0;
+      pops.push({ x: p.x + p.w / 2, y: p.y + p.h, t: 0, ring: true }); sfx('jump');
+    }
+  }
+  function advanceCrumbles(dt) {
+    for (const tile of crumbleTiles) {
+      if (tile.broken || tile.timer === null) continue;
+      tile.timer -= dt;
+      if (tile.timer <= 0) {
+        tile.broken = true;
+        if (grid[tile.row]?.[tile.x] === 14) grid[tile.row][tile.x] = 0;
+        pops.push({ x: tile.x * T + 8, y: tile.row * T + 8, t: 0, dust: true }); sfx('crumble'); miniDirty = true;
+      }
+    }
+  }
 
   /* ---------- physics ---------- */
   // spikes are hazards and vines are climbable scenery: neither is a wall
@@ -787,6 +846,7 @@
     // moving platforms only hold you from above, so you can jump up through them
     p.plat = null;
     if (p.vy >= 0) for (const m of movers) if (p.x + p.w > m.x + 1 && p.x < m.x + m.w - 1 && feet <= m.y + 2 && p.y + p.h >= m.y) { p.y = m.y - p.h; p.vy = 0; p.onGround = true; p.plat = m; }
+    if (state === 'play') handleSpecialGround();
     if (state === 'play') {
       if (Math.abs(p.vx) > 5 && p.onGround) p.walk += Math.abs(p.vx) * dt / 9;
       if (p.bump) hitBlock(p.bump[0], p.bump[1]);
@@ -794,7 +854,7 @@
       if (p.onGround) {
         const c0 = Math.floor((p.x - 10) / T), c1 = Math.floor((p.x + p.w + 10) / T), r = Math.floor((p.y + p.h + 1) / T);
         let ok = true;
-        for (let c = c0; c <= c1; c++) if (!solid(c, r) || grid[Math.max(0, r - 1)]?.[c] === 7) ok = false;
+        for (let c = c0; c <= c1; c++) if (!solid(c, r) || grid[Math.max(0, r - 1)]?.[c] === 7 || grid[r]?.[c] === 14) ok = false;
         if (ok) lastSafe = { x: p.x, y: p.y };
       }
     }
@@ -1103,25 +1163,25 @@
       b.open = (b.mode === 'recover' && !(b.thrown && b.mt < 0.95)) || b.mode === 'stun';
     } else {
       // the dark lord floats out of reach and casts: a fan of orbs / fire pillars marked on the floor first / a vanish-and-reappear /
-      // a dash along the floor that ends with him kneeling (the opening). Half HP: wider fans, more pillars, wisps, shorter tells
+      // a dash along the floor that ends with him kneeling (the opening). Half HP: a wider pattern, wisps, and clearer tells
       const plan = half ? ['orbs', 'pillars', 'dash', 'summon', 'tp', 'orbs', 'dash', 'pillars'] : ['orbs', 'dash', 'pillars', 'tp', 'dash'];
       const hoverY = gy - 70 + Math.sin(b.t * 2) * 5;
       if (b.mode === 'float') {
         const tx = clamp(px + (bx < px ? -70 : 70), b.lo + b.w / 2, b.hi - b.w / 2);
         b.x += clamp(tx - bx, -60 * dt, 60 * dt); b.y += (hoverY - b.y) * Math.min(1, dt * 4); b.face = toward();
-        if (b.mt > (half ? 0.8 : 1.2)) { let nx = plan[b.cyc++ % plan.length]; if (nx === 'summon' && enemies.filter(e => e.minion && !e.dead).length >= 2) nx = 'orbs'; if (nx === 'dash' && Math.abs(px - bx) < 70) nx = 'pillars'; go(nx + 'W'); }
-      } else if (b.mode === 'orbsW') { b.face = toward(); if (b.mt > (half ? 0.45 : 0.6)) { for (const a of half ? [-0.45, -0.15, 0.15, 0.45] : [-0.3, 0, 0.3]) aimShot(bx, b.y + 10, 'orb', half ? 95 : 80, a, 10); sfx('screech'); go('float'); } }
-      else if (b.mode === 'pillarsW') { if (b.mt > 0.5) { const xs = [px]; for (let i = 0; i < (half ? 2 : 1); i++) xs.push(rnd(b.lo + 12, b.hi - 12)); xs.forEach((x, i) => shots.push({ kind: 'pillar', x: clamp(x, b.lo + 8, b.hi - 8) - 7, y: gy - 56, w: 14, h: 56, vx: 0, vy: 0, t: -(1.0 + i * 0.15) })); go('float'); } }
-      else if (b.mode === 'tpW') { if (b.mt > 0.4) { b.hidden = true; b.x = clamp(px + (bx < px ? 80 : -80), b.lo, b.hi - b.w); b.y = hoverY; go('tpIn'); sfx('screech'); } }
-      else if (b.mode === 'tpIn') { if (b.mt > 0.45) { b.hidden = false; go('float'); } }
-      else if (b.mode === 'summonW') { if (b.mt > 0.7) { for (const d of [-1, 1]) { const e = makeMon('wisp', (bx + d * 40) / T, (gy - 40) / T); e.active = true; e.minion = true; e.homeX = clamp(bx + d * 50, b.lo + 20, b.hi - 20); e.cd = 1.5; enemies.push(e); } go('float'); } }
+        if (b.mt > (half ? 1.1 : 1.2)) { let nx = plan[b.cyc++ % plan.length]; if (nx === 'summon' && enemies.filter(e => e.minion && !e.dead).length >= 1) nx = 'orbs'; if (nx === 'dash' && Math.abs(px - bx) < 70) nx = 'pillars'; go(nx + 'W'); }
+      } else if (b.mode === 'orbsW') { b.face = toward(); if (b.mt > (half ? 0.7 : 0.6)) { for (const a of half ? [-0.4, 0, 0.4] : [-0.3, 0, 0.3]) aimShot(bx, b.y + 10, 'orb', half ? 90 : 80, a, 10); sfx('screech'); go('float'); } }
+      else if (b.mode === 'pillarsW') { if (b.mt > (half ? 0.8 : 0.6)) { const xs = [px]; xs.push(rnd(b.lo + 12, b.hi - 12)); xs.forEach((x, i) => shots.push({ kind: 'pillar', x: clamp(x, b.lo + 8, b.hi - 8) - 7, y: gy - 56, w: 14, h: 56, vx: 0, vy: 0, t: -(1.1 + i * 0.15) })); go('float'); } }
+      else if (b.mode === 'tpW') { if (b.mt > 0.55) { b.hidden = true; b.x = clamp(px + (bx < px ? 80 : -80), b.lo, b.hi - b.w); b.y = hoverY; go('tpIn'); sfx('screech'); } }
+      else if (b.mode === 'tpIn') { if (b.mt > 0.55) { b.hidden = false; go('float'); } }
+      else if (b.mode === 'summonW') { if (b.mt > 0.85) { const d = b.cyc % 2 ? -1 : 1, e = makeMon('wisp', (bx + d * 40) / T, (gy - 40) / T); e.active = true; e.minion = true; e.homeX = clamp(bx + d * 50, b.lo + 20, b.hi - 20); e.cd = 1.5; enemies.push(e); go('float'); } }
       else if (b.mode === 'dashW') { // glide to the wall farther from the hero, drop to the floor, flash the eyes, then dash across
         if (b.mt < dt * 1.5) b.dx0 = px < (b.lo + b.hi) / 2 ? b.hi - b.w : b.lo;
         b.x += clamp(b.dx0 - b.x, -320 * dt, 320 * dt); b.y += (gy - b.h - b.y) * Math.min(1, dt * 8); b.face = toward();
-        if (b.mt > (half ? 0.75 : 0.95)) { b.y = gy - b.h; go('dash'); sfx('charge'); }
+        if (b.mt > (half ? 1.0 : 0.95)) { b.y = gy - b.h; go('dash'); sfx('charge'); }
       }
-      else if (b.mode === 'dash') { const nx = b.x + b.face * 270 * dt; b.x = clamp(nx, b.lo, b.hi - b.w); if (b.x !== nx) { shakeT = 0.3; sfx('bump'); go('stun'); } }
-      else if (b.mode === 'stun') { if (b.mt > (half ? 1.7 : 2.0)) go('float'); }
+      else if (b.mode === 'dash') { const nx = b.x + b.face * 245 * dt; b.x = clamp(nx, b.lo, b.hi - b.w); if (b.x !== nx) { shakeT = 0.3; sfx('bump'); go('stun'); } }
+      else if (b.mode === 'stun') { if (b.mt > (half ? 2.1 : 2.0)) go('float'); }
       b.open = b.mode === 'stun' || b.mode === 'pillarsW';
     }
     // touching a boss hurts, except while it lies open (dazed, resting, panting) or has vanished
@@ -1188,6 +1248,7 @@
 
     stepPlayer(dt);
     if (state !== 'play') return;
+    advanceCrumbles(dt);
     magnetT = Math.max(0, magnetT - dt); wingT = Math.max(0, wingT - dt); bootT = Math.max(0, bootT - dt); starT = Math.max(0, starT - dt);
     if (boss && boss.dead && boss.autoT > 0) { boss.autoT -= dt; if (boss.autoT <= 0) { p.auto = true; ['left', 'right', 'jump', 'attack'].forEach(k => press(k, false)); } }   // boss down: walk to the GOAL on our own
     // first time near a ladder or vine: say how to climb it (once per device)
@@ -1391,8 +1452,38 @@
     });
     rankNote.textContent = topList.length ? '이 기록은 이 폰에만 저장돼요.' : '아직 기록이 없어요. 한 판 해 보세요!';
   }
-  function panel(name) { pMain.hidden = name !== 'main'; pHelp.hidden = name !== 'help'; pRank.hidden = name !== 'rank'; pShop.hidden = name !== 'shop'; }
+  function panel(name) { pMain.hidden = name !== 'main'; pHelp.hidden = name !== 'help'; pTutorial.hidden = name !== 'tutorial'; pRank.hidden = name !== 'rank'; pShop.hidden = name !== 'shop'; }
   function buttons(onTitle) { helpBtn.hidden = !onTitle; menuLink.hidden = !onTitle; homeBtn.hidden = onTitle; }
+  const TUTORIAL_STEPS = [
+    { title: '좌우 이동', body: '◀ ▶ 버튼으로 달려요.\nPC: 방향키 또는 A / D' },
+    { title: '높이 점프', body: '점프 버튼을 길게 누르면 더 높이 뛰어요.\nPC: Space, ↑ 또는 W' },
+    { title: '칼 공격', body: '칼 버튼으로 앞의 몬스터를 베어요.\nPC: Z / X / J' },
+  ];
+  function rememberTutorial() {
+    tutorialDone = true;
+    try { localStorage.setItem(TUTORIAL_KEY, '1'); } catch (e) {}
+  }
+  function startNewGame(fromTutorial = false) {
+    if (fromTutorial) rememberTutorial();
+    overlay.hidden = true; lastEntry = null; newGame(); tone(520, 520, 0.08, 'square', 0.04);
+  }
+  function renderTutorialStep() {
+    $('tutHead').textContent = TUTORIAL_STEPS[tutorialStep].title;
+    $('tutBody').textContent = TUTORIAL_STEPS[tutorialStep].body;
+    $('tutCount').textContent = `${tutorialStep + 1} / ${TUTORIAL_STEPS.length}`;
+    $('tutNext').textContent = tutorialStep === TUTORIAL_STEPS.length - 1 ? (tutorialFromHelp ? '도움말로 돌아가기' : '시작하기') : '다음';
+    $('tutExit').textContent = tutorialFromHelp ? '도움말로' : '건너뛰기';
+  }
+  function startTutorial(fromHelp = false) {
+    tutorialFromHelp = fromHelp; tutorialStep = 0;
+    $('tutChoice').hidden = true; $('tutGuide').hidden = false;
+    renderTutorialStep(); buttons(false); panel('tutorial'); overlay.hidden = false; overlay.scrollTop = 0;
+  }
+  function showTutorialChoice() {
+    tutorialFromHelp = false;
+    $('tutChoice').hidden = false; $('tutGuide').hidden = true;
+    buttons(false); panel('tutorial'); overlay.hidden = false; overlay.scrollTop = 0;
+  }
   function showTitle() {
     score = 0; coinCount = 0; resetItems(); stageIdx = 0; buildLevel(0);
     p = newPlayer(); camX = 0; state = 'title'; banner = null; updateHud();
@@ -1401,6 +1492,14 @@
     buttons(true); panel('main'); overlay.hidden = false;
   }
   helpBtn.addEventListener('click', () => panel('help'));
+  $('tutorialReplay').addEventListener('click', () => startTutorial(true));
+  $('tutDo').addEventListener('click', () => startTutorial(false));
+  $('tutSkip').addEventListener('click', () => startNewGame(true));
+  $('tutExit').addEventListener('click', () => tutorialFromHelp ? panel('help') : startNewGame(true));
+  $('tutNext').addEventListener('click', () => {
+    if (tutorialStep < TUTORIAL_STEPS.length - 1) { tutorialStep++; renderTutorialStep(); overlay.scrollTop = 0; return; }
+    if (tutorialFromHelp) panel('help'); else startNewGame(true);
+  });
   rankBtn.addEventListener('click', () => { renderTop(lastEntry); panel('rank'); });
   homeBtn.addEventListener('click', showTitle);
   document.querySelectorAll('.back').forEach(b => b.addEventListener('click', () => panel('main')));
@@ -1509,6 +1608,20 @@
         R(x + 7, y, 2, T, g[0]); R(x + 3, y + 3, 4, 3, g[1]); R(x + 9, y + 10, 4, 3, g[1]); dot(x + 4.5, y + 4.5, 1.4, 'rgba(255,255,255,0.35)');
         if (tip) { ctx.fillStyle = g[1]; ctx.beginPath(); ctx.arc(x + 8, y + 2, 4, 0, 7); ctx.fill(); }
       }
+    } else if (t === 13) {
+      R(x + 3, y + 8, 10, 7, '#5b3b50'); R(x + 6, y + 9, 5, 6, '#f4d6a4');
+      R(x + 4, y + 5, 8, 3, '#8a2f8e'); R(x + 2, y + 7, 12, 4, '#d45acb'); R(x + 4, y + 4, 8, 2, '#f08ae4');
+      dot(x + 5, y + 7, 1.2, '#fff1c2'); dot(x + 11, y + 8, 1, '#fff1c2');
+      R(x + 6, y + 13, 4, 2, '#8a2f8e');
+    } else if (t === 14) {
+      const c = crumbleTiles.find(v => v.x === tx && v.row === ty), warning = c && c.timer !== null && !c.broken;
+      const blink = warning && c.timer < 0.3 && Math.floor(tAnim * 20) % 2 === 0;
+      R(x, y + 2, T, 13, blink ? '#bb5a4e' : '#32283f');
+      R(x + 1, y + 1, T - 2, 10, blink ? '#e89973' : '#756487');
+      R(x + 1, y + 1, T - 2, 2, warning ? '#ffd1a1' : '#a695bd');
+      ctx.strokeStyle = warning ? '#ffbd82' : '#392d48'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x + 4, y + 3); ctx.lineTo(x + 7, y + 6); ctx.lineTo(x + 5, y + 9); ctx.lineTo(x + 10, y + 12); ctx.stroke();
+      R(x + 11, y + 6, 2, 2, warning ? '#ffc99a' : '#554765');
     } else if (t === 5) { // wooden platform with a grassy edge (a hanging root underneath)
       R(x, y + 3, T, 10, '#a9743a'); R(x, y + 7, T, 1, '#7a4f24'); R(x, y + 3, T, 1, '#d09a58'); R(x, y + 12, T, 2, '#6a4220');
       dot(x + 3, y + 5.4, 0.7, '#5a3818'); dot(x + 13, y + 5.4, 0.7, '#5a3818'); dot(x + 3, y + 10, 0.7, '#5a3818'); dot(x + 13, y + 10, 0.7, '#5a3818');
@@ -1858,7 +1971,7 @@
       if (pant && !b.dead) { ctx.fillStyle = '#fff'; ctx.font = '8px Jua, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(b.mode === 'stun' ? '빙글빙글' : '헉헉', bx, b.y - 6 - Math.sin(tAnim * 6) * 2); }
     } else if (b.kind === 'lord') {
       const fc = b.face, cast = b.mode === 'orbsW' || b.mode === 'pillarsW' || b.mode === 'summonW', kneel = b.mode === 'stun';
-      let a = 1; if (b.mode === 'tpW') a = 1 - b.mt / 0.4; else if (b.mode === 'tpIn') a = b.mt / 0.45; else if (b.hidden) a = 0;
+      let a = 1; if (b.mode === 'tpW') a = 1 - b.mt / 0.55; else if (b.mode === 'tpIn') a = b.mt / 0.55; else if (b.hidden) a = 0;
       ctx.globalAlpha = clamp(a, 0, 1) * (b.dead ? Math.max(0, 1 - b.deadT / 1.2) : 1);
       ctx.translate(bx, by + (kneel ? 6 : 0)); ctx.scale(fc, 1);
       ctx.fillStyle = '#4a1a6a'; ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-6, -24); ctx.lineTo(6, -24); ctx.lineTo(14, 0); ctx.fill();   // cape
@@ -2348,7 +2461,10 @@
     const c = m.content; m.content = c + ', maximum-scale=1'; setTimeout(() => { m.content = c; }, 80);
   });
 
-  startBtn.addEventListener('click', () => { overlay.hidden = true; lastEntry = null; newGame(); tone(520, 520, 0.08, 'square', 0.04); });
+  startBtn.addEventListener('click', () => {
+    if (state === 'title' && !tutorialDone) { showTutorialChoice(); return; }
+    startNewGame();
+  });
   window.addEventListener('resize', resize);
   new ResizeObserver(resize).observe(stage);
 
