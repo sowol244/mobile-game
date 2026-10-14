@@ -59,14 +59,6 @@ const WAVE_PLAN = [
   { start: 55, count: 10, interval: 0.65, pattern: ['walker', 'walker', 'walker', 'walker', 'runner'], lanes: [1, 0, 2, 1, 0, 2, 1, 0, 2, 1] },
 ];
 
-const PHASE_CUES = [
-  { at: 8, label: '연사 보급통을 노려 화력을 높이세요', duration: 2 },
-  { at: 16, label: '보급 선택 · 지원 사수 또는 공격력 강화', duration: 2.2 },
-  { at: 28, label: '좀비가 늘어납니다 · 이동하며 자동 사격하세요', duration: 2.2 },
-  { at: 40, label: '대규모 웨이브 · 로켓 폭격을 준비하세요', duration: 2.2 },
-  { at: 55, label: '보스 전 마지막 좀비 웨이브', duration: 1.8 },
-];
-
 export function roadHalfWidth(w, h, y) {
   const depth = clamp((y - h * 0.13) / (h * 0.84), 0, 1);
   return w * (0.23 + depth * 0.21);
@@ -95,10 +87,11 @@ export function createGame(w, h) {
     hasPlayerMoved: false, showAimGuide: false,
     weapon: 'pistol', weaponLevel: { pistol: 1, smg: 0 },
     damageBonus: 0, damageMultiplier: 1, fireTimer: 0.15, powerFlash: 0,
+    playerMuzzleFlash: 0, playerRecoil: 0, killStreak: 0, killStreakTimer: 0,
     companions: [], nextCompanionId: 1, companionPower: 1, drone: null, rocketAmmo: 0, rocketTimer: 0,
     missiles: [], particles: [], rapidFireTimer: 0,
     score: 0, kills: 0, barrelsBroken: 0, distance: 0,
-    roadOffset: 0, waveIndex: 0, waveSpawned: 0, cueIndex: 0,
+    roadOffset: 0, waveIndex: 0, waveSpawned: 0,
     rapidfireSpawned: false, firstChoiceSpawned: false, rocketBarrelSpawned: false,
     firstExplosiveSpawned: false, secondExplosiveSpawned: false, obstacleSpawned: false,
     boss: null, bossStarted: false, bossDefeated: false, bossWarningShown: false, bossAlertTimer: 0,
@@ -409,8 +402,8 @@ function rewardBarrel(s, barrel, events) {
   events.push('barrelDown');
 }
 
-function addHitEffect(s, x, y, radius = 12) {
-  s.effects.push({ kind: 'hit', x, y, life: 0.18, total: 0.18, radius });
+function addHitEffect(s, x, y, radius = 12, material = 'flesh') {
+  s.effects.push({ kind: 'hit', material, x, y, life: 0.24, total: 0.24, radius });
 }
 
 function killZombie(s, zombie, sourceX, events) {
@@ -419,17 +412,22 @@ function killZombie(s, zombie, sourceX, events) {
   zombie.dying = 0.48;
   zombie.deathSide = Math.sign(zombie.x - sourceX) || (zombie.phase % 2 ? -1 : 1);
   s.kills++;
-  s.score += zombie.kind === 'runner' ? 15 : 10;
-  events.push('kill');
+  s.killStreak = s.killStreakTimer > 0 ? s.killStreak + 1 : 1;
+  s.killStreakTimer = 1.25;
+  const reward = zombie.kind === 'runner' ? 15 : 10;
+  s.score += reward;
+  s.effects.push({ kind: 'kill', x: zombie.x, y: zombie.y - 24, combo: s.killStreak, amount: reward, life: 0.62, total: 0.62 });
+  s.hitShake = Math.max(s.hitShake, s.killStreak >= 3 ? 0.14 : 0.085);
+  events.push({ type: 'kill', combo: s.killStreak });
 }
 
 function damageZombie(s, zombie, damage, sourceX, events, quiet = false) {
   if (zombie.dead) return;
   zombie.hp -= damage;
-  zombie.hitFlash = 0.14;
-  zombie.recoilX = (zombie.x >= sourceX ? 1 : -1) * 14;
-  zombie.recoilY = 105;
-  addHitEffect(s, zombie.x, zombie.y - 15, 10);
+  zombie.hitFlash = 0.2;
+  zombie.recoilX = (zombie.x >= sourceX ? 1 : -1) * 19;
+  zombie.recoilY = 145;
+  addHitEffect(s, zombie.x, zombie.y - 19, Math.max(10, zombie.radius * 0.78), 'flesh');
   if (!quiet) events.push('hit');
   if (zombie.hp <= 0) killZombie(s, zombie, sourceX, events);
 }
@@ -524,7 +522,11 @@ export function findAimTarget(s, fromX = s.x, fromY = s.y - 28, includeBarrels =
 
 function shoot(s, events, owner = 'player', fromX = s.x, fromY = s.y - 28, damageScale = 1, targetOverride = null) {
   const target = targetOverride || findAimTarget(s, fromX, fromY, owner === 'player');
-  if (owner === 'player') s.target = target;
+  if (owner === 'player') {
+    s.target = target;
+    s.playerMuzzleFlash = 0.075;
+    s.playerRecoil = 0.11;
+  }
   const aimAngle = target ? Math.atan2(target.x - fromX, fromY - target.y) : 0;
   const smg = s.weapon === 'smg';
   const damage = owner === 'companion'
@@ -548,7 +550,9 @@ function shoot(s, events, owner = 'player', fromX = s.x, fromY = s.y - 28, damag
 function damageTarget(s, target, damage, events, sourceX) {
   if (target === s.boss) {
     target.hp -= damage;
-    target.hitFlash = 0.13;
+      target.hitFlash = 0.12;
+    target.hitShake = 0.12;
+    addHitEffect(s, target.x + (Math.random() - 0.5) * 42, target.y - 24 + (Math.random() - 0.5) * 35, 20, 'armor');
     events.push('hit');
     if (target.hp <= 0) defeatBoss(s, events);
     return;
@@ -560,7 +564,7 @@ function damageTarget(s, target, damage, events, sourceX) {
   target.hp = Math.max(0, target.hp - damage);
   target.hitFlash = 0.12;
   target.hitShake = 0.13;
-  addHitEffect(s, target.x, target.y - 12, 11);
+  addHitEffect(s, target.x, target.y - 12, 13, 'metal');
   events.push('hit');
   if (target.hp > 0) return;
   if (target.kind === 'explosive') {
@@ -820,10 +824,11 @@ function updateBoss(s, dt, events) {
   s.bossAlertTimer = Math.max(0, s.bossAlertTimer - dt);
   if (s.t >= BOSS_START_AT && !s.bossStarted) {
     s.bossStarted = true;
-    const y = s.h * 0.2;
+    const y = s.h * 0.28;
     s.boss = {
       x: s.w * 0.5, y, hp: 350, maxHp: 350,
-      phase: 0, attackTimer: 1.65, warning: 0, attackLane: 1, hitFlash: 0, addTimer: 4.2,
+      phase: 0, attackTimer: 1.65, warning: 0, warningTotal: 1.25, attackLane: 1,
+      hitFlash: 0, hitShake: 0, stomp: 0, addTimer: 4.2,
     };
     events.push('bossStart');
   }
@@ -832,6 +837,7 @@ function updateBoss(s, dt, events) {
   if (boss.deathTimer != null) {
     boss.deathTimer = Math.max(0, boss.deathTimer - dt);
     boss.hitFlash = Math.max(0, boss.hitFlash - dt);
+    boss.hitShake = Math.max(0, (boss.hitShake || 0) - dt);
     if (boss.deathTimer <= 0) {
       s.boss = null;
       s.finished = 'win';
@@ -840,8 +846,14 @@ function updateBoss(s, dt, events) {
     return;
   }
   boss.phase += dt;
-  boss.x = s.w * 0.5 + Math.sin(boss.phase * 0.8) * roadHalfWidth(s.w, s.h, boss.y) * 0.36;
+  boss.y = s.h * 0.28 + Math.sin(boss.phase * 1.45) * s.h * 0.014;
+  const idleX = s.w * 0.5
+    + Math.sin(boss.phase * 0.74) * roadHalfWidth(s.w, s.h, boss.y) * 0.68
+    + Math.sin(boss.phase * 1.19) * roadHalfWidth(s.w, s.h, boss.y) * 0.1;
+  boss.x = idleX;
   boss.hitFlash = Math.max(0, boss.hitFlash - dt);
+  boss.hitShake = Math.max(0, (boss.hitShake || 0) - dt);
+  boss.stomp = Math.max(0, (boss.stomp || 0) - dt);
   boss.addTimer -= dt;
   if (boss.addTimer <= 0) {
     spawnZombie(s, 'walker', 0);
@@ -850,6 +862,11 @@ function updateBoss(s, dt, events) {
   }
   if (boss.warning > 0) {
     boss.warning -= dt;
+    const windup = 1 - clamp(boss.warning / boss.warningTotal, 0, 1);
+    const targetX = laneX(s.w, s.h, boss.y, boss.attackLane);
+    const lunge = clamp((windup - 0.68) / 0.32, 0, 1);
+    boss.x += (targetX - boss.x) * (0.12 + lunge * 0.48);
+    boss.x = clamp(boss.x, s.w * 0.14, s.w * 0.86);
     if (boss.warning <= 0) {
       const x = laneX(s.w, s.h, s.h * 0.75, boss.attackLane);
       s.effects.push({
@@ -857,6 +874,8 @@ function updateBoss(s, dt, events) {
         radius: roadHalfWidth(s.w, s.h, s.h * 0.75) * 0.2,
         lane: boss.attackLane, life: 0.62, total: 0.62,
       });
+      boss.stomp = 0.42;
+      s.hitShake = Math.max(s.hitShake, 0.23);
       if (closestLane(s, s.x) === boss.attackLane) hurtPlayer(s, ZOMBIE_DAMAGE.boss.pass, events, { source: 'boss' });
       boss.attackTimer = 3.05;
       events.push('bossSlam');
@@ -866,6 +885,7 @@ function updateBoss(s, dt, events) {
     if (boss.attackTimer <= 0) {
       boss.attackLane = closestLane(s, s.x);
       boss.warning = 1.25;
+      boss.warningTotal = boss.warning;
       events.push('bossWarn');
     }
   }
@@ -895,6 +915,10 @@ export function updateGame(s, dt, targetX) {
   s.powerFlash = Math.max(0, s.powerFlash - dt);
   s.defenseFlash = Math.max(0, s.defenseFlash - dt);
   s.hitShake = Math.max(0, s.hitShake - dt);
+  s.playerMuzzleFlash = Math.max(0, s.playerMuzzleFlash - dt);
+  s.playerRecoil = Math.max(0, s.playerRecoil - dt);
+  s.killStreakTimer = Math.max(0, s.killStreakTimer - dt);
+  if (s.killStreakTimer <= 0) s.killStreak = 0;
   s.rapidFireTimer = Math.max(0, s.rapidFireTimer - dt);
   if (targetX != null) {
     const reach = roadHalfWidth(s.w, s.h, s.y) * 0.88;
@@ -923,10 +947,6 @@ export function updateGame(s, dt, targetX) {
   s.invulnerable = Math.max(0, s.invulnerable - dt);
   s.flash = Math.max(0, s.flash - dt);
 
-  while (s.cueIndex < PHASE_CUES.length && s.t >= PHASE_CUES[s.cueIndex].at) {
-    const cue = PHASE_CUES[s.cueIndex++];
-    events.push({ type: 'cue', label: cue.label, duration: cue.duration });
-  }
   spawnWaves(s);
   spawnScriptedObjects(s);
   updateBoss(s, dt, events);

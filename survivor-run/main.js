@@ -1,6 +1,6 @@
-import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261014l';
-import { drawScene } from './render.js?v=1-1-20261014l';
-import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014';
+import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261014o';
+import { drawScene } from './render.js?v=1-1-20261014o';
+import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014o';
 
 const $ = id => document.getElementById(id);
 const canvas = $('gameCanvas');
@@ -162,10 +162,15 @@ function announce(message, seconds) {
 
 function handleEvents(events) {
   let hurtSoundPlayed = false;
+  let hitSoundPlayed = false;
+  let killCombo = 0;
   for (const event of events) {
     if (event === 'shot') sfx.shot();
     else if (event === 'allyShot') sfx.allyShot();
-    else if (event === 'hit') sfx.hit();
+    else if (event === 'hit') {
+      if (!hitSoundPlayed) { sfx.hit(); hitSoundPlayed = true; }
+    }
+    else if (event && typeof event === 'object' && event.type === 'kill') killCombo = Math.max(killCombo, event.combo || 1);
     else if (event === 'barrelDown') sfx.pick();
     else if (event === 'explosion') sfx.explosion();
     else if (event === 'rocketBlast') sfx.explosion();
@@ -173,18 +178,16 @@ function handleEvents(events) {
       if (!hurtSoundPlayed) { sfx.hurt(); hurtSoundPlayed = true; }
     }
     else if (event === 'bossIncoming') announce('WARNING · 거대 변이체 접근', 2.2);
-    else if (event === 'bossStart') { sfx.boss(); announce('보스 출현 · 붉은 공격 구역을 피하세요', 2.2); }
-    else if (event === 'bossWarn') announce('강타 예고 · 붉은 구역을 피하세요', 1.1);
-    else if (event === 'bossSlam') announce('착탄 · 다음 붉은 예고 구역을 피하세요', 1.2);
-    else if (event === 'bossDown') { sfx.pick(); announce('대형 변이체 격파', 1.8); }
+    else if (event === 'bossStart') sfx.boss();
+    else if (event === 'bossSlam') sfx.bossSlam();
+    else if (event === 'bossDown') sfx.pick();
     else if (event === 'win') sfx.win();
     else if (event === 'lose' || event === 'timeout') sfx.lose();
     else if (event && typeof event === 'object' && event.type === 'reward') {
       sfx.upgrade(); announce(event.label, 0.85);
-    } else if (event && typeof event === 'object' && event.type === 'cue') {
-      announce(event.label, event.duration);
     }
   }
+  if (killCombo) sfx.kill(killCombo);
 }
 
 function finishGame(result) {

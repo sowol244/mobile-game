@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1a2423">
 <title>DEAD ROUTE</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap">
-<link rel="stylesheet" href="style.css?v=1-1-20261014l">
+<link rel="stylesheet" href="style.css?v=1-1-20261014o">
 </head>
 <body>
 <main id="app">
@@ -60,7 +60,7 @@
   <section id="stage" aria-label="DEAD ROUTE 전투 화면">
     <canvas id="gameCanvas" aria-label="화면을 좌우로 끌어 이동하고 자동 사격을 유도하세요"></canvas>
     <div id="bossHud" hidden>
-      <div class="boss-label"><b>대형 변이체</b><span>위험도 높음</span></div>
+      <div class="boss-label"><b>대형 변이체</b></div>
       <div class="boss-track"><i id="bossFill"></i></div>
     </div>
     <button id="mute" type="button" aria-label="소리 끄기" aria-pressed="false">🔊</button>
@@ -69,7 +69,7 @@
     <div id="banner" role="status" aria-live="polite"></div>
     <div id="overlay">
       <section class="panel" id="pMain">
-        <div class="eyebrow">SURVIVAL SHOOTER · 1-1</div>
+        <div class="eyebrow">SURVIVAL SHOOTER · 1-1 <span class="dev-status">개발 중</span></div>
         <h1 id="title">DEAD<br>ROUTE</h1>
         <p id="msg">숫자 보급통으로 연사·지원 사수·로켓 화력을 얻고,<br>대규모 웨이브와 최종 보스를 돌파하세요.</p>
         <div class="mission-chips"><span>숫자 보급통 선택</span><span>자동 사격 · 좌우 이동</span><span>지원 사수 · 로켓 화력</span><span>75~90초 목표 · 보스 처치</span></div>
@@ -83,7 +83,6 @@
           </div>
           <button class="sub home" id="home" type="button" hidden>처음 화면</button>
         </div>
-        <div class="menu-footer"><span>원하는 보급통 쪽으로 이동해 집중 사격</span><span class="signal">● 작전 가능</span></div>
       </section>
       <section class="panel" id="pAsk" hidden>
         <div class="eyebrow">작전 브리핑</div>
@@ -136,7 +135,7 @@
     </div>
   </section>
 </main>
-<script type="module" src="main.js?v=1-1-20261014l"></script>
+<script type="module" src="main.js?v=1-1-20261014o"></script>
 </body>
 </html>
 

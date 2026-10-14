@@ -244,9 +244,6 @@ function drawObstacle(g, obstacle, h, time) {
   g.strokeStyle = '#d9503e'; g.lineWidth = 9;
   for (let x = -48; x < 48; x += 22) { g.beginPath(); g.moveTo(x, -27); g.lineTo(x + 20, 8); g.stroke(); }
   g.restore();
-  roundRect(g, -17, -34, 34, 13, 6, 'rgba(13,20,20,.9)', '#f4ca68', 1.5);
-  g.fillStyle = '#fff2c8'; g.font = 'bold 9px Jua, sans-serif';
-  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('우회', 0, -27);
   if (Math.sin(time * 8) > 0.7) {
     g.strokeStyle = 'rgba(255,210,97,.8)'; g.lineWidth = 2;
     g.beginPath(); g.moveTo(-35, -12); g.lineTo(-44, -20); g.moveTo(35, -12); g.lineTo(44, -20); g.stroke();
@@ -358,16 +355,44 @@ function drawBoss(g, boss, w, h, time, assets) {
     g.strokeStyle = 'rgba(255,236,186,.82)'; g.lineWidth = 2;
     for (let y = h * 0.53; y < h * 0.79; y += 13) { g.beginPath(); g.moveTo(x - half * 1.5, y); g.lineTo(x + half * 1.5, y - 18); g.stroke(); }
     g.restore();
-    roundRect(g, x - 46, h * 0.565, 92, 23, 9, 'rgba(88,20,18,.94)', '#ffd37c', 1.5);
-    g.fillStyle = '#fff2cc'; g.font = 'bold 12px Jua, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('공격 예고 · 이동!', x, h * 0.577);
+    const markerY = h * 0.555;
+    g.save();
+    g.translate(x, markerY);
+    g.globalAlpha = 0.72 + pulse * 0.55;
+    g.shadowColor = '#ff6048'; g.shadowBlur = 12;
+    polygon(g, [[0, -13], [12, 9], [-12, 9]], '#ef6048', '#ffe3b0', 1.5);
+    g.shadowBlur = 0;
+    g.fillStyle = '#fff3d6'; g.font = '900 14px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('!', 0, 1);
+    g.restore();
   }
   const collapsing = boss.deathTimer != null;
   const fall = collapsing ? clamp(1 - boss.deathTimer / boss.deathDuration, 0, 1) : 0;
-  const bob = collapsing ? 0 : Math.sin(time * 4) * 2;
-  const rotation = collapsing ? -fall * 0.62 : Math.sin(time * 1.8) * 0.035;
+  const warningProgress = boss.warning > 0 ? clamp(1 - boss.warning / (boss.warningTotal || 1.25), 0, 1) : 0;
+  const lunge = boss.warning > 0 ? clamp((warningProgress - 0.68) / 0.32, 0, 1) : 0;
+  const crouch = boss.warning > 0 ? Math.sin(Math.min(1, warningProgress / 0.72) * Math.PI * 0.5) * (1 - lunge * 0.75) : 0;
+  const impact = boss.stomp > 0 ? Math.pow(boss.stomp / 0.42, 2) : 0;
+  const hitShake = boss.hitShake > 0 ? Math.sin(time * 92) * boss.hitShake * 18 : 0;
+  const breath = collapsing ? 0 : Math.sin(time * 3.1) * 0.035;
+  const bob = collapsing ? 0 : Math.sin(time * 4.7) * 7 + Math.sin(time * 2.1 + 0.7) * 2.5;
+  const aimDirection = boss.attackLane == null ? 0 : Math.sign(laneX(w, h, boss.y, boss.attackLane) - boss.x);
+  const rotation = collapsing
+    ? -fall * 0.72
+    : Math.sin(time * 1.35) * 0.07 + aimDirection * (crouch * 0.075 + lunge * 0.17) + hitShake * 0.004;
   const alpha = collapsing ? 1 - fall * 0.48 : 1;
-  drawSprite(g, assets.brute, boss.x, boss.y + 38 + fall * size * 0.22, size, size * 1.05, bob, rotation, alpha, boss.hitFlash > 0 ? '#fff0bd' : null);
+  const width = size * (1 + breath + crouch * 0.055 + lunge * 0.075 + impact * 0.1);
+  const height = size * 1.05 * (1 - breath * 0.6 - crouch * 0.105 + lunge * 0.17 - impact * 0.17);
+  const offsetX = aimDirection * lunge * size * 0.08 + hitShake;
+  const offsetY = boss.y + 38 + bob + crouch * 9 - lunge * size * 0.16 + impact * size * 0.08 + fall * size * 0.22;
+  drawSprite(g, assets.brute, boss.x + offsetX, offsetY, width, height, 0, rotation, alpha, boss.hitFlash > 0 ? '#f2bc86' : null);
+  if (boss.stomp > 0) {
+    const progress = 1 - boss.stomp / 0.42;
+    g.save();
+    g.globalAlpha = (1 - progress) * 0.72;
+    g.strokeStyle = '#ffbd76'; g.lineWidth = 2.2 * (1 - progress) + 0.8;
+    g.beginPath(); g.ellipse(boss.x + offsetX, boss.y + 42, size * (0.3 + progress * 0.64), size * (0.075 + progress * 0.13), 0, 0, Math.PI * 2); g.stroke();
+    g.restore();
+  }
 }
 
 function drawSupportMuzzle(g, x, y, alpha, color = '#ffe6a1') {
@@ -445,7 +470,22 @@ function drawPlayer(g, s, time, assets) {
   if (s.invulnerable > 0 && Math.floor(time * 18) % 2 === 0) return;
   drawFootstepDust(g, s.x, s.y + 16, 1.05, stride, '#c8b898');
   const image = Math.sin(stride) > 0 && assets.playerRun ? assets.playerRun : assets.player;
-  drawSprite(g, image, s.x, s.y + 17 + bob, w, h, 0, Math.sin(stride) * 0.035, 1, s.flash > 0 ? '#ff7068' : null);
+  const recoil = clamp(s.playerRecoil / 0.11, 0, 1);
+  drawSprite(g, image, s.x, s.y + 17 + bob + recoil * 2, w, h, 0, Math.sin(stride) * 0.035 - recoil * 0.045, 1, s.flash > 0 ? '#ff7068' : null);
+  if (s.playerMuzzleFlash > 0) {
+    const aim = s.target ? Math.atan2(s.target.x - s.x, s.y - s.target.y) : 0;
+    const flash = clamp(s.playerMuzzleFlash / 0.075, 0, 1);
+    g.save();
+    g.translate(s.x + 16, s.y - 57);
+    g.rotate(aim);
+    g.globalAlpha = flash;
+    g.shadowColor = '#f4bd62'; g.shadowBlur = 11;
+    polygon(g, [[-3, 2], [-4, -5], [-1, -12], [0, -20], [3, -11], [5, -5], [2, 2]], '#f8dfa2', '#e79b48');
+    g.shadowBlur = 0;
+    g.fillStyle = '#fff4cf';
+    g.beginPath(); g.ellipse(0, -5, 2.1, 6.5, 0, 0, Math.PI * 2); g.fill();
+    g.restore();
+  }
 }
 
 function drawParticles(g, particles) {
@@ -506,9 +546,14 @@ function drawBullet(g, bullet) {
   g.shadowBlur = 3;
   const grad = g.createLinearGradient(0, -7, 0, 5);
   grad.addColorStop(0, 'rgba(226,204,154,0)'); grad.addColorStop(0.55, color); grad.addColorStop(1, '#eee3c5');
-  const width = bullet.owner === 'drone' ? 2.6 : 2;
+  const width = bullet.owner === 'drone' ? 3 : bullet.rapid ? 3 : 2.6;
+  g.strokeStyle = color;
+  g.lineWidth = width * 0.72;
+  g.globalAlpha = 0.68;
+  g.beginPath(); g.moveTo(0, 7); g.lineTo(0, 17); g.stroke();
+  g.globalAlpha = 1;
   g.fillStyle = grad;
-  g.beginPath(); g.ellipse(0, -1, width, 7, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(0, -1, width, 9, 0, 0, Math.PI * 2); g.fill();
   g.restore();
 }
 
@@ -598,6 +643,20 @@ function drawEffect(g, effect, time) {
     g.restore();
     return;
   }
+  if (effect.kind === 'kill') {
+    const rise = progress * 24;
+    const combo = effect.combo || 1;
+    const label = combo === 1 ? '+' + effect.amount : combo === 2 ? 'DOUBLE KILL' : combo === 3 ? 'TRIPLE KILL' : 'KILL STREAK ×' + combo;
+    g.save();
+    g.globalAlpha = clamp((1 - progress) * 1.3, 0, 1);
+    g.font = combo === 1 ? '900 13px sans-serif' : '900 15px sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 3;
+    g.strokeStyle = 'rgba(16,20,19,.92)'; g.strokeText(label, effect.x, effect.y - rise);
+    g.fillStyle = combo === 1 ? '#dfd4ae' : '#ffd37b'; g.fillText(label, effect.x, effect.y - rise);
+    g.restore();
+    return;
+  }
   g.save();
   if (effect.kind === 'damageNumber') {
     const y = effect.y - progress * 21;
@@ -632,13 +691,19 @@ function drawEffect(g, effect, time) {
     return;
   }
   if (effect.kind === 'hit') {
-    const size = effect.radius * (0.5 + progress * 0.8);
+    const size = effect.radius * (0.45 + progress * 1.15);
+    const color = effect.material === 'armor' ? '#fff0b0' : effect.material === 'metal' ? '#e1bd78' : '#d9c6a3';
     g.globalAlpha = 1 - progress;
-    g.strokeStyle = 'rgba(226,196,144,.8)'; g.lineWidth = 1.5;
-    g.beginPath();
-    g.moveTo(effect.x - size, effect.y - size * 0.3); g.lineTo(effect.x - size * 0.25, effect.y - size * 0.05);
-    g.moveTo(effect.x + size * 0.2, effect.y + size * 0.18); g.lineTo(effect.x + size, effect.y + size * 0.34);
-    g.stroke();
+    g.strokeStyle = color; g.lineWidth = effect.material === 'armor' ? 2.8 : 2;
+    g.beginPath(); g.ellipse(effect.x, effect.y, size * 0.72, size * 0.52, 0, 0, Math.PI * 2); g.stroke();
+    for (let ray = 0; ray < 6; ray++) {
+      const angle = ray * Math.PI / 3 + progress * 0.24;
+      const inner = size * 0.48, outer = size * (0.78 + (ray % 2) * 0.32);
+      g.beginPath();
+      g.moveTo(effect.x + Math.cos(angle) * inner, effect.y + Math.sin(angle) * inner);
+      g.lineTo(effect.x + Math.cos(angle) * outer, effect.y + Math.sin(angle) * outer);
+      g.stroke();
+    }
   } else if (effect.kind === 'slam') {
     const half = effect.radius * (1 + progress * 0.18);
     g.globalAlpha = (1 - progress) * 0.9;
@@ -706,7 +771,7 @@ export function drawScene(ctx, s, w, h, now, title, assets) {
   ctx.clearRect(0, 0, w, h);
   ctx.save();
   if (s && s.hitShake > 0) {
-    const shake = s.hitShake * 8;
+    const shake = s.hitShake * 11;
     ctx.translate(Math.sin(now * 0.07) * shake, Math.cos(now * 0.09) * shake * 0.45);
   }
   const offset = s ? s.roadOffset : (now * 0.00008) % 1;
