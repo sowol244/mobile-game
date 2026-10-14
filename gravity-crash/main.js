@@ -5,7 +5,7 @@ import {
   rng, dailySeed, crashLevel, spawnInterval, planWave, blockedLines, spawnWave, crashStart, entryCell,
   BLOCK_LEVELS, darkMove, needsShake, unjam, createDaily, dailyTilt, dailyItem, dailyLevel, moveScore, DAILY_TILTS, DAILY_FREE,
   shuffleColors, commonColor, colorBomb, nextCombo, FEVER_COMBO, FEVER_TIME, fillCount, parseBoard, mk,
-} from './logic.js?v=b4059e2';
+} from './logic.js?v=challenge-2';
 import { STAGES, CHAPTERS } from './stages.js';
 import { STEPS } from './tutorial.js';
 import { createSound } from './sound.js';
@@ -1003,15 +1003,15 @@ function hud() {
 }
 let toolActs = [];
 function setTools(list) {
-  list.forEach((t, i) => {
-    const el = tools[i];
+  tools.forEach((el, i) => {
+    const t = list[i];
     if (!t) { el.btn.hidden = true; el.btn.disabled = true; return; }
     el.btn.hidden = false;
     el.ic.textContent = t.ic; el.l.textContent = t.l; el.k.textContent = t.k; el.n.textContent = t.n;
     el.btn.disabled = !t.on; el.btn.classList.toggle('ready', !!t.on && (t.ready ?? (C ? true : false)));
     el.btn.setAttribute('aria-label', t.l);
   });
-  toolActs = list.map(t => t && t.act);
+  toolActs = tools.map((_, i) => list[i] && list[i].act);
 }
 tools.forEach((t, i) => t.btn.addEventListener('click', () => { if (phase === 'play' && toolActs[i]) toolActs[i](); }));
 function hideBar() { barEl.hidden = true; }
