@@ -81,7 +81,7 @@
     <div class="row"></div>
   </section>
   <nav id="tree" aria-label="게임 목록"></nav>
-  <p id="admin-note" class="note" hidden>게임 상태 설정은 이 브라우저에 저장됩니다.</p>
+  <p id="admin-note" class="note" hidden>게임 상태 설정은 모든 방문자에게 적용됩니다.</p>
   <p class="note">이곳의 게임들은 예고 없이 추가되거나 삭제될 수 있습니다.</p>
 </main>
 <dialog id="admin-dialog" aria-labelledby="admin-title">
@@ -115,7 +115,10 @@ const GAMES = [
 const DEV_GAMES = [
   { id: 'godot-survivor-run', name: 'DEAD ROUTE (Godot판)', desc: '스테이지 1 · Godot 버전 · 개발 중', group: ['창작'], dev: true, icon: 'survivor-run.svg' },
 ];
-const ADMIN_PASSWORD_SHA256 = 'b7d7525bb8de465f1d0bb4c053a1efda4d423dbef59fe6ac7ca0cb44da7e9127';
+const SUPABASE_URL = 'https://ffclcaraipfdjzjkojeu.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_3RU0xXklMJKZWbsc5NTswQ_qH1Sr_1N';
+const STATUS_REST_URL = `${SUPABASE_URL}/rest/v1/game_status_config?id=eq.1&select=statuses`;
+const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-game-status`;
 const TOP = [{ name: "석's 오리지널", key: '창작', icon: '💡', own: true }, { name: '액션', icon: '🎮' }, { name: '퍼즐', icon: '🧩' }];
 const NEW_DAYS = 30;
 
@@ -124,11 +127,10 @@ const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } cat
 const recent = load('hub-recent', []);   // ids, most recent first
 const visited = load('hub-visited', {}); // id → true once opened (hides NEW)
 const closed = load('hub-closed', {});   // group path → true when folded
-const storedStatusOverrides = load('hub-game-status', {});
-const statusOverrides = storedStatusOverrides && typeof storedStatusOverrides === 'object' && !Array.isArray(storedStatusOverrides) ? storedStatusOverrides : {};
-const isAdminUnlocked = () => { try { return sessionStorage.getItem('hub-admin-unlocked') === 'true'; } catch { return false; } };
-const setAdminUnlocked = unlocked => { try { if (unlocked) sessionStorage.setItem('hub-admin-unlocked', 'true'); else sessionStorage.removeItem('hub-admin-unlocked'); } catch { /* session storage unavailable */ } };
-let showDevGames = isAdminUnlocked();
+let statusOverrides = {};
+let cloudStatusLoaded = false;
+let currentAdminPassword = '';
+let showDevGames = false;
 
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 const isNew = g => g.added && !visited[g.id] && (Date.now() - Date.parse(g.added)) / 864e5 < NEW_DAYS;
@@ -139,8 +141,10 @@ function configuredStatus(g) {
 }
 
 function gameStatus(g) {
+  const status = configuredStatus(g);
+  if (status) return status;
   if (g.requiresAdmin && !showDevGames) return 'development';
-  return configuredStatus(g);
+  return null;
 }
 
 function showStatusMessage(status) {
@@ -149,20 +153,27 @@ function showStatusMessage(status) {
 }
 
 function withAdminStatusControl(g, card) {
-  if (!showDevGames) return card;
+  if (!showDevGames || !cloudStatusLoaded) return card;
   const select = el('select');
   select.setAttribute('aria-label', `${g.name} 상태 설정`);
   for (const [value, label] of [['', '정상'], ['development', '개발 중'], ['maintenance', '점검 중']]) {
     select.append(el('option', { value }, label));
   }
   select.value = configuredStatus(g) || '';
-  select.addEventListener('change', () => {
+  select.addEventListener('change', async () => {
     const value = select.value || null;
-    if (value === (g.status || null)) delete statusOverrides[g.id];
-    else statusOverrides[g.id] = value;
-    save('hub-game-status', statusOverrides);
-    renderTree();
-    renderRecent();
+    select.disabled = true;
+    try {
+      const result = await callAdminFunction({ action: 'set-status', password: currentAdminPassword, gameId: g.id, status: value });
+      statusOverrides = result.statuses;
+      renderTree();
+      renderRecent();
+    } catch (error) {
+      select.value = configuredStatus(g) || '';
+      alert(error.message || '상태를 저장하지 못했습니다.');
+    } finally {
+      select.disabled = false;
+    }
   });
   return el('div', { className: 'game-admin-row' }, card, select);
 }
@@ -240,10 +251,57 @@ function renderRecent() {
   }
   document.getElementById('recent').hidden = rec.length === 0;
   document.getElementById('admin-note').hidden = !showDevGames;
+  document.getElementById('admin-note').textContent = cloudStatusLoaded
+    ? '게임 상태 설정은 모든 방문자에게 적용됩니다.'
+    : '공유 상태를 불러오는 중입니다.';
+}
+
+function cleanStatuses(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const allowed = new Set([...GAMES, ...DEV_GAMES].map(game => game.id));
+  return Object.fromEntries(Object.entries(value).filter(([id, status]) =>
+    allowed.has(id) && (status === null || status === 'development' || status === 'maintenance')
+  ));
+}
+
+async function refreshGameStatuses() {
+  try {
+    const response = await fetch(STATUS_REST_URL, {
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY },
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`상태를 불러오지 못했습니다 (${response.status}).`);
+    const rows = await response.json();
+    const next = cleanStatuses(rows[0]?.statuses);
+    const changed = JSON.stringify(next) !== JSON.stringify(statusOverrides);
+    statusOverrides = next;
+    cloudStatusLoaded = true;
+    if (changed) { renderTree(); renderRecent(); }
+    else if (showDevGames) renderRecent();
+  } catch (error) {
+    console.error('공유 게임 상태를 불러오지 못했습니다.', error);
+  }
+}
+
+async function callAdminFunction(body) {
+  const response = await fetch(ADMIN_FUNCTION_URL, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  let result = {};
+  try { result = await response.json(); } catch { /* use the status text below */ }
+  if (!response.ok) throw new Error(result.error || '관리자 서버에 연결할 수 없습니다.');
+  return result;
 }
 
 renderTree();
 renderRecent();
+refreshGameStatuses();
+setInterval(refreshGameStatuses, 15000);
 
 const adminButton = document.getElementById('admin-button');
 const adminDialog = document.getElementById('admin-dialog');
@@ -254,7 +312,7 @@ if (showDevGames) adminButton.textContent = '관리자 잠금';
 adminButton.addEventListener('click', () => {
   if (showDevGames) {
     showDevGames = false;
-    setAdminUnlocked(false);
+    currentAdminPassword = '';
     adminButton.textContent = '관리자';
     renderTree();
     renderRecent();
@@ -271,21 +329,16 @@ adminForm.addEventListener('submit', async event => {
   event.preventDefault();
   adminError.textContent = '';
   try {
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(adminPassword.value));
-    const hash = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
-    if (hash !== ADMIN_PASSWORD_SHA256) {
-      adminError.textContent = '암호가 올바르지 않습니다.';
-      adminPassword.select();
-      return;
-    }
+    await callAdminFunction({ action: 'authenticate', password: adminPassword.value });
+    currentAdminPassword = adminPassword.value;
     showDevGames = true;
-    setAdminUnlocked(true);
     adminButton.textContent = '관리자 잠금';
     renderTree();
     renderRecent();
     adminDialog.close();
-  } catch {
-    adminError.textContent = '이 브라우저에서는 암호 확인을 사용할 수 없습니다.';
+  } catch (error) {
+    adminError.textContent = error.message || '관리자 서버에 연결할 수 없습니다.';
+    adminPassword.select();
   }
 });
 </script>

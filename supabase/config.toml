@@ -1,0 +1,4 @@
+project_id = "ffclcaraipfdjzjkojeu"
+
+[functions.admin-game-status]
+verify_jwt = false
