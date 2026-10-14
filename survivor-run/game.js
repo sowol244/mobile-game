@@ -7,6 +7,9 @@ export const MAX_PASS_DAMAGE_PER_SECOND = 20;
 export const DIRECT_HIT_INVULNERABILITY = 0.5;
 export const MOVE_TUTORIAL_DELAY = 0.9;
 export const MOVE_TUTORIAL_DURATION = 2;
+export const AIM_ASSIST_ANGLE = 8;
+const AIM_ASSIST_ANGLE_RADIANS = AIM_ASSIST_ANGLE * Math.PI / 180;
+const AIM_ASSIST_DISTANCE_TIE_EPSILON = 8;
 export const ZOMBIE_DAMAGE = Object.freeze({
   normal: Object.freeze({ pass: 3, collision: 15 }),
   fast: Object.freeze({ pass: 4, collision: 12 }),
@@ -84,6 +87,13 @@ export function resizeGame(s, w, h) {
   if (s.boss) { s.boss.x *= sx; s.boss.y = h * 0.2; }
   s.w = w;
   s.h = h;
+}
+
+export function applyPlayerDrag(s, deltaX) {
+  if (!Number.isFinite(deltaX) || deltaX === 0) return s.targetX;
+  const reach = roadHalfWidth(s.w, s.h, s.y) * 0.88;
+  s.targetX = clamp(s.targetX + deltaX, s.w * 0.5 - reach, s.w * 0.5 + reach);
+  return s.targetX;
 }
 
 function spawnZombie(s, forcedKind) {
@@ -302,40 +312,48 @@ function defeatBoss(s, events) {
   events.push('win');
 }
 
-function findTarget(s, fromX = s.x, fromY = s.y - 28) {
+export function findAimTarget(s, fromX = s.x, fromY = s.y - 28) {
   const side = roadHalfWidth(s.w, s.h, s.y) * 1.15;
   const targets = [];
   for (const zombie of s.zombies) if (!zombie.dead) targets.push(zombie);
   for (const barrel of s.barrels) if (!barrel.dead) targets.push(barrel);
-  if (s.boss) targets.push(s.boss);
-  let best = null, bestScore = Infinity;
+  if (s.boss && s.boss.hp > 0) targets.push(s.boss);
+
+  let best = null, bestDistance = Infinity, bestAngle = Infinity;
   for (const target of targets) {
-    const dx = Math.abs(target.x - fromX);
+    const dx = target.x - fromX;
     const dy = fromY - target.y;
-    if (dy < 12 || dx > side) continue;
-    const isSupply = target.kind === 'weapon' || target.kind === 'upgrade' || target.kind === 'companion';
-    const isExplosive = target.kind === 'explosive';
-    const bossFocus = target === s.boss ? 320 : 0;
-    const priority = isSupply ? 34 : isExplosive ? 40 : bossFocus;
-    const score = dy * 0.22 + dx * 1.8 - priority;
-    if (score < bestScore) { best = target; bestScore = score; }
+    if (dy < 12 || Math.abs(dx) > side) continue;
+    if (target.x < 0 || target.x > s.w || target.y < 0 || target.y > s.h) continue;
+
+    const angle = Math.atan2(dx, dy);
+    const angleFromForward = Math.abs(angle);
+    if (angleFromForward > AIM_ASSIST_ANGLE_RADIANS) continue;
+
+    const distance = Math.hypot(dx, dy);
+    const isCloser = distance < bestDistance - AIM_ASSIST_DISTANCE_TIE_EPSILON;
+    const isSimilarDistance = Math.abs(distance - bestDistance) <= AIM_ASSIST_DISTANCE_TIE_EPSILON;
+    if (isCloser || (isSimilarDistance && angleFromForward < bestAngle)) {
+      best = target;
+      bestDistance = distance;
+      bestAngle = angleFromForward;
+    }
   }
   return best;
 }
 
 function shoot(s, events, owner = 'player', fromX = s.x, fromY = s.y - 28, damageScale = 1) {
-  const target = findTarget(s, fromX, fromY);
-  const tx = target ? target.x : fromX;
-  const ty = target ? target.y : s.h * 0.16;
-  const dx = tx - fromX, dy = ty - fromY;
-  const length = Math.max(1, Math.hypot(dx, dy));
+  const target = findAimTarget(s, fromX, fromY);
+  if (owner === 'player') s.target = target;
+  const aimAngle = target ? Math.atan2(target.x - fromX, fromY - target.y) : 0;
   const smg = s.weapon === 'smg';
   const damage = ((smg ? 7 : 10) + s.damageBonus) * damageScale;
   const spreads = owner === 'player' && smg && s.weaponLevel.smg >= 3 ? [-0.075, 0, 0.075] : [0];
   for (const spread of spreads) {
+    const angle = aimAngle + spread;
     s.bullets.push({
       x: fromX, y: fromY,
-      vx: (dx / length + spread) * 760, vy: dy / length * 760,
+      vx: Math.sin(angle) * 760, vy: -Math.cos(angle) * 760,
       damage: damage * (spread ? 0.68 : 1), weapon: s.weapon, owner, life: 1.25,
     });
   }
@@ -537,7 +555,6 @@ export function updateGame(s, dt, targetX) {
   updateObstacle(s, dt, events);
   if (s.finished) { s.events = events; return events; }
 
-  s.target = findTarget(s);
   s.fireTimer -= dt;
   if (s.fireTimer <= 0) {
     shoot(s, events);
@@ -594,6 +611,7 @@ export function updateGame(s, dt, targetX) {
   s.obstacles = s.obstacles.filter(obstacle => !obstacle.dead);
   s.bullets = s.bullets.filter(bullet => !bullet.dead && bullet.y > -20 && bullet.y < s.h + 20);
   s.hazards = s.hazards.filter(hazard => !hazard.dead && hazard.y < s.h + 30 && hazard.x > -30 && hazard.x < s.w + 30);
+  if (s.target && (s.target.dead || s.target.hp <= 0)) s.target = null;
   s.effects = s.effects.filter(effect => effect.life > 0);
 
   if (s.t >= STAGE_DURATION && !s.finished) {
