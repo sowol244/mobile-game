@@ -942,7 +942,7 @@ export default [
   },
 
   {
-    name: '두 안개의 문', shape: 'hub',
+    name: '안개 문턱', shape: 'hub',
     zones: [{ x: 69, y: 12, w: 1, h: 1, g: 'a', on: true }, { x: 70, y: 12, w: 1, h: 1, g: 'b', on: true }, { x: 53, y: 1, w: 5, h: 11 }, { x: 59, y: 14, w: 4, h: 6 }],
     levers: ['a', 'b'],
     fog: [{ x: 56, y: 10, w: 2, h: 2 }, { x: 53, y: 8, w: 2, h: 2 }, { x: 56, y: 6, w: 2, h: 2 }, { x: 53, y: 4, w: 2, h: 2 }, { x: 60, y: 17, w: 1, h: 3 }, { x: 62, y: 17, w: 1, h: 3 }],

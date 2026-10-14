@@ -27,7 +27,7 @@ import c8 from './levels/c8.js';
 export const CHAPTERS = [
   { name: '손전등', sub: '빛 블록 · 숨은 문' },
   { name: '그림자와 깜빡', sub: '그림자 블록' },
-  { name: '레버', sub: '방의 불 · 시계 레버' },
+  { name: '레버', sub: '방마다 다른 빛 · 시계 레버' },
   { name: '등불과 상자', sub: '그림자 만들기' },
   { name: '색 빛', sub: '빨강 · 파랑 · 렌즈' },
   { name: '유리와 거울', sub: '빛 꺾기' },

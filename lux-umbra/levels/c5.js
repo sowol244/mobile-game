@@ -1173,7 +1173,7 @@ export default [
   },
 
   {
-    name: '색 바꾸는 탑', shape: 'zigzag',
+    name: '빛깔의 탑', shape: 'zigzag',
     lamps: { 1: { kind: 'beam', dir: 90, spread: 38, range: 8, color: 'r' } },
     zones: [{ x: 16, y: 10, w: 8, h: 20, color: 'r', g: 'a', on: true }, { x: 16, y: 10, w: 8, h: 20, color: 'b', g: 'b', on: false }, { x: 26, y: 8, w: 23, h: 6, g: 'c', on: true }],
     levers: ['c', 'ab', 'ab', 'ab'],

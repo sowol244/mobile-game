@@ -197,7 +197,7 @@ export default [
   },
 
   {
-    name: '상자 돌려보내기', shape: 'loop',
+    name: '돌아오는 상자', shape: 'loop',
     lamps: { 1: { kind: 'beam', dir: 0, spread: 20, range: 22 }, 2: { kind: 'beam', dir: 180, spread: 3, range: 20 } },
     saws: [{ move: [0, -2.5], period: 6, phase: 0 }],
     rooms: [['gm_lidstair', 4, 3, 19, 8, 1], ['lbridge', 24, 6, 8, 8, 1], ['crateedge', 33, 5, 23, 9, 1], ['gm_ghoststeps', 61, 1, 21, 10, 1, 'saw'], ['crateloop', 83, 7, 21, 16, 1], ['stones', 70, 15, 12, 8, -1], ['hwall', 66, 16, 3, 4, -1]],
@@ -1192,7 +1192,7 @@ export default [
   },
 
   {
-    name: '두 등불의 문', shape: 'hub',
+    name: '문 앞의 불빛', shape: 'hub',
     lamps: { 1: { kind: 'beam', dir: 0, spread: 5, range: 18, move: [0, 10], period: 7 }, 2: { kind: 'beam', dir: 135, spread: 25, range: 2.2, g: 'a' }, 3: { kind: 'beam', dir: 0, spread: 2, range: 20 } },
     levers: ['a'],
     rooms: [['gm_ghostbridge', 4, 8, 13, 6, 1], ['vlamp', 18, 2, 20, 13, 1], ['gm_fakeceiling', 43, 6, 17, 8, 1, 'spikes'], ['lamphub', 61, 1, 23, 19, 1]],

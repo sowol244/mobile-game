@@ -4,7 +4,7 @@ import { onGround } from '../bot.js';
 
 export default [
   {
-    name: '방의 불', shape: 'journey',
+    name: '방마다 다른 빛', shape: 'journey',
     signs: ['보이지 않는 다리는 빛을 비스듬히 대고 건너요', '레버를 건드리면 방 불이 바뀌어요', '시계 레버는 잠시 뒤 되돌아가요'],
     zones: [{ x: 26, y: 9, w: 23, h: 6, g: 'a', on: true }, { x: 54, y: 9, w: 10, h: 6, g: 'b', on: true }, { x: 64, y: 9, w: 10, h: 6, g: 'c', on: false }, { x: 74, y: 9, w: 10, h: 6, g: 'd', on: true }, { x: 84, y: 9, w: 10, h: 6, g: 'e', on: true }, { x: 98, y: 9, w: 14, h: 6, g: 'f', on: true }],
     levers: ['a', 'b', 'c', 'd', 'e', { g: 'f', t: 2.25 }],
@@ -695,7 +695,7 @@ export default [
   },
 
   {
-    name: '시계탑', shape: 'climb',
+    name: '그림자 계단', shape: 'climb',
     zones: [{ x: 26, y: 38, w: 12, h: 6, g: 'a', on: true }, { x: 45, y: 41, w: 3, h: 1, g: 'b', on: true, fixtureY: 39.5 }, { x: 45, y: 37, w: 3, h: 1, g: 'c', on: true, fixtureY: 35.5 }, { x: 45, y: 33, w: 3, h: 1, g: 'd', on: true, fixtureY: 31.5 }, { x: 55, y: 16, w: 8, h: 17, g: 'e', on: true }],
     levers: [{ g: 'e', t: 2.2 }, { g: 'e', t: 2.35 }, 'd', 'c', { g: 'a', t: 1.9 }, 'b'],
     rooms: [['gm_ghoststeps', 4, 32, 21, 11, 1], ['clockdash', 26, 38, 12, 8, 1], ['leverwell', 39, 30, 10, 14, 1], ['clocktower', 54, 16, 10, 18, 1], ['blinkwell', 65, 5, 9, 15, 1], ['gm_shadowlid', 75, 1, 18, 8, 1, 'spikes'], ['hhigh', 94, 3, 8, 7, 1]],
@@ -1649,7 +1649,7 @@ export default [
   },
 
   {
-    name: '시계 자물쇠', shape: 'hub',
+    name: '엇갈리는 불빛', shape: 'hub',
     zones: [{ x: 98, y: 14, w: 1, h: 1, g: 'a', on: true }, { x: 98, y: 14, w: 1, h: 1, g: 'b', on: true }],
     levers: [{ g: 'a', t: 2.3 }, { g: 'b', t: 9.4 }],
     saws: [{ move: [0, -2.5], period: 7, phase: 0 }],

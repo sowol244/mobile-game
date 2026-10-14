@@ -191,7 +191,7 @@ export default [
   },
 
   {
-    name: '석상 떨구기', shape: 'descent',
+    name: '낭떠러지의 석상', shape: 'descent',
     lamps: { 1: { kind: 'beam', dir: -2, spread: 6, range: 16 } },
     saws: [{ move: [0, -2.5], period: 5, phase: 0 }],
     rooms: [['gm_lidstair', 4, 1, 20, 8, 1], ['statueshadow', 25, 3, 20, 7, 1], ['statuefall', 50, 5, 11, 13, 1], ['sbridge', 62, 13, 9, 7, 1], ['statuelure', 72, 10, 19, 7, 1], ['gm_ghostbridge', 92, 11, 15, 6, 1, 'saw'], ['fardoor', 108, 13, 5, 7, 1]],
@@ -1025,7 +1025,7 @@ export default [
   },
 
   {
-    name: '빛의 목줄', shape: 'compact',
+    name: '뒤따르는 그림자', shape: 'compact',
     zones: [{ x: 50, y: 6, w: 16, h: 10, g: 'a', on: false }],
     levers: [{ g: 'a', t: 1.6 }],
     saws: [{ move: [0, -2.5], period: 5, phase: 0 }],
@@ -1524,7 +1524,7 @@ export default [
   },
 
   {
-    name: '잠든 우물', shape: 'descent',
+    name: '깊은 우물', shape: 'descent',
     lamps: { 1: { kind: 'beam', dir: -2, spread: 6, range: 16 } },
     zones: [{ x: 21, y: 2, w: 20, h: 7, g: 'a', on: true }],
     levers: ['a'],

@@ -1554,7 +1554,7 @@ export default [
   },
 
   {
-    name: '바닥 아래 문', shape: 'compact',
+    name: '바닥의 틈', shape: 'compact',
     rooms: [['gm_ghoststeps', 4, 1, 25, 13, 1], ['gm_shadowlid', 30, 7, 18, 7, 1, 'spikes'], ['trapdoor', 49, 10, 14, 12, 1]],
     rows: [
       '################################################################',
