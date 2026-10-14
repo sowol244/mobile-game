@@ -1148,7 +1148,7 @@ export default [
 
   {
     name: '석상의 문', shape: 'hub',
-    zones: [{ x: 85, y: 12, w: 1, h: 1, g: 'a', on: true }, { x: 86, y: 12, w: 1, h: 1, g: 'b', on: true }],
+    zones: [{ x: 85, y: 12, fixtureY: 10.5, w: 1, h: 1, g: 'a', on: true }, { x: 86, y: 12, fixtureY: 10.5, w: 1, h: 1, g: 'b', on: true }],
     levers: ['a', 'b'],
     saws: [{ move: [0, -2.5], period: 7, phase: 0 }],
     rooms: [['gm_lidstair', 4, 5, 22, 8, 1], ['statuelure', 27, 6, 19, 7, 1], ['gm_ghostbridge', 51, 7, 15, 6, 1, 'saw'], ['statuehub', 67, 1, 24, 18, 1]],

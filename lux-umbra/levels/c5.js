@@ -1760,7 +1760,7 @@ export default [
 
   {
     name: '스펙트럼', shape: 'climb',
-    zones: [{ x: 48, y: 51, w: 3, h: 1, g: 'a', on: true }, { x: 48, y: 47, w: 3, h: 1, g: 'b', on: true }, { x: 48, y: 43, w: 3, h: 1, g: 'c', on: true }],
+    zones: [{ x: 48, y: 51, fixtureY: 49.5, w: 3, h: 1, g: 'a', on: true }, { x: 48, y: 47, fixtureY: 45.5, w: 3, h: 1, g: 'b', on: true }, { x: 48, y: 43, fixtureY: 41.5, w: 3, h: 1, g: 'c', on: true }],
     levers: ['c', 'b', 'a'],
     lenses: ['b', 'r', 'b', 'r', 'b', 'r', 'b', 'r', 'r', 'b'],
     saws: [{ move: [0, -2.5], period: 7, phase: 0 }],

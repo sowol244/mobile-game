@@ -1,8 +1,8 @@
 // 룩스 앤 움브라 — entry point: menus, stage select, the frame loop, HUD, results, local ranking.
 // Rules live in game.js, drawing in render.js/art.js, controls in input.js, sound in sound.js.
 
-import { LEVELS, CHAPTERS, resetOldSave } from './levels.js?v=20261014-titles-1';
-import { SOLUTIONS } from './solutions.js?v=20261014-titles-1';
+import { LEVELS, CHAPTERS, resetOldSave } from './levels.js?v=20261014-stage-fixes-1';
+import { SOLUTIONS } from './solutions.js?v=20261014-stage-fixes-1';
 import { createGame, step, starsFor, anyLightOn, torchOrigin, retry } from './game.js';
 import { driver } from './bot.js';
 import { STEP, COL } from './config.js';

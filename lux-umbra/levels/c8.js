@@ -943,7 +943,7 @@ export default [
 
   {
     name: '안개 문턱', shape: 'hub',
-    zones: [{ x: 69, y: 12, w: 1, h: 1, g: 'a', on: true }, { x: 70, y: 12, w: 1, h: 1, g: 'b', on: true }, { x: 53, y: 1, w: 5, h: 11 }, { x: 59, y: 14, w: 4, h: 6 }],
+    zones: [{ x: 69, y: 12, fixtureY: 10.5, w: 1, h: 1, g: 'a', on: true }, { x: 70, y: 12, fixtureY: 10.5, w: 1, h: 1, g: 'b', on: true }, { x: 53, y: 1, w: 5, h: 11 }, { x: 59, y: 14, w: 4, h: 6 }],
     levers: ['a', 'b'],
     fog: [{ x: 56, y: 10, w: 2, h: 2 }, { x: 53, y: 8, w: 2, h: 2 }, { x: 56, y: 6, w: 2, h: 2 }, { x: 53, y: 4, w: 2, h: 2 }, { x: 60, y: 17, w: 1, h: 3 }, { x: 62, y: 17, w: 1, h: 3 }],
     rooms: [['gm_shadowlid', 4, 6, 15, 7, 1, 'spikes'], ['sbridge', 20, 8, 8, 8, 1], ['gm_fakeceiling', 33, 5, 17, 8, 1, 'spikes'], ['foghub', 51, 1, 24, 21, 1]],
