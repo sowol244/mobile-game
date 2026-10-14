@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { LEVELS, CHAPTERS, LEVELS_VERSION, resetOldSave } from './levels.js';
 import { SOLUTIONS, MAIN_SOLUTIONS } from './solutions.js';
-import { createGame, step, isSolid, tileLight, starsFor, castRay } from './game.js';
+import { createGame, step, isSolid, tileLight, lightSources, starsFor, castRay } from './game.js';
 import { driver } from './bot.js';
 import { buildCode, encodeProgress, decodeProgress, importProgress, ADMIN_ALL, ADMIN_RESET, countStars, countCleared, isAdminCode } from './save-code.js';
 import { STEP, COL } from './config.js';
@@ -107,6 +107,18 @@ test('a lens stand recolours the torch', () => {
   assert.equal(isSolid(s, 5, 2), true);
 });
 
+test('lamp-marked color blocks cannot be bypassed with a matching torch', () => {
+  const s = mk(['########', '#......#', '#P...R.#', '########'], {
+    lampOnly: [[5, 2]], zones: [{ x: 5, y: 2, w: 1, h: 1, color: 'r', g: 'a', on: false }],
+  });
+  s.fl.col = COL.r;
+  run(s, { lightSet: true, aim: 0 }, 0.05);
+  assert.equal(isSolid(s, 5, 2), false, 'red torch does not replace the lever light');
+  s.groups.a = true;
+  run(s, {}, 0.02);
+  assert.equal(isSolid(s, 5, 2), true, 'the switched red zone activates it');
+});
+
 test('a block never materialises inside a body; it waits until the body leaves', () => {
   const s = mk(['#######', '#.....#', '#..P..#', '#.LLL.#', '#.....#', '#######']);
   s.p.y = 3.0; // standing inside the light blocks
@@ -175,7 +187,7 @@ test('a crate pushed onto spikes comes back to where it started', () => {
 
 test('mirrors turn light 90°; a touched turning mirror flips', () => {
   // red lamp shines down onto a mirror in the floor; '/' sends it left, '\' right
-  const s = mk(['############', '#...1......#', '#..........#', '#P.........#', '#RRR{RRR...#', '############'], { lamps: { 1: { kind: 'beam', dir: 90, spread: 5, range: 6, color: 'r' } } });
+  const s = mk(['############', '#...1......#', '#..........#', '#P.........#', '#RRR{RRR...#', '############'], { lamps: { 1: { kind: 'beam', dir: 90, spread: 5, range: 6, color: 'r' } }, mirrorOnly: [[2, 4]] });
   run(s, {}, 0.02);
   assert.equal(isSolid(s, 2, 4), true, 'left side lit');
   assert.equal(isSolid(s, 6, 4), false, 'right side dark');
@@ -184,11 +196,46 @@ test('mirrors turn light 90°; a touched turning mirror flips', () => {
   assert.equal(isSolid(s, 6, 4), true, 'now the right side is lit');
 });
 
+test('mirror-marked blocks ignore even a matching direct torch', () => {
+  const s = mk(['########', '#......#', '#P.R...#', '########'], { mirrorOnly: [[3, 2]] });
+  s.fl.col = COL.r;
+  run(s, { lightSet: true, aim: 0 }, 0.05);
+  assert.equal(isSolid(s, 3, 2), false);
+});
+
 test('fog stops every light except your own halo', () => {
   const s = mk(['##########', '#........#', '#P..S..L.#', '##########'], { zones: [{ x: 1, y: 1, w: 8, h: 2 }], fog: [{ x: 4, y: 2, w: 1, h: 1 }] });
   run(s, {}, 0.02);
   assert.equal(isSolid(s, 4, 2), true, 'shadow block in fog stays solid in a lit room');
   assert.equal(isSolid(s, 7, 2), true);
+});
+
+test('fog blocks beams entering and leaving it', () => {
+  const entering = mk(['#########', '#P....L.#', '#########'], { fog: [{ x: 3, y: 1, w: 1, h: 1 }] });
+  run(entering, { lightSet: true, aim: 0 }, 0.05);
+  assert.equal(isSolid(entering, 6, 1), false, 'torch outside cannot light beyond fog');
+  const leaving = mk(['#########', '#P...L..#', '#########'], { fog: [{ x: 1, y: 1, w: 4, h: 1 }] });
+  run(leaving, { lightSet: true, aim: 0 }, 0.05);
+  assert.equal(isSolid(leaving, 5, 1), false, 'torch inside fog cannot project beyond it');
+});
+
+test('the torch halo can reveal nearby fog platforms but never wakes fog statues', () => {
+  const platform = mk(['########', '#.PL...#', '#......#', '########'], { fog: [{ x: 1, y: 0, w: 4, h: 3 }] });
+  run(platform, { lightSet: true }, 0.05);
+  assert.equal(isSolid(platform, 3, 1), true, 'the local halo reaches a nearby light platform');
+  const statue = mk(['########', '#.PM...#', '#......#', '########'], { fog: [{ x: 2, y: 0, w: 4, h: 3 }] });
+  run(statue, { lightSet: true }, 0.05);
+  assert.equal(statue.statues[0].awake, false, 'the local halo does not wake a statue inside fog');
+});
+
+test('same-direction mirror rays keep their individual reflection ranges', () => {
+  const s = mk(['########', '#..1...#', '#..P...#', '#......#', '#../...#', '#......#', '########'], {
+    lamps: { 1: { kind: 'beam', dir: 90, spread: 5, range: 8, reflect: 5 } },
+  });
+  s.fl.on = true; s.fl.aim = Math.PI / 2;
+  const ranges = lightSources(s).filter(src => src.mirror && src.x === 3.5 && src.y === 4.5).map(src => src.range);
+  assert.ok(ranges.includes(5), 'the lamp keeps its configured reflection range');
+  assert.ok(ranges.includes(16), 'the torch keeps its default reflection range');
 });
 
 test('a clock lever switches back by itself', () => {
@@ -214,6 +261,23 @@ test('stars are the light shards taken, one to three', () => {
   assert.deepEqual(starsFor(s), [true, false, true]);
   s.shards.forEach(q => { q.got = true; });
   assert.deepEqual(starsFor(s), [true, true, true]);
+});
+
+test('chapter 3 and 5 shard routes are spaced across their distinct challenges', () => {
+  const shardXs = id => LEVELS.find(L => L.id === id).rows.flatMap(r => [...r].flatMap((c, x) => c === 'o' ? [x] : [])).sort((a, b) => a - b);
+  const chapter3 = shardXs('3-2'), chapter5 = shardXs('5-8');
+  assert.ok(chapter3[1] - chapter3[0] >= 18 && chapter3[2] - chapter3[1] >= 8);
+  assert.ok(chapter5[1] - chapter5[0] >= 40 && chapter5[2] - chapter5[1] >= 40);
+});
+
+test('pilot shard routes vary their height across hub, loop and maze stages', () => {
+  const spread = id => {
+    const ys = LEVELS.find(L => L.id === id).rows.flatMap((r, y) => [...r].flatMap(c => c === 'o' ? [y] : []));
+    return Math.max(...ys) - Math.min(...ys);
+  };
+  for (const id of ['1-6', '2-7', '2-8', '3-4', '5-9', '6-3', '7-8', '8-1']) {
+    assert.ok(spread(id) >= 3, `${id} shard heights should give the optional route a distinct shape`);
+  }
 });
 
 test('a light bridge over spikes cannot be crossed without the torch', () => {

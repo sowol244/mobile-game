@@ -13,7 +13,7 @@ import { encodeProgress, decodeProgress, importProgress, progressEntries, countS
 import { sfx, unlock, isMuted, setMuted, music, musicLight } from './sound.js';
 
 const $ = id => document.getElementById(id);
-const stage = $('stage'), overlay = $('overlay'), canvas = $('c');
+const app = $('app'), stage = $('stage'), overlay = $('overlay'), canvas = $('c');
 const panels = { main: $('pMain'), stages: $('pStages'), help: $('pHelp'), rank: $('pRank'), code: $('pCode'), pause: $('pPause') };
 const titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), eyebrow = $('eyebrow');
 const startBtn = $('start'), homeBtn = $('home'), helpBtn = $('helpBtn'), rankBtn = $('rankBtn'), againBtn = $('again'), menuLink = $('toMenu');
@@ -21,6 +21,7 @@ const pauseBtn = $('pause'), retryBtn = $('retry'), muteBtn = $('mute'), bannerE
 const hud = { stage: $('hStage'), name: $('hName'), shard: $('hShard'), shardLabel: $('hShardLabel'), time: $('hTime'), timeLabel: $('hTimeLabel') };
 const torchBtn = $('torch'), knob = $('knob'), blinkBtn = $('blink');
 let blinkWarned = false; // one hint per press of 깜빡 while the torch is off
+let tutorial = null;
 
 const KEY_PROG = 'lux-progress', KEY_TOP = 'lux-top';
 function load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; } }
@@ -54,6 +55,7 @@ let acc = 0, last = performance.now(), clock = 0;
 const fmt = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const starCount = id => (progress[id] ? progress[id].s.filter(Boolean).length : 0);
 const totalStars = () => LEVELS.reduce((a, L) => a + starCount(L.id), 0);
+const clearCount = () => LEVELS.filter(L => progress[L.id]).length;
 const unlocked = i => i === 0 || !!progress[LEVELS[i - 1].id];
 const firstOpen = () => { const i = LEVELS.findIndex(L => !progress[L.id]); return i < 0 ? 0 : i; };
 
@@ -62,7 +64,7 @@ function panel(name) { for (const [k, el] of Object.entries(panels)) el.hidden =
 function secButtons(afterRun) { $('codeBtn').hidden = afterRun; helpBtn.hidden = afterRun; menuLink.hidden = afterRun; homeBtn.hidden = !afterRun; againBtn.hidden = !afterRun; }
 
 function showTitle() {
-  state = 'title'; input.enabled = false; input.reset();
+  state = 'title'; app.classList.remove('is-playing'); tutorial = null; torchBtn.classList.remove('hinting'); input.enabled = false; input.reset();
   pauseBtn.hidden = true; retryBtn.hidden = true; banner('');
   eyebrow.hidden = false; titleEl.textContent = '룩스 앤 움브라';
   msgEl.textContent = '빛을 켜고 꺼서 길을 여는 퍼즐 게임';
@@ -108,10 +110,12 @@ function buildStages(ch) {
     const id = document.createElement('span'); id.className = 'id'; id.textContent = open ? L.id : '🔒';
     const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = open ? L.name : '잠김';
     const meta = document.createElement('span'); meta.className = 'meta';
+    const status = document.createElement('span'); status.className = 'status';
+    status.textContent = progress[L.id] ? '완료' : open ? (i === firstOpen() ? '진행 중' : '미완료') : '잠김';
     const sr = document.createElement('span'); sr.className = 'sr';
     (progress[L.id] ? progress[L.id].s : [false, false, false]).forEach(g => { const e = document.createElement(g ? 'b' : 'span'); e.textContent = '★'; sr.append(e); });
     const bt = document.createElement('span'); bt.className = 'bt'; bt.textContent = progress[L.id] && progress[L.id].best < 99 ? fmt(progress[L.id].best) : '';
-    meta.append(sr, bt);
+    meta.append(status, sr, bt);
     btn.append(id, nm, meta);
     btn.setAttribute('aria-label', `${L.id} ${L.name}${open ? '' : ' 잠김'}, 별 ${starCount(L.id)}개`);
     btn.addEventListener('click', () => { unlock(); sfx.click(); startStage(i); });
@@ -237,8 +241,8 @@ muteBtn.addEventListener('click', () => { unlock(); setMuted(!isMuted()); paintM
 paintMute();
 
 function pause(on) {
-  if (on && state === 'play') { state = 'paused'; input.enabled = false; input.reset(); pauseBtn.hidden = true; retryBtn.hidden = true; banner(''); panel('pause'); music(false); }
-  else if (!on && state === 'paused') { state = 'play'; input.enabled = true; pauseBtn.hidden = false; retryBtn.hidden = false; overlay.hidden = true; last = performance.now(); music(true); }
+  if (on && state === 'play') { state = 'paused'; app.classList.remove('is-playing'); input.enabled = false; input.reset(); pauseBtn.hidden = true; retryBtn.hidden = true; banner(''); panel('pause'); music(false); }
+  else if (!on && state === 'paused') { state = 'play'; app.classList.add('is-playing'); input.enabled = true; input.reset(); pauseBtn.hidden = false; retryBtn.hidden = false; overlay.hidden = true; last = performance.now(); music(true); }
 }
 
 function banner(html, sec = 0) {
@@ -250,14 +254,42 @@ function banner(html, sec = 0) {
 function startStage(i) {
   idx = i; demo = null; bot = null;
   game = createGame(LEVELS[i]); view.reset();
-  state = 'play'; input.enabled = true; input.reset();
+  state = 'play'; app.classList.add('is-playing'); input.enabled = true; input.reset(); tutorial = null; torchBtn.classList.remove('hinting');
   overlay.hidden = true; pauseBtn.hidden = false; retryBtn.hidden = false;
   clearT = 0; resultShown = false; acc = 0; last = performance.now();
   const L = LEVELS[i];
   banner(`<small>${L.id} · ${CHAPTERS[L.ch].name}</small>${L.name}`, 1.8);
+  if (!progress[L.id]) {
+    const tips = {
+      '1-2': '빛을 비춰 숨은 발판을 찾고, 빛이 닿으면 단단해지는지 살펴보세요.',
+      '1-3': '위쪽과 아래쪽의 숨은 발판·빛 조각도 찾아보세요.',
+      '2-1': '빛을 받으면 그림자 발판이 사라져요. 깜빡을 누르는 동안만 안전하게 건널 수 있어요.',
+      '3-1': '레버를 건드리면 연결된 방의 조명이 바뀌어요.',
+      '4-1': '상자를 빛 아래로 밀면 그림자 발판을 만들 수 있어요.',
+      '5-1': '빨간 빛은 빨간 블록, 파란 빛은 파란 블록을 켜요.',
+      '5-4': '등불 표식 블록은 레버로 켠 색 조명만 받아요.',
+      '6-1': '거울 표식 발판은 거울에 꺾인 빛만 받아요.',
+      '7-1': '빛을 받으면 석상이 움직이고, 어둠에서는 멈춰요.',
+      '8-1': '먼 빛줄기는 안개에 막혀요. 후광은 가까운 곳만 밝히고 안개 속 석상은 깨우지 못해요.',
+    };
+    if (L.id === '1-1') {
+      tutorial = { id: L.id, step: 0 };
+      torchBtn.classList.add('hinting');
+      setTimeout(() => { if (state === 'play' && tutorial?.id === L.id) banner('손전등을 톡 눌러 켜 보세요.', 3.2); }, 1900);
+    } else if (tips[L.id]) {
+      setTimeout(() => { if (state === 'play' && idx === i) banner(tips[L.id], 3.2); }, 1900);
+    }
+  }
   music(true);
   paintHud();
 }
+
+input.onAim = () => {
+  if (tutorial?.id !== '1-1') return;
+  tutorial.step = 2;
+  torchBtn.classList.remove('hinting');
+  banner('좋아요. 빛이 닿은 발판으로 건너 보세요.', 2.8);
+};
 
 function finishStage() {
   const L = LEVELS[idx], st = starsFor(game), n = st.filter(Boolean).length;
@@ -273,7 +305,7 @@ function finishStage() {
   save(KEY_TOP, kept);
   lastEntry = kept.some(e => e.uid === uid) ? uid : null;
 
-  state = 'clear'; input.enabled = false; input.reset(); pauseBtn.hidden = true; retryBtn.hidden = true; banner('');
+  state = 'clear'; app.classList.remove('is-playing'); tutorial = null; torchBtn.classList.remove('hinting'); input.enabled = false; input.reset(); pauseBtn.hidden = true; retryBtn.hidden = true; banner('');
   music(false);
   const lastStage = idx + 1 >= LEVELS.length;
   eyebrow.hidden = true;
@@ -307,11 +339,11 @@ function paintHud() {
     hud.shard.textContent = `${got}/3`; hud.shard.classList.toggle('got', got > 0);
     hud.timeLabel.textContent = '시간'; hud.time.textContent = fmt(game.t);
   } else {
-    key = `menu|${totalStars()}`;
+    key = `menu|${totalStars()}|${clearCount()}`;
     if (key === hudCache) return; hudCache = key;
     hud.stage.textContent = '룩스 앤 움브라'; hud.name.textContent = 'Lux & Umbra';
-    hud.shardLabel.textContent = '별'; hud.shard.textContent = `★ ${totalStars()}`; hud.shard.classList.remove('got');
-    hud.timeLabel.textContent = '스테이지'; hud.time.textContent = `${LEVELS.filter((L, i) => progress[L.id]).length}/${LEVELS.length}`;
+    hud.shardLabel.textContent = '별'; hud.shard.textContent = `★ ${totalStars()} / ${LEVELS.length * 3}`; hud.shard.classList.remove('got');
+    hud.timeLabel.textContent = '스테이지'; hud.time.textContent = `${clearCount()}/${LEVELS.length}`;
   }
 }
 
@@ -321,7 +353,11 @@ function events() {
     view.onEvent(game, e);
     if (demo) continue; // the title demo plays silently
     switch (e.type) {
-      case 'torchOn': sfx.torchOn(); break;
+      case 'torchOn':
+        sfx.torchOn();
+        torchBtn.classList.remove('hinting');
+        if (tutorial?.id === '1-1' && tutorial.step === 0) { tutorial.step = 1; banner('손전등 버튼을 누른 채 끌어 조준해 보세요.', 3.2); }
+        break;
       case 'torchOff': sfx.torchOff(); break;
       case 'lever': case 'leverBack': sfx.lever(); break;
       case 'mirror': sfx.lens(); break;

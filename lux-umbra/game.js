@@ -75,12 +75,14 @@ export function createGame(def) {
     crates: lv.crates.map(c => ({ x: c.x + (1 - PHYS.cw) / 2, y: c.y, w: PHYS.cw, h: 1, vx: 0, vy: 0, hx: c.x, hy: c.y })),
     statues: lv.statues.map(m => ({ x: m.x + (1 - PHYS.sw) / 2, y: m.y + 1 - PHYS.sh, w: PHYS.sw, h: PHYS.sh, vy: 0, vx: 0, awake: false, face: -1, walk: 0, hx: m.x, hy: m.y })),
     shards: lv.shards.map(q => ({ ...q, got: false })), secret: new Uint8Array(w * h), saws: lv.saws,
+    lampOnly: new Set((def.lampOnly || []).map(([x, y]) => y * w + x)),
+    mirrorOnly: new Set((def.mirrorOnly || []).map(([x, y]) => y * w + x)),
     t: 0, deaths: 0, cleared: false, events: [], snap: null, startPos: lv.start,
   };
   for (let i = 0; i < w * h; i++) if (REACTIVE.has(lv.tiles[i])) s.reactive.push(i);
   for (const i of lv.secret) s.secret[i] = 1;
   s.mirrorAt = new Map(s.mirrors.map(m => [m.i, m]));
-  // fog: rectangles from the level data plus 'f' tiles. Nothing but your own halo reaches into it.
+  // Fog blocks long-range light. The player's short halo can reveal nearby floor, but never wakes a statue in the fog.
   s.fog = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) if (lv.tiles[i] === 'f') s.fog[i] = 1;
   for (const f of def.fog || []) for (let y = f.y; y < f.y + f.h; y++) for (let x = f.x; x < f.x + f.w; x++) if (x >= 0 && y >= 0 && x < w && y < h) s.fog[y * w + x] = 1;
@@ -193,11 +195,11 @@ export function trace(s, x0, y0, x1, y1, col) {
 }
 
 // Every light in the scene right now (lamps, room lights, the torch).
-export function lightSources(s) {
+export function lightSources(s, includeTorch = true) {
   const out = [];
   for (const L of s.lamps) if (L.g ? s.groups[L.g] : L.on) out.push(L);
   for (const z of s.zones) if (z.g ? s.groups[z.g] : z.on) out.push({ kind: 'zone', ...z });
-  if (torchLit(s) && !s.p.dead && !s.cleared) {
+  if (includeTorch && torchLit(s) && !s.p.dead && !s.cleared) {
     const o = torchOrigin(s);
     out.push({ kind: 'beam', x: o.x, y: o.y, dir: s.fl.aim, half: LIGHT.flashHalf, range: LIGHT.flashRange, col: s.fl.col, torch: true, dyn: true });
     out.push({ kind: 'radial', x: o.x, y: o.y, range: LIGHT.halo, col: s.fl.col, torch: true, halo: true, dyn: true });
@@ -222,10 +224,13 @@ function reflect(s, out) {
         let dx = cx - src.x, dy = cy - src.y;
         if (Math.abs(dx) >= Math.abs(dy)) { dx = Math.sign(dx); dy = 0; } else { dy = Math.sign(dy); dx = 0; }
         const ox = m.state === 0 ? -dy : dy, oy = m.state === 0 ? -dx : dx;
-        const key = `${m.i}|${ox},${oy}|${col}`;
+        // Keep beams with different ranges or motion states separate. Otherwise an earlier,
+        // shorter ray can suppress a longer ray that reaches the same mirror.
+        const reach2 = src.reflect ?? 16;
+        const key = `${m.i}|${ox},${oy}|${col}|${reach2}|${src.dyn ? 1 : 0}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const reach2 = src.reflect ?? 16; // a lamp can say how far its reflections carry
+        // A lamp can say how far its reflections carry.
         next.push({ kind: 'beam', x: cx, y: cy, dir: Math.atan2(oy, ox), half: 0.17, range: reach2, reflect: reach2, col, from: m, mirror: true, dyn: !!src.dyn });
       }
     }
@@ -242,7 +247,7 @@ export const torchOrigin = s => ({ x: s.p.x + s.p.w / 2, y: s.p.y + 0.35 });
 export const inFog = (s, x, y) => x >= 0 && y >= 0 && x < s.w && y < s.h && s.fog[Math.floor(y) * s.w + Math.floor(x)] === 1;
 
 function reach(s, src, px, py) {
-  if (!src.halo && inFog(s, px, py)) return 0;
+  if (!src.halo && (inFog(s, src.x, src.y) || inFog(s, px, py))) return 0;
   if (src.kind === 'zone') return px >= src.x && px <= src.x + src.w && py >= src.y && py <= src.y + src.h ? src.col : 0;
   const dx = px - src.x, dy = py - src.y, d = Math.hypot(dx, dy);
   if (d > src.range) return 0;
@@ -300,6 +305,7 @@ function staticKey(s) {
 
 function updateLight(s, initial = false) {
   const srcs = lightSources(s), bs = bodies(s);
+  const fixedSources = lightSources(s, false), reflectedSources = fixedSources.filter(src => src.mirror);
   const stat = [], dyn = [];
   for (const src of srcs) (src.dyn ? dyn : stat).push(src);
   const key = staticKey(s);
@@ -309,8 +315,9 @@ function updateLight(s, initial = false) {
   }
   for (const i of s.reactive) {
     const x = i % s.w, y = (i / s.w) | 0, c = s.tiles[i];
-    let m = s.staticLight[i];
-    for (const src of dyn) {
+    const lockedSources = s.mirrorOnly.has(i) ? reflectedSources : s.lampOnly.has(i) ? fixedSources : null;
+    let m = lockedSources ? tileLight(s, x, y, lockedSources) : s.staticLight[i];
+    if (!lockedSources) for (const src of dyn) {
       if (Math.abs(x + 0.5 - src.x) > src.range + 1 || Math.abs(y + 0.5 - src.y) > src.range + 1) continue;
       m |= tileLight(s, x, y, [src]);
     }
@@ -327,7 +334,8 @@ function updateLight(s, initial = false) {
   }
   for (const m of s.statues) {
     const cx = m.x + m.w / 2;
-    const lit = pointLight(s, cx, m.y + 0.3, srcs) | pointLight(s, cx, m.y + m.h / 2, srcs) | pointLight(s, cx, m.y + m.h - 0.25, srcs);
+    const senses = (x, y) => pointLight(s, x, y, inFog(s, x, y) ? srcs.filter(src => !src.halo) : srcs);
+    const lit = senses(cx, m.y + 0.3) | senses(cx, m.y + m.h / 2) | senses(cx, m.y + m.h - 0.25);
     const awake = lit !== 0;
     if (awake !== m.awake && !initial) s.events.push({ type: awake ? 'wake' : 'freeze', x: cx, y: m.y });
     m.awake = awake;

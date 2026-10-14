@@ -18,7 +18,7 @@ export function createInput({ stage, left, right, jump, blink, torch, knob }) {
     mouseAim: null,       // world-space point to aim at (resolved by main)
     mouseOn: false,
     lastAimShown: 0,
-    onPause: null, onRetry: null,
+    onPause: null, onRetry: null, onAim: null,
   };
 
   const flag = (el, on) => el && el.classList.toggle('on', on);
@@ -80,7 +80,7 @@ export function createInput({ stage, left, right, jump, blink, torch, knob }) {
   torch.addEventListener('pointermove', e => {
     if (!tp || e.pointerId !== tp.id) return;
     const dx = e.clientX - tp.x0, dy = e.clientY - tp.y0;
-    if (!tp.drag && Math.hypot(dx, dy) > DRAG_MIN) { tp.drag = true; st.q.lightSet = true; }
+    if (!tp.drag && Math.hypot(dx, dy) > DRAG_MIN) { tp.drag = true; st.q.lightSet = true; if (st.onAim) st.onAim(); }
     if (tp.drag) {
       // aim from the button centre, so a short drag in any direction works
       const ax = e.clientX - tp.cx, ay = e.clientY - tp.cy;
@@ -118,7 +118,7 @@ export function createInput({ stage, left, right, jump, blink, torch, knob }) {
     if (k === 'torch') st.q.toggle = true;
   });
   window.addEventListener('keyup', e => { const k = KEYS[e.code]; if (k) st.keys.delete(k); });
-  window.addEventListener('blur', () => { st.keys.clear(); thumbs.clear(); st.l = st.r = st.jumpHeld = st.thumbDark = false; [left, right, jump, blink].forEach(el => flag(el, false)); });
+  window.addEventListener('blur', () => st.reset());
 
   // mouse aim (only real mice, never touch)
   stage.addEventListener('pointermove', e => {

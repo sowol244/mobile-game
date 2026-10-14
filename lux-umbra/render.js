@@ -344,6 +344,8 @@ export function createRenderer(canvas) {
           g.fillStyle = rgba(B.edge, 0.07); g.fill();
           g.fillStyle = rgba(B.edge, c === 'S' ? 0.28 : 0.4);
           if (c === 'S') { g.beginPath(); g.arc(0.5, 0.5, 0.11, 0, TAU); g.arc(0.56, 0.46, 0.09, 0, TAU, true); g.fill('evenodd'); }
+          else if (c === 'R') { g.strokeStyle = rgba(B.edge, 0.65); g.lineWidth = 0.05; g.beginPath(); g.moveTo(0.37, 0.62); g.lineTo(0.63, 0.36); g.stroke(); }
+          else if (c === 'B') { g.strokeStyle = rgba(B.edge, 0.7); g.lineWidth = 0.045; g.beginPath(); g.moveTo(0.36, 0.43); g.lineTo(0.64, 0.43); g.moveTo(0.36, 0.57); g.lineTo(0.64, 0.57); g.stroke(); }
           else { g.beginPath(); g.arc(0.5, 0.5, 0.06, 0, TAU); g.fill(); }
         } else if (c === 'S') {
           g.fillStyle = '#0c0718'; roundRect(g, 0.02, 0.02, 0.96, 0.96, 0.08); g.fill();
@@ -356,7 +358,14 @@ export function createRenderer(canvas) {
           g.fillStyle = grd; roundRect(g, 0.03, 0.03, 0.94, 0.94, 0.08); g.fill();
           g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 0.04;
           g.beginPath(); g.moveTo(0.12, 0.12); g.lineTo(0.88, 0.12); g.stroke();
-          g.fillStyle = 'rgba(255,255,255,0.35)'; g.beginPath(); g.arc(0.5, 0.52, 0.12, 0, TAU); g.fill();
+          if (c === 'R' || c === 'B') {
+            g.save(); roundRect(g, 0.06, 0.06, 0.88, 0.88, 0.08); g.clip();
+            g.strokeStyle = c === 'R' ? 'rgba(66,18,24,0.7)' : 'rgba(12,33,72,0.7)'; g.lineWidth = 0.055;
+            g.beginPath();
+            if (c === 'R') { for (let k = -1; k < 4; k++) { g.moveTo(k * 0.34, 1); g.lineTo(k * 0.34 + 1, 0); } }
+            else { for (let k = 0; k < 4; k++) { g.moveTo(0, 0.24 + k * 0.22); g.lineTo(1, 0.24 + k * 0.22); } }
+            g.stroke(); g.restore();
+          } else { g.fillStyle = 'rgba(255,255,255,0.35)'; g.beginPath(); g.arc(0.5, 0.52, 0.12, 0, TAU); g.fill(); }
         }
         sprites[c + solid] = cv;
       }
@@ -376,6 +385,16 @@ export function createRenderer(canvas) {
         ctx.fillRect(x + 0.2 + hash(i + 1) * 0.6, y + 0.2 + hash(i + 2) * 0.6, 0.05, 0.05);
       } else if (a < 0.99) { ctx.globalAlpha = 1 - a; ctx.drawImage(sp[c + 0], x, y, 1, 1); }
       if (a > 0.01) { ctx.globalAlpha = a; ctx.drawImage(sp[c + 1], x, y, 1, 1); }
+      if (s.lampOnly.has(i) || s.mirrorOnly.has(i)) {
+        ctx.save();
+        ctx.globalAlpha = 0.8;
+        ctx.strokeStyle = s.mirrorOnly.has(i) ? '#d9efff' : '#fff0c7'; ctx.lineWidth = 0.045; ctx.lineCap = 'round';
+        ctx.beginPath();
+        if (s.mirrorOnly.has(i)) { ctx.moveTo(x + 0.38, y + 0.68); ctx.lineTo(x + 0.62, y + 0.32); ctx.moveTo(x + 0.32, y + 0.68); ctx.lineTo(x + 0.68, y + 0.68); }
+        else { ctx.arc(x + 0.5, y + 0.42, 0.1, Math.PI, 0); ctx.moveTo(x + 0.4, y + 0.46); ctx.lineTo(x + 0.6, y + 0.46); ctx.moveTo(x + 0.44, y + 0.51); ctx.lineTo(x + 0.56, y + 0.51); }
+        ctx.stroke();
+        ctx.restore();
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -562,7 +581,7 @@ export function createRenderer(canvas) {
       if (!s.fog[y * s.w + x]) continue;
       const k = hash(x * 31 + y * 7), ox = Math.sin(t * 0.5 + k * 6) * 0.15, oy = Math.cos(t * 0.4 + k * 5) * 0.1;
       const grd = ctx.createRadialGradient(x + 0.5 + ox, y + 0.5 + oy, 0.1, x + 0.5 + ox, y + 0.5 + oy, 0.95);
-      grd.addColorStop(0, 'rgba(24,20,44,0.85)'); grd.addColorStop(0.6, 'rgba(30,26,54,0.55)'); grd.addColorStop(1, 'rgba(30,26,54,0)');
+      grd.addColorStop(0, 'rgba(42,54,86,0.68)'); grd.addColorStop(0.6, 'rgba(50,64,100,0.4)'); grd.addColorStop(1, 'rgba(50,64,100,0)');
       ctx.fillStyle = grd; ctx.fillRect(x - 0.5, y - 0.5, 2, 2);
     }
   }
