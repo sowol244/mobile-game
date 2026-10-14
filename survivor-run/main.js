@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261014v';
-import { drawScene } from './render.js?v=1-1-20261014v';
+import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261015a';
+import { drawScene } from './render.js?v=1-1-20261015a';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014o';
 
 const $ = id => document.getElementById(id);
@@ -135,10 +135,11 @@ function updateHud() {
   const soldiers = game.companions.filter(companion => companion.life > 0);
   const soldierLife = soldiers.length ? Math.min(...soldiers.map(companion => companion.life)) : 0;
   const soldierMax = soldiers.length ? Math.max(...soldiers.map(companion => companion.maxLife)) : 1;
+  const soldierPermanent = soldiers.length > 0 && soldiers.every(companion => companion.permanent);
   hud.soldierRoot.hidden = soldiers.length === 0;
   hud.soldierCount.textContent = '×' + soldiers.length;
-  hud.soldierTime.textContent = Math.ceil(soldierLife) + '초';
-  hud.soldierFill.style.width = Math.max(0, soldierLife / soldierMax * 100) + '%';
+  hud.soldierTime.textContent = soldierPermanent ? '계속' : Math.ceil(soldierLife) + '초';
+  hud.soldierFill.style.width = soldierPermanent ? '100%' : Math.max(0, soldierLife / soldierMax * 100) + '%';
   const drone = game.drone && game.drone.life > 0 ? game.drone : null;
   hud.droneRoot.hidden = !drone;
   if (drone) {

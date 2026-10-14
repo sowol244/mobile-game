@@ -1,4 +1,4 @@
-import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=1-1-20261014v';
+import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=1-1-20261015a';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const tintedSpriteCache = new WeakMap();
@@ -56,27 +56,6 @@ function polygon(g, points, fill, stroke) {
   g.closePath();
   if (fill) { g.fillStyle = fill; g.fill(); }
   if (stroke) { g.strokeStyle = stroke; g.stroke(); }
-}
-
-function wreck(g, x, y, scale) {
-  g.save();
-  g.translate(x, y);
-  g.scale(scale, scale);
-  g.rotate(-0.08);
-  g.fillStyle = 'rgba(0,0,0,.34)';
-  g.beginPath(); g.ellipse(0, 12, 38, 10, 0, 0, Math.PI * 2); g.fill();
-  roundRect(g, -34, -17, 68, 31, 9, '#58717a', '#26343a', 3);
-  polygon(g, [[-20, -17], [-11, -33], [13, -33], [24, -17]], '#344c54', '#26343a');
-  polygon(g, [[-9, -29], [10, -29], [17, -18], [-15, -18]], '#99b2b1');
-  roundRect(g, -35, -7, 10, 14, 4, '#22292a');
-  roundRect(g, 24, -7, 10, 14, 4, '#22292a');
-  roundRect(g, -31, 3, 11, 9, 3, '#252a2a');
-  roundRect(g, 20, 3, 11, 9, 3, '#252a2a');
-  g.fillStyle = '#e59c51';
-  g.fillRect(-31, -9, 6, 5); g.fillRect(25, -9, 6, 5);
-  g.strokeStyle = '#9ba7a1'; g.lineWidth = 2;
-  g.beginPath(); g.moveTo(-24, -2); g.lineTo(-8, 3); g.lineTo(3, -1); g.stroke();
-  g.restore();
 }
 
 function drawStreetLamp(g, x, y, scale, side, phase) {
@@ -193,13 +172,9 @@ function drawRoad(g, w, h, offset, assets = {}) {
       if (kind === 0) drawStreetLamp(g, x, y, scale, side, offset * 15 + i);
       else if (kind === 1) drawRoadSign(g, x, y, scale, side, i);
       else if (kind === 2) drawRubble(g, x, y, scale, side);
-      else wreck(g, x, y, scale * 0.62);
+      else drawRubble(g, x, y, scale * 0.78, side);
     }
   }
-
-  const yProp = horizon + (((0.29 + offset * 0.44) % 1) * (h - horizon));
-  const propScale = 0.28 + clamp((yProp - horizon) / (h - horizon), 0, 1) * 0.55;
-  wreck(g, w * 0.5 - roadHalfWidth(w, h, yProp) - 35 * propScale, yProp, propScale);
 
   const topHalf = roadHalfWidth(w, h, horizon);
   const bottomHalf = roadHalfWidth(w, h, h);
@@ -555,7 +530,7 @@ function drawSupport(g, s, time, assets) {
       : clamp(companion.exit / 0.42, 0, 1);
     const stride = time * 17 + companion.id * 2.2;
     const step = Math.sin(stride);
-    const bob = Math.abs(step) * 4.2;
+    const bob = Math.abs(step) * 3.8;
     const runSway = step * 2.2;
     const generated = companion.id % 2 === 1;
     const standingImage = generated ? assets.supportSurvivorA : assets.supportSurvivorB;
@@ -563,10 +538,10 @@ function drawSupport(g, s, time, assets) {
     const image = step > 0 && runningImage?.complete && runningImage.naturalWidth ? runningImage : standingImage;
     const flipX = companion.side > 0;
     const drawX = companion.x + runSway;
-    const muzzleX = drawX + (flipX ? -13 : 13);
-    const muzzleY = companion.y - 54 + bob;
-    drawFootstepDust(g, companion.x, companion.y, 0.66, stride, '#958b74');
-    drawSprite(g, image, drawX, companion.y + bob, 40, 70, 0, step * 0.08 - companion.recoil * 0.025, alpha, null, flipX);
+    const muzzleX = drawX + (flipX ? -12 : 12);
+    const muzzleY = companion.y - 48 + bob;
+    drawFootstepDust(g, companion.x, companion.y, 0.6, stride, '#958b74');
+    drawSprite(g, image, drawX, companion.y + bob, 36, 62, 0, step * 0.08 - companion.recoil * 0.025, alpha, null, flipX);
     drawSupportMuzzle(g, muzzleX, muzzleY, companion.muzzleFlash, '#d9b27a');
   }
 

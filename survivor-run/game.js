@@ -20,11 +20,11 @@ export const BARREL_CONFIG = Object.freeze({
   explosive: Object.freeze({ hp: 30, color: '#8d4937' }),
 });
 export const SUPPORT_CONFIG = Object.freeze({
-  companionDuration: 10,
-  companionMaxCount: 1,
-  companionDuplicateExtension: 10,
-  companionMaxDuration: 20,
-  companionDamage: 6,
+  companionMaxCount: 2,
+  companionSlotOffset: 52,
+  companionDamage: 4,
+  companionDuplicatePower: 0.25,
+  companionMaxPower: 2,
   companionFireInterval: 0.26,
   droneDuration: 8,
   droneDuplicateExtension: 4,
@@ -92,7 +92,7 @@ export function createGame(w, h) {
     missiles: [], particles: [], rapidFireTimer: 0,
     score: 0, kills: 0, barrelsBroken: 0, distance: 0,
     roadOffset: 0, waveIndex: 0, waveSpawned: 0,
-    rapidfireSpawned: false, firstChoiceSpawned: false, rocketBarrelSpawned: false,
+    rapidfireSpawned: false, firstChoiceSpawned: false, secondOfferSpawned: false,
     firstExplosiveSpawned: false, secondExplosiveSpawned: false, obstacleSpawned: false,
     boss: null, bossStarted: false, bossDefeated: false, bossWarningShown: false, bossAlertTimer: 0,
     permanentRapidFire: false,
@@ -150,7 +150,7 @@ function spawnZombie(s, forcedKind, forcedLane) {
   });
 }
 
-function spawnBarrelPair(s, rewards) {
+function spawnBarrelOffer(s, rewards) {
   const offer = {};
   for (const item of rewards) {
     const y = s.h * 0.18;
@@ -364,21 +364,22 @@ function rewardBarrel(s, barrel, events) {
       const occupiedSlots = new Set(active.map(companion => companion.slot));
       const slot = Array.from({ length: SUPPORT_CONFIG.companionMaxCount }, (_, index) => index)
         .find(index => !occupiedSlots.has(index)) ?? active.length % SUPPORT_CONFIG.companionMaxCount;
-      const direction = s.x < s.w * 0.5 ? 1 : -1;
-      const offsets = [-direction * 64, direction * 64, direction * 128];
-      const side = Math.sign(offsets[slot]) || -1;
+      const side = slot === 0 ? -1 : 1;
+      const offsetX = side * SUPPORT_CONFIG.companionSlotOffset;
       s.companions.push({
-        id: s.nextCompanionId++, side, slot, x: s.x + offsets[slot], y: s.y + 10,
-        life: SUPPORT_CONFIG.companionDuration, maxLife: SUPPORT_CONFIG.companionDuration,
+        id: s.nextCompanionId++, side, slot, permanent: true,
+        x: s.x + offsetX, y: s.y + 10,
+        life: Infinity, maxLife: Infinity,
         fireTimer: 0.16, appear: 0.4, exit: 0, recoil: 0, muzzleFlash: 0, phase: Math.random() * 6,
       });
-      summonEffect(s, s.x + offsets[slot], s.y + 4);
+      summonEffect(s, s.x + offsetX, s.y + 4);
       events.push({ type: 'reward', label: '지원 사수 +1' });
     } else {
-      const companion = active.reduce((shortest, current) => current.life < shortest.life ? current : shortest);
-      companion.life = Math.min(SUPPORT_CONFIG.companionMaxDuration, companion.life + SUPPORT_CONFIG.companionDuplicateExtension);
-      companion.maxLife = Math.max(companion.maxLife, companion.life);
-      events.push({ type: 'reward', label: '지원 사수 지속시간 +10초' });
+      s.companionPower = Math.min(
+        SUPPORT_CONFIG.companionMaxPower,
+        s.companionPower + SUPPORT_CONFIG.companionDuplicatePower,
+      );
+      events.push({ type: 'reward', label: '지원 사수 공격력 +25%' });
     }
   } else if (barrel.kind === 'drone') {
     if (!s.drone || s.drone.life <= 0) {
@@ -623,7 +624,7 @@ function spawnScriptedObjects(s) {
   }
   if (s.t >= 16 && !s.firstChoiceSpawned) {
     s.firstChoiceSpawned = true;
-    spawnBarrelPair(s, [
+    spawnBarrelOffer(s, [
       { lane: 0, kind: 'companion', hp: 40 },
       { lane: 2, kind: 'upgrade', hp: 45 },
     ]);
@@ -632,9 +633,13 @@ function spawnScriptedObjects(s) {
     s.firstExplosiveSpawned = true;
     spawnExplosiveBarrel(s, 0);
   }
-  if (s.t >= 42.5 && !s.rocketBarrelSpawned) {
-    s.rocketBarrelSpawned = true;
-    spawnRewardBarrel(s, 1, 'rocket', { hp: 100 });
+  if (s.t >= 42.5 && !s.secondOfferSpawned) {
+    s.secondOfferSpawned = true;
+    spawnBarrelOffer(s, [
+      { lane: 0, kind: 'companion', hp: 40 },
+      { lane: 1, kind: 'drone', hp: 70 },
+      { lane: 2, kind: 'rocket', hp: 100 },
+    ]);
   }
   if (s.t >= 45 && !s.secondExplosiveSpawned) {
     s.secondExplosiveSpawned = true;
@@ -668,25 +673,21 @@ function findDroneTarget(s, fromX, fromY) {
 }
 
 function updateCompanions(s, dt, events) {
-  const direction = s.x < s.w * 0.5 ? 1 : -1;
-  const formation = [
-    { x: -direction * 64, y: -4 },
-    { x: direction * 64, y: -4 },
-    { x: direction * 128, y: -24 },
-  ];
+  const halfRoad = roadHalfWidth(s.w, s.h, s.y) * 0.95;
+  const roadLeft = s.w * 0.5 - halfRoad;
+  const roadRight = s.w * 0.5 + halfRoad;
   for (const companion of s.companions) {
     companion.phase += dt * 9;
     companion.appear = Math.max(0, companion.appear - dt);
     companion.muzzleFlash = Math.max(0, companion.muzzleFlash - dt);
     companion.recoil *= Math.exp(-dt * 12);
     if (companion.life > 0) {
-      companion.life = Math.max(0, companion.life - dt);
-      const position = formation[companion.slot] || formation[0];
-      const halfRoad = roadHalfWidth(s.w, s.h, s.y + position.y) * 0.84;
-      const targetX = clamp(s.x + position.x, s.w * 0.5 - halfRoad, s.w * 0.5 + halfRoad);
+      if (!companion.permanent) companion.life = Math.max(0, companion.life - dt);
+      const offsetX = (companion.slot === 0 ? -1 : 1) * SUPPORT_CONFIG.companionSlotOffset;
+      const targetX = clamp(s.x + offsetX, roadLeft, roadRight);
       companion.x += (targetX - companion.x) * Math.min(1, dt * 10);
-      companion.side = Math.sign(companion.x - s.x) || companion.side;
-      companion.y = s.y + 17 + position.y + Math.sin(companion.phase) * 1.5;
+      companion.side = companion.slot === 0 ? -1 : 1;
+      companion.y = s.y + 13 + Math.sin(companion.phase) * 1.5;
       if (companion.life <= 0) {
         companion.exit = 0.42;
         continue;
@@ -947,6 +948,13 @@ export function updateGame(s, dt, targetX) {
     s.targetX = clamp(targetX, s.w * 0.5 - reach, s.w * 0.5 + reach);
   }
   const previousX = s.x;
+  const supportSlots = new Set(s.companions.filter(companion => companion.life > 0).map(companion => companion.slot));
+  const movementReach = roadHalfWidth(s.w, s.h, s.y) * 0.95;
+  const leftReserve = supportSlots.has(0) ? SUPPORT_CONFIG.companionSlotOffset : 0;
+  const rightReserve = supportSlots.has(1) ? SUPPORT_CONFIG.companionSlotOffset : 0;
+  const minX = s.w * 0.5 - movementReach + leftReserve;
+  const maxX = s.w * 0.5 + movementReach - rightReserve;
+  s.targetX = clamp(s.targetX, minX, maxX);
   s.x += (s.targetX - s.x) * Math.min(1, dt * 12);
   if (Math.abs(s.x - previousX) > 0.5) {
     s.hasPlayerMoved = true;
