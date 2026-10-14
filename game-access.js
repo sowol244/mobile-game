@@ -27,6 +27,22 @@
     catch { return false; }
   }
 
+  function isLocalPreview() {
+    return ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+  }
+
+  function isOpenedFromHub() {
+    if (window.parent === window) return false;
+    try {
+      const expectedPath = new URL('../', location.href).pathname;
+      const parentUrl = new URL(window.parent.location.href);
+      const parentPath = parentUrl.pathname.replace(/index\.html$/i, '').replace(/\/?$/, '/');
+      return parentUrl.origin === location.origin && parentPath === expectedPath;
+    } catch {
+      return false;
+    }
+  }
+
   async function readStatus() {
     const response = await fetch(statusUrl, {
       headers: { apikey: publishableKey },
@@ -49,6 +65,13 @@
     if (!adminUnlocked && (status === 'development' || status === 'maintenance')) return status;
     if (!adminUnlocked && requiresAdmin) return 'development';
     return null;
+  }
+
+  async function readAccessState() {
+    if (isLocalPreview()) return null;
+    const status = await readStatus();
+    if (status) return status;
+    return isOpenedFromHub() ? null : 'direct';
   }
 
   function waitForDocument() {
@@ -87,6 +110,7 @@
     if (status === 'development') return '개발 중입니다. 기다려 주세요.';
     if (status === 'maintenance') return '점검 중입니다. 잠시 후 다시 이용해 주세요.';
     if (status === 'hidden') return '이 게임은 현재 이용할 수 없습니다.';
+    if (status === 'direct') return '게임 선택 화면에서 게임을 실행해 주세요.';
     return '게임 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
   }
 
@@ -101,7 +125,10 @@
     const card = document.createElement('main');
     card.className = 'game-access-card';
     const title = document.createElement('h1');
-    title.textContent = status === 'development' ? '개발 중입니다' : status === 'maintenance' ? '점검 중입니다' : '게임을 이용할 수 없습니다';
+    title.textContent = status === 'development' ? '개발 중입니다'
+      : status === 'maintenance' ? '점검 중입니다'
+      : status === 'direct' ? '게임 선택 화면에서 실행해 주세요'
+      : '게임을 이용할 수 없습니다';
     const message = document.createElement('p');
     message.textContent = messageFor(status);
     const back = document.createElement('button');
@@ -123,7 +150,7 @@
   (async () => {
     await waitForDocument();
     try {
-      const status = await readStatus();
+      const status = await readAccessState();
       if (status) {
         blockPage(status);
         return;
@@ -134,7 +161,7 @@
       window.setInterval(async () => {
         if (!allowed) return;
         try {
-          const latestStatus = await readStatus();
+          const latestStatus = await readAccessState();
           if (latestStatus) blockPage(latestStatus);
         } catch (error) {
           console.warn('게임 상태 갱신에 실패했습니다.', error);
