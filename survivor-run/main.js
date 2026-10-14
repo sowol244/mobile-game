@@ -1,4 +1,4 @@
-import { createGame, resizeGame, updateGame, STAGE_DURATION } from './game.js?v=1-1-20261014e';
+import { createGame, resizeGame, updateGame, STAGE_DURATION, applyPlayerDrag } from './game.js?v=1-1-20261014f';
 import { drawScene } from './render.js?v=1-1-20261014e';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014';
 
@@ -43,11 +43,19 @@ const tutorials = [
 
 let state = 'title', game = null, lastFrame = performance.now();
 let viewW = 1, viewH = 1, dpr = 1;
-let pointerDown = false, pointerX = null, keys = new Set();
+const TOUCH_DRAG_SENSITIVITY = 1.0;
+let pointerDown = false, activePointerId = null, pointerLastClientX = null, keys = new Set();
 let tutorialStep = 0, bannerTimer = 0, lastSaved = null;
 
 function showPanel(name) {
   for (const [key, panel] of Object.entries(panels)) panel.hidden = key !== name;
+}
+
+function resetPointerInput(stopAtPlayer = true) {
+  pointerDown = false;
+  activePointerId = null;
+  pointerLastClientX = null;
+  if (stopAtPlayer && game) game.targetX = game.x;
 }
 
 function resize() {
@@ -66,7 +74,8 @@ function resize() {
 }
 
 function showTitle() {
-  state = 'title'; game = null; keys.clear(); pointerDown = false; pointerX = null;
+  resetPointerInput();
+  state = 'title'; game = null; keys.clear();
   hud.root.hidden = true; hud.bossRoot.hidden = true; hud.tutorialHint.hidden = true;
   $('pause').hidden = true;
   $('title').innerHTML = 'DEAD<br>ROUTE';
@@ -80,7 +89,7 @@ function beginGame() {
   unlock();
   resize();
   game = createGame(viewW, viewH);
-  state = 'play'; keys.clear(); pointerDown = false; pointerX = null;
+  state = 'play'; keys.clear(); resetPointerInput(false);
   bannerTimer = 0;
   $('banner').classList.remove('on');
   hud.tutorialHint.hidden = true;
@@ -145,7 +154,7 @@ function handleEvents(events) {
 
 function finishGame(result) {
   if (!game || state === 'over') return;
-  state = 'over'; keys.clear(); pointerDown = false;
+  state = 'over'; keys.clear(); resetPointerInput();
   $('pause').hidden = true; hud.root.hidden = true; hud.bossRoot.hidden = true;
   const entry = {
     id: Date.now(), score: game.score, kills: game.kills,
@@ -231,7 +240,7 @@ $('home').addEventListener('click', showTitle);
 document.querySelectorAll('.back').forEach(button => button.addEventListener('click', () => showPanel('main')));
 $('pause').addEventListener('click', () => {
   if (state !== 'play') return;
-  state = 'paused'; keys.clear(); pointerDown = false;
+  state = 'paused'; keys.clear(); resetPointerInput();
   $('pause').hidden = true; showPanel('pause'); overlay.hidden = false;
 });
 $('resume').addEventListener('click', () => {
@@ -252,19 +261,29 @@ $('mute').addEventListener('click', () => {
 paintMute();
 
 canvas.addEventListener('pointerdown', event => {
-  if (state !== 'play') return;
+  if (state !== 'play' || !game || pointerDown || event.isPrimary === false) return;
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  if (event.target instanceof Element && event.target.closest('button, a, input, select, textarea, [data-no-drag]')) return;
   event.preventDefault();
   pointerDown = true;
-  const rect = canvas.getBoundingClientRect();
-  pointerX = event.clientX - rect.left;
+  activePointerId = event.pointerId;
+  pointerLastClientX = event.clientX;
   try { canvas.setPointerCapture(event.pointerId); } catch { /* 입력 중단 시 다음 터치에서 복구합니다. */ }
 });
 canvas.addEventListener('pointermove', event => {
-  if (!pointerDown || state !== 'play') return;
+  if (!pointerDown || event.pointerId !== activePointerId || state !== 'play' || !game) return;
+  event.preventDefault();
   const rect = canvas.getBoundingClientRect();
-  pointerX = event.clientX - rect.left;
+  if (!rect.width) return;
+  const deltaCssX = event.clientX - pointerLastClientX;
+  pointerLastClientX = event.clientX;
+  const deltaGameX = deltaCssX * (viewW / rect.width) * TOUCH_DRAG_SENSITIVITY;
+  applyPlayerDrag(game, deltaGameX);
 });
-const releasePointer = () => { pointerDown = false; };
+const releasePointer = event => {
+  if (event && event.pointerId !== activePointerId) return;
+  resetPointerInput();
+};
 canvas.addEventListener('pointerup', releasePointer);
 canvas.addEventListener('pointercancel', releasePointer);
 
@@ -277,7 +296,7 @@ window.addEventListener('keydown', event => {
   if (event.key === 'Escape') $('pause').click();
 });
 window.addEventListener('keyup', event => keys.delete(event.key.toLowerCase()));
-window.addEventListener('blur', () => { keys.clear(); pointerDown = false; });
+window.addEventListener('blur', () => { keys.clear(); resetPointerInput(); });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && state === 'play') $('pause').click();
 });
@@ -291,7 +310,7 @@ function frame(now) {
   const dt = Math.min(0.05, Math.max(0, (now - lastFrame) / 1000));
   lastFrame = now;
   if (state === 'play' && game) {
-    let target = pointerDown ? pointerX : null;
+    let target = null;
     const direction = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
     if (direction) target = game.targetX + direction * game.w * 0.9 * dt;
     const events = updateGame(game, dt, target);
