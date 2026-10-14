@@ -156,7 +156,7 @@ Deno.serve(async request => {
     const gameId = input?.gameId;
     const status = input?.status;
     if (!allowedGameIds.has(gameId)) return json({ error: '게임을 확인할 수 없습니다.' }, 400);
-    if (status !== null && status !== 'development' && status !== 'maintenance') {
+    if (status !== null && status !== 'hidden' && status !== 'development' && status !== 'maintenance') {
       return json({ error: '상태를 확인해 주세요.' }, 400);
     }
 

@@ -51,6 +51,7 @@
   .badge.wip { background: #3a3358; color: var(--muted); }
   .badge.dev { background: #7d552b; color: #ffe2a1; }
   .badge.maintenance { background: #70434a; color: #ffd5d9; }
+  .badge.hidden { background: #3a3358; color: #d9d2f2; }
   .game.wip { opacity: 0.6; }
   /* My own designs: a highlighted group at the top */
   details.own { margin-bottom: 8px; padding: 2px 10px 6px; border-radius: 18px; background: linear-gradient(160deg, rgba(255, 210, 63, 0.12), rgba(255, 93, 122, 0.08)); box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.35); }
@@ -80,7 +81,7 @@
     <h2>최근에 한 게임</h2>
     <div class="row"></div>
   </section>
-  <nav id="tree" aria-label="게임 목록"></nav>
+  <nav id="tree" aria-label="게임 목록"><p class="note">게임 목록을 불러오는 중입니다.</p></nav>
   <p id="admin-note" class="note" hidden>게임 상태 설정은 모든 방문자에게 적용됩니다.</p>
   <p class="note">이곳의 게임들은 예고 없이 추가되거나 삭제될 수 있습니다.</p>
 </main>
@@ -156,7 +157,7 @@ function withAdminStatusControl(g, card) {
   if (!showDevGames || !cloudStatusLoaded) return card;
   const select = el('select');
   select.setAttribute('aria-label', `${g.name} 상태 설정`);
-  for (const [value, label] of [['', '정상'], ['development', '개발 중'], ['maintenance', '점검 중']]) {
+  for (const [value, label] of [['', '정상'], ['hidden', '숨김'], ['development', '개발 중'], ['maintenance', '점검 중']]) {
     select.append(el('option', { value }, label));
   }
   select.value = configuredStatus(g) || '';
@@ -183,6 +184,7 @@ function gameRow(g) {
   const status = gameStatus(g);
   if (g.wip) title.append(el('span', { className: 'badge wip' }, '작업 중'));
   else {
+    if (status === 'hidden') title.append(el('span', { className: 'badge hidden' }, '숨김'));
     if (status === 'development') title.append(el('span', { className: 'badge dev' }, '개발 중'));
     if (status === 'maintenance') title.append(el('span', { className: 'badge maintenance' }, '점검 중'));
     if (!status && g.dev) title.append(el('span', { className: 'badge dev' }, '개발 중'));
@@ -192,6 +194,11 @@ function gameRow(g) {
   const img = el('img', { src: 'icons/' + (g.icon || g.id + '.png'), alt: '' });
   img.onerror = () => { img.style.visibility = 'hidden'; };
   if (g.wip) return withAdminStatusControl(g, el('div', { className: 'game wip' }, img, title));
+  if (status === 'hidden' && showDevGames) {
+    const a = el('a', { className: 'game', href: `${g.id}/` }, img, title);
+    a.addEventListener('click', () => open(g.id));
+    return withAdminStatusControl(g, a);
+  }
   if (status) {
     const button = el('button', { className: 'game game-unavailable', type: 'button' }, img, title);
     button.addEventListener('click', () => showStatusMessage(status));
@@ -218,13 +225,17 @@ function group(path, label, count, children, sub) {
 }
 
 const tree = document.getElementById('tree');
-function visibleGames() { return showDevGames ? [...GAMES, ...DEV_GAMES] : GAMES; }
+function visibleGames() {
+  const games = showDevGames ? [...GAMES, ...DEV_GAMES] : GAMES;
+  return showDevGames ? games : games.filter(g => gameStatus(g) !== 'hidden');
+}
 
 function renderTree() {
   tree.replaceChildren();
   for (const top of TOP) {
     const key = top.key || top.name;
     const games = visibleGames().filter(g => g.group[0] === key);
+    if (!games.length) continue;
     const items = [];
     for (const g of games.filter(g => g.group.length === 1)) items.push(gameRow(g));
     const subs = [...new Set(games.filter(g => g.group[1]).map(g => g.group[1]))];
@@ -260,7 +271,7 @@ function cleanStatuses(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const allowed = new Set([...GAMES, ...DEV_GAMES].map(game => game.id));
   return Object.fromEntries(Object.entries(value).filter(([id, status]) =>
-    allowed.has(id) && (status === null || status === 'development' || status === 'maintenance')
+    allowed.has(id) && (status === null || status === 'hidden' || status === 'development' || status === 'maintenance')
   ));
 }
 
@@ -273,13 +284,15 @@ async function refreshGameStatuses() {
     if (!response.ok) throw new Error(`상태를 불러오지 못했습니다 (${response.status}).`);
     const rows = await response.json();
     const next = cleanStatuses(rows[0]?.statuses);
+    const firstLoad = !cloudStatusLoaded;
     const changed = JSON.stringify(next) !== JSON.stringify(statusOverrides);
     statusOverrides = next;
     cloudStatusLoaded = true;
-    if (changed) { renderTree(); renderRecent(); }
+    if (firstLoad || changed) { renderTree(); renderRecent(); }
     else if (showDevGames) renderRecent();
   } catch (error) {
     console.error('공유 게임 상태를 불러오지 못했습니다.', error);
+    if (!cloudStatusLoaded) { renderTree(); renderRecent(); }
   }
 }
 
@@ -298,8 +311,6 @@ async function callAdminFunction(body) {
   return result;
 }
 
-renderTree();
-renderRecent();
 refreshGameStatuses();
 setInterval(refreshGameStatuses, 15000);
 
