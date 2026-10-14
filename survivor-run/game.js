@@ -7,7 +7,7 @@ const WAVE_PLAN = [
   { start: 12.2, count: 6, interval: 1.34, pattern: ['walker', 'runner'] },
   { start: 25.15, count: 15, interval: 0.63, pattern: ['walker', 'walker', 'runner'] },
   { start: 41.5, count: 9, interval: 1.23, pattern: ['walker', 'runner', 'walker'] },
-  { start: 55.1, count: 25, interval: 0.34, pattern: ['walker', 'runner', 'runner', 'walker'] },
+  { start: 55.1, count: 25, interval: 0.16, pattern: ['walker', 'runner', 'runner', 'walker'] },
 ];
 
 const PHASE_CUES = [
