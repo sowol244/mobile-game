@@ -161,19 +161,6 @@ function drawTollgateDetails(g, w, h, offset) {
   g.restore();
 }
 
-function stageOneRoadHalfWidth(w, h, y) {
-  const openingY = h * 0.17;
-  const fullRoadY = h * 0.205;
-  const openingHalf = w * 0.055;
-  if (y <= openingY) return openingHalf;
-  if (y < fullRoadY) {
-    const t = clamp((y - openingY) / (fullRoadY - openingY), 0, 1);
-    const fullHalf = roadHalfWidth(w, h, fullRoadY);
-    return openingHalf + (fullHalf - openingHalf) * Math.pow(t, 1.4);
-  }
-  return roadHalfWidth(w, h, y);
-}
-
 function projectedRoadBoundary(w, h, topY, halfWidthAt, side, inset = 0) {
   const points = [];
   const segments = 24;
@@ -196,6 +183,16 @@ function projectedRoadShoulderPoints(w, h, topY, halfWidthAt, side, outerOffset,
     ...projectedRoadBoundary(w, h, topY, halfWidthAt, side, -outerOffset),
     ...projectedRoadBoundary(w, h, topY, halfWidthAt, side, -innerOffset).reverse(),
   ];
+}
+
+function drawRoadSurface(g, w, h, horizon, halfWidthAt, tollgate) {
+  polygon(g, projectedRoadPoints(w, h, horizon, halfWidthAt, -8), tollgate ? '#6e6755' : '#847b5f');
+  polygon(g, projectedRoadPoints(w, h, horizon, halfWidthAt), tollgate ? '#373e41' : '#424a4d');
+  const asphalt = g.createLinearGradient(w / 2, horizon, w / 2, h);
+  asphalt.addColorStop(0, tollgate ? '#555c5e' : '#626b6b');
+  asphalt.addColorStop(0.38, tollgate ? '#42494c' : '#4e5759');
+  asphalt.addColorStop(1, tollgate ? '#2c3236' : '#353d41');
+  polygon(g, projectedRoadPoints(w, h, horizon, halfWidthAt, 3), asphalt);
 }
 
 function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
@@ -250,10 +247,13 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
     g.fillStyle = vignette; g.fillRect(0, 0, w, h);
     return;
   }
-  // Follow the painted road opening so the procedural surface grows out of the
-  // narrow vanishing point instead of cutting across the skyline.
-  const horizon = h * (tollgate ? 0.13 : 0.17);
-  const halfRoadAt = y => tollgate ? roadHalfWidth(w, h, y) : stageOneRoadHalfWidth(w, h, y);
+  // Build Stage 1's road behind the transparent road opening in its backdrop.
+  // The image alpha then provides the natural transition at the far end.
+  const horizon = h * 0.13;
+  const detailHorizon = h * (tollgate ? 0.13 : 0.20);
+  const halfRoadAt = y => roadHalfWidth(w, h, y);
+  const backdrop = assets.roadsideBackdrop;
+  const hasRoadsideBackdrop = backdrop?.complete && backdrop.naturalWidth;
   const groundOffset = 0;
   const sky = g.createLinearGradient(0, 0, 0, h);
   sky.addColorStop(0, tollgate ? '#626a6d' : '#707572'); sky.addColorStop(0.23, tollgate ? '#494f51' : '#555b59'); sky.addColorStop(0.48, tollgate ? '#303638' : '#39413f'); sky.addColorStop(1, tollgate ? '#191e20' : '#1e2926');
@@ -265,31 +265,33 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
   for (const side of [-1, 1]) {
     polygon(g, projectedRoadShoulderPoints(w, h, horizon, halfRoadAt, side, 21, 6), tollgate ? '#565653' : '#514e43');
   }
-  const ruinHeights = [0.12, 0.2, 0.15, 0.23, 0.17];
-  for (const side of [-1, 1]) {
-    for (let i = 0; i < ruinHeights.length; i++) {
-      const width = w * (0.09 + (i % 2) * 0.018);
-      const x = side < 0 ? w * (0.015 + i * 0.092) : w * (0.985 - (i + 1) * 0.092) - width;
-      const height = h * ruinHeights[(i + (side > 0 ? 2 : 0)) % ruinHeights.length];
-      const base = horizon + 28;
-      const tone = ['#414746', '#484d4b', '#3a403f'][i % 3];
-      polygon(g, [[x, base - height + 8], [x + width * 0.28, base - height], [x + width * 0.53, base - height + 5], [x + width * 0.73, base - height - 3], [x + width, base - height + 7], [x + width, base], [x, base]], tone, '#303635');
-      g.fillStyle = 'rgba(186,157,113,.28)';
-      for (let row = 0; row < 4; row++) {
-        for (let col = 0; col < 3; col++) {
-          const wx = x + width * (0.14 + col * 0.34);
-          const wy = base - height * 0.78 + row * height * 0.18;
-          if (wy < base - 8 && (row + col + i) % 4 !== 0) {
-            g.fillRect(wx, wy, Math.max(1.4, width * 0.075), Math.max(2.2, height * 0.045));
+  if (!hasRoadsideBackdrop) {
+    const ruinHeights = [0.12, 0.2, 0.15, 0.23, 0.17];
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < ruinHeights.length; i++) {
+        const width = w * (0.09 + (i % 2) * 0.018);
+        const x = side < 0 ? w * (0.015 + i * 0.092) : w * (0.985 - (i + 1) * 0.092) - width;
+        const height = h * ruinHeights[(i + (side > 0 ? 2 : 0)) % ruinHeights.length];
+        const base = horizon + 28;
+        const tone = ['#414746', '#484d4b', '#3a403f'][i % 3];
+        polygon(g, [[x, base - height + 8], [x + width * 0.28, base - height], [x + width * 0.53, base - height + 5], [x + width * 0.73, base - height - 3], [x + width, base - height + 7], [x + width, base], [x, base]], tone, '#303635');
+        g.fillStyle = 'rgba(186,157,113,.28)';
+        for (let row = 0; row < 4; row++) {
+          for (let col = 0; col < 3; col++) {
+            const wx = x + width * (0.14 + col * 0.34);
+            const wy = base - height * 0.78 + row * height * 0.18;
+            if (wy < base - 8 && (row + col + i) % 4 !== 0) {
+              g.fillRect(wx, wy, Math.max(1.4, width * 0.075), Math.max(2.2, height * 0.045));
+            }
           }
         }
+        g.strokeStyle = 'rgba(22,28,28,.64)'; g.lineWidth = Math.max(0.8, width * 0.025);
+        g.beginPath(); g.moveTo(x + width * 0.68, base - height * 0.54); g.lineTo(x + width * 0.59, base - height * 0.38); g.lineTo(x + width * 0.71, base - height * 0.22); g.stroke();
       }
-      g.strokeStyle = 'rgba(22,28,28,.64)'; g.lineWidth = Math.max(0.8, width * 0.025);
-      g.beginPath(); g.moveTo(x + width * 0.68, base - height * 0.54); g.lineTo(x + width * 0.59, base - height * 0.38); g.lineTo(x + width * 0.71, base - height * 0.22); g.stroke();
     }
   }
 
-  const backdrop = assets.roadsideBackdrop;
+  if (!tollgate) drawRoadSurface(g, w, h, horizon, halfRoadAt, false);
   if (backdrop?.complete && backdrop.naturalWidth) {
     const coverScale = Math.max(w / backdrop.naturalWidth, h / backdrop.naturalHeight);
     const backdropWidth = backdrop.naturalWidth * coverScale;
@@ -303,7 +305,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
   for (const side of [-1, 1]) {
     for (let i = 0; i < 5; i++) {
       const depth = ((i / 5 + groundOffset * 0.56 + (side > 0 ? 0.17 : 0)) % 1);
-      const y = horizon + depth * (h - horizon);
+      const y = detailHorizon + depth * (h - detailHorizon);
       const half = halfRoadAt(y);
       const scale = 0.18 + depth * 0.78;
       const x = clamp(w * 0.5 + side * (half + 18 * scale), 8, w - 8);
@@ -315,14 +317,10 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
     }
   }
 
-  polygon(g, projectedRoadPoints(w, h, horizon, halfRoadAt, -8), tollgate ? '#6e6755' : '#847b5f');
-  polygon(g, projectedRoadPoints(w, h, horizon, halfRoadAt), tollgate ? '#373e41' : '#424a4d');
-  const asphalt = g.createLinearGradient(w / 2, horizon, w / 2, h);
-  asphalt.addColorStop(0, tollgate ? '#555c5e' : '#626b6b'); asphalt.addColorStop(0.38, tollgate ? '#42494c' : '#4e5759'); asphalt.addColorStop(1, tollgate ? '#2c3236' : '#353d41');
-  polygon(g, projectedRoadPoints(w, h, horizon, halfRoadAt, 3), asphalt);
+  if (tollgate) drawRoadSurface(g, w, h, horizon, halfRoadAt, true);
 
   for (const side of [-1, 1]) {
-    const edge = projectedRoadBoundary(w, h, horizon, halfRoadAt, side, 2);
+    const edge = projectedRoadBoundary(w, h, detailHorizon, halfRoadAt, side, 2);
     g.strokeStyle = 'rgba(237,226,188,.75)';
     g.lineWidth = 2;
     g.beginPath(); edge.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke();
@@ -333,7 +331,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
 
   for (let i = 0; i < 8; i++) {
     const depth = ((i / 8 + groundOffset * 0.74) % 1);
-    const y = horizon + depth * (h - horizon);
+    const y = detailHorizon + depth * (h - detailHorizon);
     const half = halfRoadAt(y);
     const scale = 0.3 + depth * 0.8;
     for (const side of [-1, 1]) {
@@ -348,7 +346,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
   for (let lane = 1; lane <= 2; lane++) {
     for (let i = 0; i < 9; i++) {
       const depth = ((i / 9 + groundOffset) % 1);
-      const y = horizon + depth * (h - horizon);
+      const y = detailHorizon + depth * (h - detailHorizon);
       const half = halfRoadAt(y);
       const x = w / 2 + (lane - 1.5) * half * 0.385;
       const dashH = 3 + depth * 20;
@@ -359,7 +357,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
 
   for (let i = 0; i < 9; i++) {
     const depth = ((i / 9 + groundOffset * 1.12) % 1);
-    const y = horizon + depth * (h - horizon);
+    const y = detailHorizon + depth * (h - detailHorizon);
     const half = halfRoadAt(y);
     const scale = 0.3 + depth * 0.8;
     const x = w / 2 + Math.sin(i * 17.3) * half * 0.62;
@@ -372,7 +370,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
 
   for (let i = 0; i < 12; i++) {
     const depth = ((i / 12 + groundOffset * 1.45) % 1);
-    const y = horizon + depth * (h - horizon);
+    const y = detailHorizon + depth * (h - detailHorizon);
     const half = halfRoadAt(y);
     const size = 1.5 + depth * 4;
     g.fillStyle = 'rgba(156,151,134,' + (0.14 + depth * 0.25) + ')';
@@ -381,7 +379,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
   }
 
   g.fillStyle = 'rgba(255,228,168,.035)';
-  g.fillRect(w * 0.39, horizon, w * 0.22, h - horizon);
+  g.fillRect(w * 0.39, detailHorizon, w * 0.22, h - detailHorizon);
   if (tollgate) drawTollgateDetails(g, w, h, groundOffset);
 }
 
