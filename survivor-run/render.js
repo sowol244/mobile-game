@@ -173,23 +173,29 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
     g.fillRect(0, 0, w, h);
 
     const horizon = h * 0.27;
-    const roadTravel = offset * 1.08;
-    for (let i = 0; i < 8; i++) {
-      const depth = ((i / 8 + roadTravel) % 1);
-      const perspective = Math.pow(depth, 1.42);
-      const y = horizon + perspective * (h - horizon);
-      const half = w * (0.28 + perspective * 0.22);
-      const dashH = 2 + perspective * 27;
-      const stripeWidth = 1.2 + perspective * 2.4;
-      g.save();
-      g.shadowColor = 'rgba(218,222,211,' + (0.12 + perspective * 0.18) + ')';
-      g.shadowBlur = 1 + perspective * 3;
-      g.fillStyle = 'rgba(211,215,202,' + (0.2 + perspective * 0.34) + ')';
-      for (const lane of [1, 2]) {
-        const x = w * 0.5 + (lane - 1.5) * half * 0.385;
-        roundRect(g, x - stripeWidth / 2, y, stripeWidth, dashH, stripeWidth * 0.42, g.fillStyle);
+    const topHalf = roadHalfWidth(w, h, horizon);
+    const bottomHalf = roadHalfWidth(w, h, h);
+    for (const side of [-1, 1]) {
+      const topX = w / 2 + side * (topHalf - 2);
+      const bottomX = w / 2 + side * (bottomHalf - 4);
+      g.strokeStyle = 'rgba(7,10,11,.4)';
+      g.lineWidth = 4.5;
+      g.beginPath(); g.moveTo(topX + side * 4, horizon); g.lineTo(bottomX + side * 6, h); g.stroke();
+      g.strokeStyle = 'rgba(211,201,171,.45)';
+      g.lineWidth = 1.6;
+      g.beginPath(); g.moveTo(topX, horizon); g.lineTo(bottomX, h); g.stroke();
+    }
+
+    for (let lane = 1; lane <= 2; lane++) {
+      for (let i = 0; i < 9; i++) {
+        const depth = ((i / 9 + offset) % 1);
+        const y = horizon + depth * (h - horizon);
+        const half = roadHalfWidth(w, h, y);
+        const x = w / 2 + (lane - 1.5) * half * 0.385;
+        const dashH = 3 + depth * 20;
+        g.fillStyle = 'rgba(231,225,198,' + (0.16 + depth * 0.45) + ')';
+        roundRect(g, x - (1 + depth * 1.3), y, 2 + depth * 2.6, dashH, 1, g.fillStyle);
       }
-      g.restore();
     }
     g.save();
     for (let i = 0; i < 46; i++) {
