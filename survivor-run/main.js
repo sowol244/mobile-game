@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261015m';
-import { drawScene } from './render.js?v=1-1-20261015m';
+import { createGame, resizeGame, updateGame, DEFAULT_STAGE_ID, getStageDefinition, applyPlayerDrag } from './game.js?v=2-1-20261015b';
+import { drawScene } from './render.js?v=2-1-20261015b';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014o';
 
 const $ = id => document.getElementById(id);
@@ -13,6 +13,7 @@ const panels = {
 };
 const hud = {
   root: $('hud'), distance: $('distance'), timer: $('timer'),
+  stageNumber: $('stageNumber'), routeName: $('routeName'), bossName: $('bossName'),
   progress: $('progressFill'), healthText: $('healthText'), health: $('healthFill'),
   weapon: $('weapon'), weaponLevel: $('weaponLevel'), weaponIcon: $('weaponIcon'),
   kills: $('kills'),
@@ -23,9 +24,21 @@ const hud = {
   rapidRoot: $('rapidSupport'), rapidTime: $('rapidTime'), rapidFill: $('rapidFill'),
   bossRoot: $('bossHud'), bossFill: $('bossFill'), tutorialHint: $('tutorialHint'),
 };
-const KEY_TOP = 'survivor-run-top', KEY_TUT = 'dead-route-tutorial';
+const KEY_TOP = 'survivor-run-top', KEY_TUT = 'dead-route-tutorial', KEY_CAMPAIGN = 'survivor-run-campaign';
 const top = () => { try { return JSON.parse(localStorage.getItem(KEY_TOP)) || []; } catch { return []; } };
 const save = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 저장 없이도 플레이할 수 있어요. */ } };
+const campaign = () => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(KEY_CAMPAIGN));
+    const saved = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+    const records = top();
+    const legacyStageOneClear = Array.isArray(records) && records.some(entry => (
+      entry && entry.result === '돌파 성공' && (!entry.stage || entry.stage === '1-1')
+    ));
+    if (legacyStageOneClear && !saved.stage02Unlocked) return { ...saved, stage01Cleared: true, stage02Unlocked: true };
+    return saved;
+  } catch { return {}; }
+};
 const sprite = path => {
   const image = new Image();
   image.src = new URL(path, import.meta.url).href;
@@ -56,7 +69,7 @@ const tutorials = [
   ['보급과 회피', '숫자 내구도를 0으로 만들면 연사·지원 사수·로켓 화력을 얻습니다. 붉은 보스 공격은 차선을 바꿔 피하세요.'],
 ];
 
-let state = 'title', game = null, lastFrame = performance.now();
+let state = 'title', game = null, lastFrame = performance.now(), selectedStageId = DEFAULT_STAGE_ID;
 let viewW = 1, viewH = 1, dpr = 1;
 const TOUCH_DRAG_SENSITIVITY = 1.0;
 let pointerDown = false, activePointerId = null, pointerLastClientX = null, keys = new Set();
@@ -71,6 +84,30 @@ function resetPointerInput(stopAtPlayer = true) {
   activePointerId = null;
   pointerLastClientX = null;
   if (stopAtPlayer && game) game.targetX = game.x;
+}
+
+function updateStageChoices() {
+  const progress = campaign();
+  const unlocked = Boolean(progress.stage02Unlocked || progress.stage01Cleared);
+  for (const button of document.querySelectorAll('.stage-choice')) {
+    const selected = button.dataset.stageId === selectedStageId;
+    const locked = button.dataset.stageId === 'stage02' && !unlocked;
+    button.disabled = locked;
+    button.classList.toggle('selected', selected);
+    button.classList.toggle('locked', locked);
+    button.setAttribute('aria-pressed', String(selected));
+  }
+  $('stage02Lock').textContent = unlocked
+    ? (progress.stage02Cleared ? '돌파 완료' : '돌파 가능')
+    : '1-1 돌파 후 해금';
+  const definition = getStageDefinition(selectedStageId);
+  $('msg').textContent = definition.intro;
+  if (state === 'over') {
+    const advanced = game?.finished === 'win' && game.stageId === 'stage01' && selectedStageId === 'stage02';
+    $('start').textContent = advanced ? '2-1 출동' : selectedStageId === game?.stageId ? '다시 출동' : '작전 시작';
+  } else if (state === 'title') {
+    $('start').textContent = '작전 시작';
+  }
 }
 
 function resize() {
@@ -95,7 +132,7 @@ function showTitle() {
   hud.root.hidden = true; hud.bossRoot.hidden = true; hud.tutorialHint.hidden = true;
   $('pause').hidden = true;
   $('title').innerHTML = 'DEAD<br>ROUTE';
-  $('msg').textContent = '폐허가 된 고속도로에서 최종 보스를 돌파하세요.';
+  updateStageChoices();
   $('result').hidden = true; $('home').hidden = true;
   $('start').textContent = '작전 시작';
   showPanel('main'); overlay.hidden = false;
@@ -104,7 +141,7 @@ function showTitle() {
 function beginGame() {
   unlock();
   resize();
-  game = createGame(viewW, viewH);
+  game = createGame(viewW, viewH, selectedStageId);
   state = 'play'; keys.clear(); resetPointerInput(false);
   bannerTimer = 0;
   $('banner').classList.remove('on', 'boss-warning');
@@ -118,12 +155,15 @@ function beginGame() {
 
 function updateHud() {
   if (!game) return;
+  hud.stageNumber.textContent = game.stageDefinition.number;
+  hud.routeName.textContent = game.stageDefinition.name;
+  hud.bossName.textContent = game.stageDefinition.boss.label;
   hud.distance.textContent = game.distance.toLocaleString('ko-KR') + ' m';
   const progress = game.bossDefeated
     ? 100
     : game.boss
       ? 88 + (1 - game.boss.hp / game.boss.maxHp) * 11
-      : Math.min(88, game.t / BOSS_START_AT * 88);
+      : Math.min(88, game.t / game.stageDefinition.boss.startAt * 88);
   hud.progress.style.width = progress + '%';
   const elapsed = Math.floor(game.t);
   hud.timer.textContent = String(Math.floor(elapsed / 60)).padStart(2, '0') + ':' + String(elapsed % 60).padStart(2, '0');
@@ -202,9 +242,21 @@ function handleEvents(events) {
 function finishGame(result) {
   if (!game || state === 'over') return;
   state = 'over'; keys.clear(); resetPointerInput();
+  if (result === 'win') {
+    const progress = campaign();
+    if (game.stageId === 'stage01') {
+      progress.stage01Cleared = true;
+      progress.stage02Unlocked = true;
+      selectedStageId = 'stage02';
+    } else if (game.stageId === 'stage02') {
+      progress.stage02Cleared = true;
+    }
+    save(KEY_CAMPAIGN, progress);
+  }
   $('pause').hidden = true; hud.root.hidden = true; hud.bossRoot.hidden = true;
   const entry = {
     id: Date.now(), score: game.score, kills: game.kills,
+    stage: game.stageDefinition.number, stageName: game.stageDefinition.name,
     distance: game.distance, result: result === 'win' ? '돌파 성공' : '작전 종료',
     elapsed: Math.floor(game.t), barrels: game.barrelsBroken,
     date: new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' }).format(new Date()),
@@ -217,7 +269,7 @@ function finishGame(result) {
   lastSaved = entry.id;
   $('title').innerHTML = result === 'win' ? 'ROUTE<br>SECURED' : 'MISSION<br>FAILED';
   $('msg').textContent = result === 'win'
-    ? '최종 보스를 격파하고 1-1을 돌파했습니다.'
+    ? game.stageDefinition.clearMessage + (game.stageId === 'stage01' ? ' 2-1이 해금되었습니다.' : '')
     : game.hp <= 0 ? '체력이 소진되었습니다.' : '작전이 종료되었습니다.';
   const elapsed = Math.floor(game.t);
   const clock = String(Math.floor(elapsed / 60)).padStart(2, '0') + ':' + String(elapsed % 60).padStart(2, '0');
@@ -225,6 +277,10 @@ function finishGame(result) {
   $('result').hidden = false;
   $('start').textContent = '다시 출동';
   $('home').hidden = false;
+  updateStageChoices();
+  $('msg').textContent = result === 'win'
+    ? game.stageDefinition.clearMessage + (game.stageId === 'stage01' ? ' 2-1이 해금되었습니다.' : '')
+    : game.hp <= 0 ? '체력이 소진되었습니다.' : '작전이 종료되었습니다.';
   showPanel('main'); overlay.hidden = false;
 }
 
@@ -239,7 +295,7 @@ function paintRank() {
     const detail = document.createElement('span'); detail.textContent = '처치 ' + (entry.kills || 0);
     const elapsed = Number(entry.elapsed || 0);
     const clock = String(Math.floor(elapsed / 60)).padStart(2, '0') + ':' + String(elapsed % 60).padStart(2, '0');
-    const date = document.createElement('span'); date.className = 'dt'; date.textContent = (entry.result || '기록') + ' · ' + clock + ' · 보급 ' + (entry.barrels || 0) + ' · ' + (entry.date || '');
+    const date = document.createElement('span'); date.className = 'dt'; date.textContent = (entry.stage || '1-1') + ' ' + (entry.result || '기록') + ' · ' + clock + ' · 보급 ' + (entry.barrels || 0) + ' · ' + (entry.date || '');
     li.append(rank, score, detail, date);
     rows.append(li);
   });
@@ -267,6 +323,7 @@ function showTutorial() {
 function startFromTitle() {
   if (state === 'over') return beginGame();
   unlock();
+  if (selectedStageId !== DEFAULT_STAGE_ID) return beginGame();
   let seen = false;
   try { seen = localStorage.getItem(KEY_TUT) === '1'; } catch { seen = false; }
   if (!seen) showPanel('ask');
@@ -274,6 +331,12 @@ function startFromTitle() {
 }
 
 $('start').addEventListener('click', startFromTitle);
+$('stageChoices').addEventListener('click', event => {
+  const button = event.target.closest('.stage-choice');
+  if (!button || button.disabled) return;
+  selectedStageId = button.dataset.stageId;
+  updateStageChoices();
+});
 $('askYes').addEventListener('click', showTutorial);
 $('askNo').addEventListener('click', () => { markTutorialSeen(); beginGame(); });
 $('tutNext').addEventListener('click', () => {
@@ -370,7 +433,7 @@ function frame(now) {
     }
     if (game.finished) finishGame(game.finished);
   }
-  drawScene(ctx, game, viewW, viewH, now, state === 'title' || !game, assets);
+  drawScene(ctx, game, viewW, viewH, now, state === 'title' || !game, assets, selectedStageId);
   requestAnimationFrame(frame);
 }
 

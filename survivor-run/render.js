@@ -1,4 +1,4 @@
-import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=1-1-20261015m';
+import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=2-1-20261015b';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const smoothstep = value => {
@@ -117,19 +117,63 @@ function drawRubble(g, x, y, scale, side) {
   g.restore();
 }
 
-function drawRoad(g, w, h, offset, assets = {}) {
+function drawTollgateDetails(g, w, h, offset) {
+  const topY = h * 0.145;
+  const half = roadHalfWidth(w, h, topY);
+  const left = w * 0.5 - half * 1.12;
+  const right = w * 0.5 + half * 1.12;
+  const sway = Math.sin(offset * Math.PI * 2) * 1.2;
+  g.save();
+  g.globalAlpha = 0.94;
+  // A damaged toll canopy sits in the distance, with its legs outside the lanes.
+  polygon(g, [[left - 4, topY + 9], [right + 4, topY + 9], [right + 1, topY + 17], [left - 1, topY + 17]], '#262d2f', '#111719', 1.4);
+  polygon(g, [[left - 9, topY + 6], [right + 7, topY + 6], [right + 4, topY + 11], [left - 6, topY + 11]], '#51595a', '#1e2526', 1.2);
+  g.strokeStyle = 'rgba(176,166,139,.48)'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(left + 2, topY + 11); g.lineTo(w * 0.5 - 4, topY + 12); g.lineTo(w * 0.5 - 10, topY + 15); g.moveTo(w * 0.5 + 5, topY + 11); g.lineTo(right - 4, topY + 13); g.stroke();
+  for (const x of [left, right]) {
+    polygon(g, [[x - 4, topY + 12], [x + 4, topY + 12], [x + 7, h * 0.24], [x - 8, h * 0.24]], '#41494a', '#202627', 1.2);
+    g.strokeStyle = 'rgba(177,157,119,.32)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x - 2, topY + 19); g.lineTo(x + sway, h * 0.24 - 3); g.stroke();
+  }
+  for (let lane = 0; lane < 3; lane++) {
+    const x = laneX(w, h, h * 0.18, lane);
+    const boothW = 11 + lane * 0.5;
+    const boothY = h * 0.18;
+    g.fillStyle = 'rgba(11,16,17,.48)';
+    g.beginPath(); g.ellipse(x, boothY + 9, boothW * 0.95, 3, 0, 0, Math.PI * 2); g.fill();
+    polygon(g, [[x - boothW, boothY - 7], [x + boothW, boothY - 7], [x + boothW * 0.86, boothY + 8], [x - boothW * 0.9, boothY + 8]], '#343b3c', '#161d1e', 1);
+    polygon(g, [[x - boothW - 2, boothY - 8], [x + boothW + 2, boothY - 8], [x + boothW, boothY - 4], [x - boothW, boothY - 4]], '#727473', '#222827', 0.9);
+    g.fillStyle = 'rgba(164,151,121,.22)';
+    g.fillRect(x - boothW * 0.55, boothY - 3, boothW * 0.34, 7);
+    g.fillRect(x + boothW * 0.2, boothY - 3, boothW * 0.22, 7);
+  }
+  // Broken barrier arms and amber reflectors clarify the abandoned checkpoint.
+  for (const lane of [0, 2]) {
+    const x = laneX(w, h, h * 0.205, lane);
+    const direction = lane === 0 ? 1 : -1;
+    const endX = x + direction * 18;
+    g.strokeStyle = '#242a2b'; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(x, h * 0.205); g.lineTo(endX, h * 0.202 + direction * 4); g.stroke();
+    g.strokeStyle = 'rgba(190,139,61,.7)'; g.lineWidth = 1.2;
+    g.beginPath(); g.moveTo(x + direction * 3, h * 0.204); g.lineTo(endX - direction * 2, h * 0.202 + direction * 4); g.stroke();
+  }
+  g.restore();
+}
+
+function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
+  const tollgate = theme === 'tollgate';
   const horizon = h * 0.13;
   const sky = g.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0, '#707572'); sky.addColorStop(0.23, '#555b59'); sky.addColorStop(0.48, '#39413f'); sky.addColorStop(1, '#1e2926');
+  sky.addColorStop(0, tollgate ? '#626a6d' : '#707572'); sky.addColorStop(0.23, tollgate ? '#494f51' : '#555b59'); sky.addColorStop(0.48, tollgate ? '#303638' : '#39413f'); sky.addColorStop(1, tollgate ? '#191e20' : '#1e2926');
   g.fillStyle = sky; g.fillRect(0, 0, w, h);
 
   const roadside = g.createLinearGradient(0, horizon, 0, h);
-  roadside.addColorStop(0, '#505552'); roadside.addColorStop(0.42, '#353c3a'); roadside.addColorStop(1, '#222a29');
+  roadside.addColorStop(0, tollgate ? '#484e50' : '#505552'); roadside.addColorStop(0.42, tollgate ? '#303638' : '#353c3a'); roadside.addColorStop(1, tollgate ? '#1c2224' : '#222a29');
   g.fillStyle = roadside; g.fillRect(0, horizon + 3, w, h - horizon - 3);
   const vergeTop = roadHalfWidth(w, h, horizon);
   const vergeBottom = roadHalfWidth(w, h, h);
-  polygon(g, [[w / 2 - vergeTop - 21, horizon], [w / 2 - vergeTop - 6, horizon], [w / 2 - vergeBottom - 9, h], [w / 2 - vergeBottom - 34, h]], '#514e43');
-  polygon(g, [[w / 2 + vergeTop + 6, horizon], [w / 2 + vergeTop + 21, horizon], [w / 2 + vergeBottom + 34, h], [w / 2 + vergeBottom + 9, h]], '#514e43');
+  polygon(g, [[w / 2 - vergeTop - 21, horizon], [w / 2 - vergeTop - 6, horizon], [w / 2 - vergeBottom - 9, h], [w / 2 - vergeBottom - 34, h]], tollgate ? '#565653' : '#514e43');
+  polygon(g, [[w / 2 + vergeTop + 6, horizon], [w / 2 + vergeTop + 21, horizon], [w / 2 + vergeBottom + 34, h], [w / 2 + vergeBottom + 9, h]], tollgate ? '#565653' : '#514e43');
   const ruinHeights = [0.12, 0.2, 0.15, 0.23, 0.17];
   for (const side of [-1, 1]) {
     for (let i = 0; i < ruinHeights.length; i++) {
@@ -182,10 +226,10 @@ function drawRoad(g, w, h, offset, assets = {}) {
 
   const topHalf = roadHalfWidth(w, h, horizon);
   const bottomHalf = roadHalfWidth(w, h, h);
-  polygon(g, [[w / 2 - topHalf - 8, horizon], [w / 2 + topHalf + 8, horizon], [w / 2 + bottomHalf + 10, h], [w / 2 - bottomHalf - 10, h]], '#847b5f');
-  polygon(g, [[w / 2 - topHalf, horizon], [w / 2 + topHalf, horizon], [w / 2 + bottomHalf, h], [w / 2 - bottomHalf, h]], '#424a4d');
+  polygon(g, [[w / 2 - topHalf - 8, horizon], [w / 2 + topHalf + 8, horizon], [w / 2 + bottomHalf + 10, h], [w / 2 - bottomHalf - 10, h]], tollgate ? '#6e6755' : '#847b5f');
+  polygon(g, [[w / 2 - topHalf, horizon], [w / 2 + topHalf, horizon], [w / 2 + bottomHalf, h], [w / 2 - bottomHalf, h]], tollgate ? '#373e41' : '#424a4d');
   const asphalt = g.createLinearGradient(w / 2, horizon, w / 2, h);
-  asphalt.addColorStop(0, '#626b6b'); asphalt.addColorStop(0.38, '#4e5759'); asphalt.addColorStop(1, '#353d41');
+  asphalt.addColorStop(0, tollgate ? '#555c5e' : '#626b6b'); asphalt.addColorStop(0.38, tollgate ? '#42494c' : '#4e5759'); asphalt.addColorStop(1, tollgate ? '#2c3236' : '#353d41');
   polygon(g, [[w / 2 - topHalf + 2, horizon], [w / 2 + topHalf - 2, horizon], [w / 2 + bottomHalf - 3, h], [w / 2 - bottomHalf + 3, h]], asphalt);
 
   for (const side of [-1, 1]) {
@@ -250,6 +294,7 @@ function drawRoad(g, w, h, offset, assets = {}) {
 
   g.fillStyle = 'rgba(255,228,168,.035)';
   g.fillRect(w * 0.39, horizon, w * 0.22, h - horizon);
+  if (tollgate) drawTollgateDetails(g, w, h, offset);
 }
 
 function depthScale(h, y) {
@@ -428,26 +473,106 @@ function drawSprite(g, image, x, y, width, height, bob, rotation, alpha, tint = 
   g.restore();
 }
 
+function drawArmoredZombie(g, zombie, width, height, yOffset, rotation, alpha) {
+  g.save();
+  g.translate(zombie.x, zombie.y + yOffset);
+  g.rotate(rotation);
+  g.globalAlpha = alpha;
+  polygon(g, [
+    [-width * 0.27, -height * 0.62], [-width * 0.12, -height * 0.7],
+    [width * 0.15, -height * 0.68], [width * 0.3, -height * 0.56],
+    [width * 0.24, -height * 0.43], [0, -height * 0.38], [-width * 0.25, -height * 0.45],
+  ], '#343b3c', '#171d1d', 1.7);
+  polygon(g, [
+    [-width * 0.17, -height * 0.63], [width * 0.07, -height * 0.65],
+    [width * 0.19, -height * 0.55], [width * 0.13, -height * 0.47],
+    [-width * 0.09, -height * 0.45], [-width * 0.2, -height * 0.53],
+  ], zombie.hitFlash > 0 ? '#b8ac91' : '#59605d', '#252b2b', 1);
+  g.strokeStyle = 'rgba(183,169,136,.62)'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(-width * 0.15, -height * 0.55); g.lineTo(width * 0.14, -height * 0.53); g.stroke();
+  for (const side of [-1, 1]) {
+    g.fillStyle = '#b09a70';
+    g.beginPath(); g.arc(side * width * 0.2, -height * 0.59, Math.max(1.2, width * 0.018), 0, Math.PI * 2); g.fill();
+  }
+  g.restore();
+}
+
 function drawZombie(g, zombie, h, time, assets) {
   const scale = depthScale(h, zombie.y);
-  const height = (zombie.kind === 'runner' ? 56 : 60) * scale;
-  const width = height * 0.82;
+  const tank = zombie.kind === 'tank' || zombie.kind === 'tanker';
+  const height = (tank ? 87 : zombie.kind === 'runner' ? 56 : 60) * scale;
+  const width = height * (tank ? 0.9 : 0.82);
   const dying = zombie.dead ? clamp(zombie.dying / 0.48, 0, 1) : 1;
   const runner = zombie.kind === 'runner';
-  const stride = time * (runner ? 13 : 8) + zombie.phase;
-  const bob = zombie.dead ? 0 : Math.abs(Math.sin(stride)) * (runner ? 5 : 2.5);
-  const rotation = zombie.dead ? (1 - dying) * 1.45 * zombie.deathSide : Math.sin(stride) * (runner ? 0.075 : 0.045);
+  const stride = time * (runner ? 13 : tank ? 5.4 : 8) + zombie.phase;
+  const bob = zombie.dead ? 0 : Math.abs(Math.sin(stride)) * (runner ? 5 : tank ? 1.8 : 2.5);
+  const rotation = zombie.dead ? (1 - dying) * (tank ? 0.92 : 1.45) * zombie.deathSide : Math.sin(stride) * (runner ? 0.075 : tank ? 0.025 : 0.045);
   const runningPose = Math.sin(stride) > 0;
-  const image = runner
-    ? (runningPose && assets.runnerRun ? assets.runnerRun : assets.runner)
-    : (runningPose && assets.walkerRun ? assets.walkerRun : assets.walker);
-  if (!zombie.dead) drawFootstepDust(g, zombie.x, zombie.y, scale, stride, runner ? '#d4c29b' : '#9daf8d');
+  const image = tank
+    ? (runningPose && assets.bruteWalkB ? assets.bruteWalkB : assets.brute)
+    : runner
+      ? (runningPose && assets.runnerRun ? assets.runnerRun : assets.runner)
+      : (runningPose && assets.walkerRun ? assets.walkerRun : assets.walker);
+  if (!zombie.dead) drawFootstepDust(g, zombie.x, zombie.y, scale * (tank ? 1.2 : 1), stride, tank ? '#827c70' : runner ? '#d4c29b' : '#9daf8d');
   drawSprite(g, image, zombie.x, zombie.y + bob + (zombie.dead ? (1 - dying) * 9 : 0), width, height, 0, rotation, dying, zombie.hitFlash > 0 ? '#fff0bd' : null);
+  if (tank) drawArmoredZombie(g, zombie, width, height, bob + (zombie.dead ? (1 - dying) * 9 : 0), rotation, dying);
   if (!zombie.dead && zombie.hp < zombie.maxHp) {
-    const barW = 30 * scale;
+    const barW = (tank ? 42 : 30) * scale;
     roundRect(g, zombie.x - barW / 2, zombie.y - height - 5, barW, 5 * scale, 2, 'rgba(10,15,14,.9)');
     roundRect(g, zombie.x - barW / 2, zombie.y - height - 5, barW * clamp(zombie.hp / zombie.maxHp, 0, 1), 5 * scale, 2, '#ffca61');
   }
+}
+
+function drawShieldBreakerArmor(g, boss, x, y, width, height, rotation, alpha, time, collapsing) {
+  if (boss.kind !== 'shield-breaker') return;
+  g.save();
+  g.translate(x, y);
+  g.rotate(rotation);
+  g.globalAlpha = alpha;
+  const damage = 1 - clamp(boss.hp / boss.maxHp, 0, 1);
+  polygon(g, [
+    [-width * 0.2, -height * 0.53], [-width * 0.11, -height * 0.59],
+    [width * 0.12, -height * 0.58], [width * 0.21, -height * 0.49],
+    [width * 0.17, -height * 0.33], [width * 0.02, -height * 0.29],
+    [-width * 0.18, -height * 0.36],
+  ], boss.hitFlash > 0 ? '#a8a18d' : '#41494a', '#111719', 2);
+  polygon(g, [
+    [-width * 0.13, -height * 0.52], [-width * 0.04, -height * 0.55],
+    [width * 0.08, -height * 0.53], [width * 0.14, -height * 0.47],
+    [width * 0.1, -height * 0.39], [-width * 0.1, -height * 0.4],
+  ], '#252d2f', '#81827a', 0.8);
+  g.strokeStyle = 'rgba(190,174,139,.7)'; g.lineWidth = 1.3;
+  g.beginPath(); g.moveTo(-width * 0.1, -height * 0.49); g.lineTo(width * 0.08, -height * 0.47); g.stroke();
+  // The damaged slab shield stays attached to the same arm through movement and the fall animation.
+  const sx = -width * 0.29, sy = -height * 0.3;
+  polygon(g, [
+    [sx - width * 0.16, sy - height * 0.18], [sx + width * 0.12, sy - height * 0.16],
+    [sx + width * 0.16, sy + height * 0.08], [sx + width * 0.03, sy + height * 0.27],
+    [sx - width * 0.17, sy + height * 0.18], [sx - width * 0.21, sy - height * 0.03],
+  ], boss.hitFlash > 0 ? '#9c9887' : '#333b3d', '#111719', 2.2);
+  polygon(g, [
+    [sx - width * 0.13, sy - height * 0.13], [sx + width * 0.08, sy - height * 0.12],
+    [sx + width * 0.1, sy + height * 0.07], [sx + width * 0.01, sy + height * 0.19],
+    [sx - width * 0.12, sy + height * 0.13], [sx - width * 0.16, sy - height * 0.02],
+  ], '#50595a', '#202729', 1);
+  g.strokeStyle = 'rgba(177,158,120,.76)'; g.lineWidth = 1.2;
+  g.beginPath();
+  g.moveTo(sx - width * 0.11, sy - height * 0.05); g.lineTo(sx + width * 0.07, sy - height * 0.02);
+  g.moveTo(sx - width * 0.1, sy + height * 0.09); g.lineTo(sx + width * 0.06, sy + height * 0.12);
+  g.stroke();
+  for (const [rx, ry] of [[-0.14, -0.08], [0.08, -0.07], [-0.12, 0.13], [0.08, 0.11]]) {
+    g.fillStyle = '#c2a766';
+    g.beginPath(); g.arc(sx + width * rx, sy + height * ry, Math.max(1.5, width * 0.014), 0, Math.PI * 2); g.fill();
+  }
+  if (damage > 0.48 && !collapsing) {
+    g.strokeStyle = 'rgba(26,19,16,' + clamp(damage, 0.45, 0.85) + ')'; g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(sx - width * 0.015, sy - height * 0.015); g.lineTo(sx + width * 0.04, sy + height * 0.045); g.lineTo(sx - width * 0.025, sy + height * 0.1); g.stroke();
+    if (Math.sin(time * 8) > 0.82) {
+      g.fillStyle = 'rgba(232,143,75,.75)';
+      g.beginPath(); g.arc(sx + width * 0.02, sy + height * 0.04, 2.2, 0, Math.PI * 2); g.fill();
+    }
+  }
+  g.restore();
 }
 
 function drawBoss(g, boss, w, h, time, assets) {
@@ -552,6 +677,7 @@ function drawBoss(g, boss, w, h, time, assets) {
     drawSprite(g, assets.brute, boss.x + offsetX, offsetY, width, height, 0, rotation, alpha * (1 - attackMix), tint);
     drawSprite(g, assets.bruteAttack, boss.x + offsetX, offsetY, width * 1.02, height * 1.02, 0, rotation, alpha * attackMix, tint);
   }
+  drawShieldBreakerArmor(g, boss, boss.x + offsetX, offsetY, width, height, rotation, alpha, time, collapsing);
   if (boss.stomp > 0) {
     const progress = 1 - boss.stomp / 0.42;
     g.save();
@@ -997,8 +1123,8 @@ function drawTargetLock(g, s, time) {
   g.restore();
 }
 
-function drawTitleScene(g, w, h, time, assets) {
-  drawRoad(g, w, h, (time * 0.00008) % 1, assets);
+function drawTitleScene(g, w, h, time, assets, stageId) {
+  drawRoad(g, w, h, (time * 0.00008) % 1, assets, stageId === 'stage02' ? 'tollgate' : 'highway');
   drawZombie(g, { kind: 'walker', x: w * 0.42, y: h * 0.34, radius: 14, hp: 20, maxHp: 20, phase: 1 }, h, time / 1000, assets);
   drawZombie(g, { kind: 'runner', x: w * 0.66, y: h * 0.48, radius: 14, hp: 15, maxHp: 15, phase: 2 }, h, time / 1000, assets);
   drawBarrel(g, { kind: 'companion', x: w * 0.32, y: h * 0.59, lane: 0, hp: 40 }, w, h, time / 1000);
@@ -1015,7 +1141,7 @@ function drawTitleScene(g, w, h, time, assets) {
   g.fillStyle = shade; g.fillRect(0, 0, w, h);
 }
 
-export function drawScene(ctx, s, w, h, now, title, assets) {
+export function drawScene(ctx, s, w, h, now, title, assets, previewStageId = 'stage01') {
   ctx.clearRect(0, 0, w, h);
   ctx.save();
   if (s && s.hitShake > 0) {
@@ -1024,11 +1150,11 @@ export function drawScene(ctx, s, w, h, now, title, assets) {
   }
   const offset = s ? s.roadOffset : (now * 0.00008) % 1;
   if (title || !s) {
-    drawTitleScene(ctx, w, h, now, assets || {});
+    drawTitleScene(ctx, w, h, now, assets || {}, previewStageId);
     ctx.restore();
     return;
   }
-  drawRoad(ctx, w, h, offset, assets);
+  drawRoad(ctx, w, h, offset, assets, s.stageDefinition.background);
   drawDefenseLine(ctx, w, h, s.defenseFlash);
   const time = s.t;
   const objects = [];

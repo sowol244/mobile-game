@@ -6,16 +6,16 @@
 <meta name="theme-color" content="#1a2423">
 <title>DEAD ROUTE</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap">
-<link rel="stylesheet" href="style.css?v=1-1-20261015b">
+<link rel="stylesheet" href="style.css?v=2-1-20261015b">
 <script src="../game-access.js" data-game-id="survivor-run" data-requires-admin="true"></script>
 </head>
 <body>
 <main id="app">
   <header id="hud" hidden>
     <div class="hud-top">
-      <div class="stage-tag"><small>STAGE</small><b>1-1</b></div>
+      <div class="stage-tag"><small>STAGE</small><b id="stageNumber">1-1</b></div>
       <div class="route-progress">
-        <div class="route-label"><span>폐쇄 고속도로</span><b id="distance">0 m</b></div>
+        <div class="route-label"><span id="routeName">폐쇄 고속도로</span><b id="distance">0 m</b></div>
         <div class="progress-track"><i id="progressFill"></i></div>
       </div>
       <div class="timer-tag"><small>경과 시간</small><b id="timer">00:00</b></div>
@@ -61,7 +61,7 @@
   <section id="stage" aria-label="DEAD ROUTE 전투 화면">
     <canvas id="gameCanvas" aria-label="화면을 좌우로 끌어 이동하고 자동 사격을 유도하세요"></canvas>
     <div id="bossHud" hidden>
-      <div class="boss-label"><b>대형 변이체</b></div>
+      <div class="boss-label"><b id="bossName">대형 변이체</b></div>
       <div class="boss-track"><i id="bossFill"></i></div>
     </div>
     <button id="mute" type="button" aria-label="소리 끄기" aria-pressed="false">🔊</button>
@@ -70,10 +70,18 @@
     <div id="banner" role="status" aria-live="polite"><span id="bannerMessage"></span><span id="bannerSubtitle">BOSS APPROACHING</span></div>
     <div id="overlay">
       <section class="panel" id="pMain">
-        <div class="eyebrow">SURVIVAL SHOOTER · 1-1 <span class="dev-status">개발 중</span></div>
+        <div class="eyebrow" id="mainEyebrow">DEAD ROUTE · CAMPAIGN <span class="dev-status">개발 중</span></div>
         <h1 id="title">DEAD<br>ROUTE</h1>
         <p id="msg">폐허가 된 고속도로에서 최종 보스를 돌파하세요.</p>
         <p id="result" hidden></p>
+        <div class="stage-choices" id="stageChoices" role="group" aria-label="스테이지 선택">
+          <button class="stage-choice selected" type="button" data-stage-id="stage01" aria-pressed="true">
+            <b>1-1</b><span>폐쇄 고속도로</span><small>기초 전투</small>
+          </button>
+          <button class="stage-choice locked" type="button" data-stage-id="stage02" aria-pressed="false" disabled>
+            <b>2-1</b><span>붕괴된 톨게이트</span><small id="stage02Lock">1-1 돌파 후 해금</small>
+          </button>
+        </div>
         <div class="buttons">
           <button class="primary" id="start" type="button">작전 시작</button>
           <div class="secondary">
@@ -136,7 +144,7 @@
   </section>
 </main>
 <script type="application/x-game-gated" data-script-type="module" data-script-src="../online-scoreboard.js?game=survivor-run"></script>
-<script type="application/x-game-gated" data-script-type="module" data-script-src="main.js?v=1-1-20261015m"></script>
+<script type="application/x-game-gated" data-script-type="module" data-script-src="main.js?v=2-1-20261015c"></script>
 </body>
 </html>
 
