@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261015h';
-import { drawScene } from './render.js?v=1-1-20261015h';
+import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261015m';
+import { drawScene } from './render.js?v=1-1-20261015m';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014o';
 
 const $ = id => document.getElementById(id);

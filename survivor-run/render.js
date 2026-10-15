@@ -1,4 +1,4 @@
-import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=1-1-20261015h';
+import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=1-1-20261015m';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const smoothstep = value => {
@@ -451,7 +451,9 @@ function drawZombie(g, zombie, h, time, assets) {
 }
 
 function drawBoss(g, boss, w, h, time, assets) {
-  const size = clamp(w * 0.44, 118, 164);
+  const entryProgress = clamp(boss.entryProgress ?? 1, 0, 1);
+  const entryScale = 0.28 + 0.72 * smoothstep(entryProgress);
+  const size = clamp(w * 0.44, 118, 164) * entryScale;
   if (boss.warning > 0) {
     const x = laneX(w, h, h * 0.7, boss.attackLane);
     const half = roadHalfWidth(w, h, h * 0.7) * 0.2;
@@ -478,34 +480,47 @@ function drawBoss(g, boss, w, h, time, assets) {
   }
   const collapsing = boss.deathTimer != null;
   const fall = collapsing ? clamp(1 - boss.deathTimer / boss.deathDuration, 0, 1) : 0;
+  const topple = collapsing ? smoothstep(clamp((fall - 0.1) / 0.62, 0, 1)) : 0;
+  const entering = !collapsing && boss.entryTimer > 0;
   const warningProgress = boss.warning > 0 ? clamp(1 - boss.warning / (boss.warningTotal || 1.25), 0, 1) : 0;
   const recovery = clamp((boss.attackRecover || 0) / 0.58, 0, 1);
   const lunge = boss.warning > 0 ? smoothstep((warningProgress - 0.68) / 0.32) : 0;
   const crouch = boss.warning > 0 ? Math.sin(Math.min(1, warningProgress / 0.72) * Math.PI * 0.5) * (1 - lunge * 0.75) : 0;
   const impact = boss.stomp > 0 ? Math.pow(boss.stomp / 0.42, 2) : 0;
   const hitShake = boss.hitShake > 0 ? Math.sin(time * 92) * boss.hitShake * 18 : 0;
-  const breath = collapsing ? 0 : Math.sin(time * 3.1) * 0.04;
-  const idleBob = Math.sin(time * 4.7) * 2.2 + Math.sin(time * 2.1 + 0.7) * 1.2;
+  const breath = collapsing || entering ? 0 : Math.sin(time * 3.1) * 0.04;
+  const idleBob = (Math.sin(time * 4.7) * 2.2 + Math.sin(time * 2.1 + 0.7) * 1.2) * entryScale;
   const walkingSpeed = clamp(Math.abs(boss.moveSpeed || 0) / Math.max(1, w * 0.17), 0, 1);
   const walkPhase = boss.walkPhase || 0;
   const walkFrame = Math.sin(walkPhase) > 0 ? assets.bruteWalkB : assets.bruteWalkA;
   const hasWalkFrame = walkFrame?.complete && walkFrame.naturalWidth;
   const gait = !collapsing && boss.warning <= 0 && recovery < 0.02 && hasWalkFrame
-    ? walkingSpeed * clamp((walkingSpeed - 0.04) / 0.25, 0, 1)
+    ? entering ? 0.92 : walkingSpeed * clamp((walkingSpeed - 0.04) / 0.25, 0, 1)
     : 0;
   const bob = collapsing ? 0 : idleBob + Math.abs(Math.sin(walkPhase * 2)) * gait * 3.8;
   const movingDirection = Math.sign(boss.moveSpeed || 0);
   const aimDirection = boss.warning > 0 || recovery > 0.02
     ? (boss.attackDirection || 0)
     : movingDirection * 0.35;
+  const deathSide = boss.deathSide || 1;
+  const deathJolt = collapsing && fall < 0.16 ? Math.sin(time * 58) * (1 - fall / 0.16) * 0.035 : 0;
   const rotation = collapsing
-    ? -fall * 0.72
+    ? deathSide * (topple * 1.28 + deathJolt)
     : movingDirection * gait * 0.045 + aimDirection * (crouch * 0.09 + lunge * 0.24) + hitShake * 0.004;
-  const alpha = collapsing ? 1 - fall * 0.48 : 1;
-  const width = size * (1 + breath + crouch * 0.055 + lunge * 0.075 + impact * 0.1);
-  const height = size * 1.05 * (1 - breath * 0.6 - crouch * 0.105 + lunge * 0.17 - impact * 0.17);
-  const offsetX = aimDirection * lunge * size * 0.14 + hitShake;
-  const offsetY = boss.y + 38 + bob + crouch * 12 - lunge * size * 0.22 + impact * size * 0.08 + fall * size * 0.22;
+  const alpha = collapsing ? 1 - smoothstep(clamp((fall - 0.9) / 0.1, 0, 1)) * 0.14 : 1;
+  const width = size * (1 + breath + crouch * 0.055 + lunge * 0.075 + impact * 0.1 + topple * 0.1);
+  const height = size * 1.05 * (1 - breath * 0.6 - crouch * 0.105 + lunge * 0.17 - impact * 0.17 - topple * 0.54);
+  const offsetX = aimDirection * lunge * size * 0.14 + hitShake + deathSide * topple * size * 0.16;
+  const offsetY = boss.y + 38 * entryScale + bob + crouch * 12 - lunge * size * 0.22 + impact * size * 0.08 + topple * size * 0.06;
+  if (collapsing) {
+    g.save();
+    g.fillStyle = 'rgba(5,8,8,' + (0.28 + topple * 0.2) + ')';
+    g.beginPath();
+    g.ellipse(boss.x + offsetX * 0.35, offsetY + size * 0.035, size * (0.34 + topple * 0.2), size * (0.07 + topple * 0.035), 0, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+  if (gait > 0.08) drawFootstepDust(g, boss.x + offsetX, offsetY, entryScale * (0.7 + gait * 0.3), walkPhase, '#9a927e');
   if (!collapsing && gait > 0.08) {
     for (const side of [-1, 1]) {
       const footPhase = walkPhase + (side > 0 ? Math.PI : 0);
@@ -828,6 +843,22 @@ function drawEffect(g, effect, time) {
     return;
   }
   const progress = 1 - effect.life / effect.total;
+  if (effect.kind === 'bossFallDust') {
+    const spread = effect.radius * (0.28 + smoothstep(clamp(progress / 0.3, 0, 1)) * 0.72);
+    const dust = g.createRadialGradient(effect.x, effect.y - spread * 0.08, spread * 0.08, effect.x, effect.y, spread);
+    dust.addColorStop(0, 'rgba(154,143,123,.46)');
+    dust.addColorStop(0.48, 'rgba(116,108,94,.3)');
+    dust.addColorStop(1, 'rgba(69,68,61,0)');
+    g.save();
+    g.globalAlpha = (1 - progress) * 0.68;
+    g.fillStyle = dust;
+    g.beginPath(); g.ellipse(effect.x, effect.y + 2, spread, spread * 0.3, 0, 0, Math.PI * 2); g.fill();
+    g.globalAlpha = (1 - progress) * 0.22;
+    g.strokeStyle = 'rgba(183,168,142,.72)'; g.lineWidth = 1.5;
+    g.beginPath(); g.ellipse(effect.x, effect.y + 2, spread * 0.84, spread * 0.23, 0, 0, Math.PI * 2); g.stroke();
+    g.restore();
+    return;
+  }
   if (effect.kind === 'rocketWarning') {
     const pulse = 0.72 + Math.sin(time * 24) * 0.16;
     const radius = effect.radius * (0.82 + progress * 0.14);

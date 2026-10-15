@@ -129,7 +129,12 @@ export function resizeGame(s, w, h) {
   }
   if (s.boss) {
     s.boss.x *= sx;
-    s.boss.y = h * 0.2;
+    const entryProgress = clamp(s.boss.entryProgress ?? 1, 0, 1);
+    s.boss.entryStartY = h * 0.12;
+    s.boss.entryEndY = h * 0.44;
+    s.boss.y = s.boss.entryTimer > 0
+      ? s.boss.entryStartY + (s.boss.entryEndY - s.boss.entryStartY) * entryProgress
+      : s.boss.entryEndY;
     s.boss.moveSpeed = (s.boss.moveSpeed || 0) * sx;
     if (s.boss.attackOriginX != null) s.boss.attackOriginX *= sx;
     if (s.boss.attackImpactX != null) s.boss.attackImpactX *= sx;
@@ -485,10 +490,10 @@ function addExplosion(s, x, y, radius, events) {
       if (zombie.dead || Math.hypot(zombie.x - point.x, zombie.y - point.y) > radius) continue;
       damageZombie(s, zombie, 65, point.x, events, true);
     }
-    if (s.boss && Math.hypot(s.boss.x - point.x, s.boss.y - point.y) < radius * 0.85) {
+    if (s.boss && s.boss.hp > 0 && Math.hypot(s.boss.x - point.x, s.boss.y - point.y) < radius * 0.85) {
       s.boss.hp -= 65;
       s.boss.hitFlash = 0.16;
-      if (s.boss.hp <= 0) defeatBoss(s, events);
+      if (s.boss.hp <= 0) defeatBoss(s, events, point.x);
     }
     s.effects.push({ kind: 'explosion', source: 'barrel', x: point.x, y: point.y, life: 1.45, total: 1.45, radius });
     spawnBarrelExplosionParticles(s, point.x, point.y, radius);
@@ -496,19 +501,23 @@ function addExplosion(s, x, y, radius, events) {
   events.push('explosion');
 }
 
-function defeatBoss(s, events) {
+function defeatBoss(s, events, impactX) {
   if (!s.boss || s.bossDefeated) return;
   const boss = s.boss;
   boss.hp = 0;
-  boss.deathDuration = 1.15;
+  boss.deathDuration = 2.35;
   boss.deathTimer = boss.deathDuration;
+  boss.deathSide = Math.sign(boss.x - impactX) || (Math.sin(boss.phase + 0.5) >= 0 ? 1 : -1);
   boss.warning = 0;
   boss.attackTimer = Infinity;
-  boss.hitFlash = 0.24;
+  boss.hitFlash = 0.3;
+  boss.hitShake = 0.34;
   s.bossDefeated = true;
   s.score += 500;
-  s.effects.push({ kind: 'explosion', x: boss.x, y: boss.y + 38, life: 0.9, total: 0.9, radius: s.w * 0.24 });
-  spawnExplosionParticles(s, boss.x, boss.y + 38, s.w * 0.24);
+  const entryScale = 0.28 + 0.72 * smoothstep(clamp(boss.entryProgress ?? 1, 0, 1));
+  const groundY = boss.y + 38 * entryScale;
+  s.effects.push({ kind: 'bossFallDust', x: boss.x, y: groundY, life: 0.9, total: 0.9, radius: s.w * 0.2 });
+  s.hitShake = Math.max(s.hitShake, 0.22);
   for (const zombie of s.zombies) {
     if (zombie.dead) continue;
     zombie.dead = true;
@@ -582,12 +591,13 @@ function shoot(s, events, owner = 'player', fromX = s.x, fromY = s.y - 28, damag
 
 function damageTarget(s, target, damage, events, sourceX) {
   if (target === s.boss) {
+    if (target.hp <= 0) return;
     target.hp -= damage;
       target.hitFlash = 0.12;
     target.hitShake = 0.12;
     addHitEffect(s, target.x + (Math.random() - 0.5) * 42, target.y - 24 + (Math.random() - 0.5) * 35, 20, 'armor');
     events.push('hit');
-    if (target.hp <= 0) defeatBoss(s, events);
+    if (target.hp <= 0) defeatBoss(s, events, sourceX);
     return;
   }
   if (target.kind === 'walker' || target.kind === 'runner') {
@@ -778,10 +788,10 @@ function detonateRocket(s, missile, events) {
     if (zombie.dead || Math.hypot(zombie.x - missile.targetX, zombie.y - missile.targetY) > missile.radius) continue;
     damageZombie(s, zombie, SUPPORT_CONFIG.rocketDamage, missile.targetX, events, true);
   }
-  if (s.boss && Math.hypot(s.boss.x - missile.targetX, s.boss.y - missile.targetY) <= missile.radius + 44) {
+  if (s.boss && s.boss.hp > 0 && Math.hypot(s.boss.x - missile.targetX, s.boss.y - missile.targetY) <= missile.radius + 44) {
     s.boss.hp -= SUPPORT_CONFIG.rocketDamage;
     s.boss.hitFlash = 0.2;
-    if (s.boss.hp <= 0) defeatBoss(s, events);
+    if (s.boss.hp <= 0) defeatBoss(s, events, missile.targetX);
   }
   s.effects.push({
     kind: 'explosion', x: missile.targetX, y: missile.targetY,
@@ -857,9 +867,13 @@ function updateBoss(s, dt, events) {
   s.bossAlertTimer = Math.max(0, s.bossAlertTimer - dt);
   if (s.t >= BOSS_START_AT && !s.bossStarted) {
     s.bossStarted = true;
-    const y = s.h * 0.44;
+    const entryDuration = 2.2;
+    const entryStartY = s.h * 0.12;
+    const entryEndY = s.h * 0.44;
     s.boss = {
-      x: s.w * 0.5, y, hp: 350, maxHp: 350,
+      x: s.w * 0.5, y: entryStartY, hp: 350, maxHp: 350,
+      entryDuration, entryTimer: entryDuration, entryProgress: 0,
+      entryStartY, entryEndY,
       phase: 0, attackTimer: 1.65, warning: 0, warningTotal: 1.25, attackLane: 1,
       attackOriginX: s.w * 0.5, attackImpactX: s.w * 0.5, attackDirection: 0, attackRecover: 0,
       walkPhase: 0, moveSpeed: 0,
@@ -880,6 +894,21 @@ function updateBoss(s, dt, events) {
     }
     return;
   }
+  if (boss.entryTimer > 0) {
+    const previousX = boss.x;
+    boss.entryTimer = Math.max(0, boss.entryTimer - dt);
+    const entryTime = 1 - boss.entryTimer / boss.entryDuration;
+    boss.entryProgress = smoothstep(entryTime);
+    boss.y = boss.entryStartY + (boss.entryEndY - boss.entryStartY) * boss.entryProgress;
+    const halfRoad = roadHalfWidth(s.w, s.h, boss.y);
+    boss.x = s.w * 0.5 + Math.sin(entryTime * Math.PI) * halfRoad * 0.045;
+    boss.hitFlash = Math.max(0, boss.hitFlash - dt);
+    boss.hitShake = Math.max(0, (boss.hitShake || 0) - dt);
+    boss.moveSpeed = dt > 0 ? (boss.x - previousX) / dt : 0;
+    boss.walkPhase += dt * 8.5;
+    return;
+  }
+  boss.entryProgress = 1;
   const previousX = boss.x;
   boss.phase += dt;
   boss.y = s.h * 0.44 + Math.sin(boss.phase * 1.45) * s.h * 0.014;
@@ -1075,7 +1104,8 @@ export function updateGame(s, dt, targetX) {
       bullet.dead = true; hit = true; break;
     }
     if (hit) continue;
-    if (s.boss && Math.hypot(bullet.x - s.boss.x, bullet.y - s.boss.y) < 58) {
+    const bossEntryScale = s.boss ? 0.28 + 0.72 * smoothstep(clamp(s.boss.entryProgress ?? 1, 0, 1)) : 1;
+    if (s.boss && s.boss.hp > 0 && Math.hypot(bullet.x - s.boss.x, bullet.y - s.boss.y) < 58 * bossEntryScale) {
       damageTarget(s, s.boss, bullet.damage, events, bullet.x);
       bullet.dead = true;
     }
