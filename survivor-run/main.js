@@ -1,5 +1,5 @@
 import { createGame, resizeGame, updateGame, DEFAULT_STAGE_ID, getStageDefinition, applyPlayerDrag } from './game.js?v=2-1-20261015f';
-import { drawScene } from './render.js?v=2-1-20261015g';
+import { drawScene } from './render.js?v=2-1-20261015j';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014o';
 
 const $ = id => document.getElementById(id);
