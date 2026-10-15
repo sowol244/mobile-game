@@ -1,7 +1,7 @@
 // 룩스 앤 움브라 — entry point: menus, stage select, the frame loop, HUD, results, local ranking.
 // Rules live in game.js, drawing in render.js/art.js, controls in input.js, sound in sound.js.
 
-import { LEVELS, CHAPTERS, resetOldSave } from './levels.js?v=20261015-chapter5-balance-1';
+import { LEVELS, CHAPTERS } from './levels.js?v=20261015-save-preservation-1';
 import { SOLUTIONS } from './solutions.js?v=20261015-chapter5-balance-1';
 import { createGame, step, starsFor, anyLightOn, torchOrigin, retry } from './game.js';
 import { driver } from './bot.js';
@@ -23,19 +23,19 @@ const torchBtn = $('torch'), knob = $('knob'), blinkBtn = $('blink');
 let blinkWarned = false; // one hint per press of 깜빡 while the torch is off
 let tutorial = null;
 
-const KEY_PROG = 'lux-progress', KEY_TOP = 'lux-top';
+const KEY_PROG = 'lux-progress', KEY_TOP = 'lux-top', KEY_BACKUP_NOTICES = 'lux-backup-notices';
 function load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; } }
 function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* private mode: play on without saving */ } }
+const savedBackupNotices = load(KEY_BACKUP_NOTICES, []);
+const backupNotices = new Set(Array.isArray(savedBackupNotices) ? savedBackupNotices.filter(Number.isSafeInteger) : []);
 
 const view = createRenderer(canvas);
 const input = createInput({ stage, left: $('left'), right: $('right'), jump: $('jump'), blink: $('blink'), torch: torchBtn, knob });
 
 let state = 'title';      // title | play | paused | clear
 let game = null, idx = 0, demo = null, bot = null;
-// { '1-1': { s: [shard 1, shard 2, shard 3], best: seconds } }: a stage is cleared once it has an entry; stars are shards. A save from an older stage set is wiped first (once, with a
-// notice); anything malformed is dropped instead of crashing the menus.
-let saveWiped = false;
-try { saveWiped = resetOldSave(localStorage); } catch { /* storage blocked: nothing saved to wipe */ }
+// { '1-1': { s: [shard 1, shard 2, shard 3], best: seconds, revision } }.
+// A stage is cleared once it has an entry; stars are shards. Malformed entries are dropped safely.
 let progress = cleanProgress(load(KEY_PROG, {}));
 function cleanProgress(p) {
   const out = {}, ids = new Set(LEVELS.map(L => L.id));
@@ -44,11 +44,15 @@ function cleanProgress(p) {
     if (!ids.has(id) || !v || typeof v !== 'object') continue;
     const st = Array.isArray(v.s) ? [0, 1, 2].map(k => !!v.s[k]) : [false, false, false];
     const best = Number.isFinite(v.best) && v.best > 0 ? v.best : 99;
-    out[id] = { s: st, best };
+    const revision = Number.isSafeInteger(v.revision) && v.revision > 0 ? v.revision : 1;
+    out[id] = { s: st, best, revision };
   }
   return out;
 }
-const cleanTop = t => (Array.isArray(t) ? t.filter(e => e && typeof e === 'object' && typeof e.stage === 'string' && Number.isFinite(e.time) && Number.isFinite(e.stars)).slice(0, 10) : []);
+const cleanTop = t => (Array.isArray(t) ? t
+  .filter(e => e && typeof e === 'object' && typeof e.stage === 'string' && Number.isFinite(e.time) && Number.isFinite(e.stars))
+  .map(e => ({ ...e, revision: Number.isSafeInteger(e.revision) && e.revision > 0 ? e.revision : 1 }))
+  .slice(0, 10) : []);
 let lastEntry = null, clearT = 0, resultShown = false, bannerT = 0;
 let acc = 0, last = performance.now(), clock = 0;
 
@@ -111,13 +115,15 @@ function buildStages(ch) {
     const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = open ? L.name : '잠김';
     const meta = document.createElement('span'); meta.className = 'meta';
     const status = document.createElement('span'); status.className = 'status';
-    status.textContent = progress[L.id] ? '완료' : open ? (i === firstOpen() ? '진행 중' : '미완료') : '잠김';
+    const reworked = open && L.revision > (progress[L.id]?.revision ?? 1);
+    status.textContent = reworked ? '개편됨' : progress[L.id] ? '완료' : open ? (i === firstOpen() ? '진행 중' : '미완료') : '잠김';
+    status.classList.toggle('reworked', reworked);
     const sr = document.createElement('span'); sr.className = 'sr';
     (progress[L.id] ? progress[L.id].s : [false, false, false]).forEach(g => { const e = document.createElement(g ? 'b' : 'span'); e.textContent = '★'; sr.append(e); });
     const bt = document.createElement('span'); bt.className = 'bt'; bt.textContent = progress[L.id] && progress[L.id].best < 99 ? fmt(progress[L.id].best) : '';
     meta.append(status, sr, bt);
     btn.append(id, nm, meta);
-    btn.setAttribute('aria-label', `${L.id} ${L.name}${open ? '' : ' 잠김'}, 별 ${starCount(L.id)}개`);
+    btn.setAttribute('aria-label', `${L.id} ${L.name}${open ? '' : ' 잠김'}${reworked ? ', 개편됨' : ''}, 별 ${starCount(L.id)}개`);
     btn.addEventListener('click', () => { unlock(); sfx.click(); startStage(i); });
     grid.append(btn);
   }
@@ -141,8 +147,15 @@ function renderTop(highlight) {
   top.forEach((e, i) => {
     const li = document.createElement('li');
     if (highlight && e.uid === highlight) li.className = 'me';
+    const current = LEVELS.find(L => L.id === e.stage);
+    const oldRevision = !!current && e.revision < current.revision;
     for (const [text, cls] of [[`${i + 1}`, 'rk'], [`${e.stage} ${e.name}`, 'nm'], ['★'.repeat(e.stars) + '☆'.repeat(3 - e.stars), 'st'], [fmt(e.time), 'tm']]) {
-      const s = document.createElement('span'); s.className = cls; s.textContent = text; li.append(s);
+      const s = document.createElement('span'); s.className = cls;
+      if (cls === 'nm') {
+        const name = document.createElement('span'); name.className = 'rank-name'; name.textContent = text; s.append(name);
+        if (oldRevision) { const tag = document.createElement('small'); tag.className = 'old-revision'; tag.textContent = '개편 전'; s.append(tag); }
+      } else s.textContent = text;
+      li.append(s);
     }
     rows.append(li);
   });
@@ -157,7 +170,9 @@ document.querySelectorAll('.back').forEach(b => b.addEventListener('click', () =
 // ---------- 기록 코드: save and load progress as text ----------
 const KEY_HINT = 'lux-codehint';
 function localStorage_get(k) { try { return localStorage.getItem(k); } catch { return null; } }
-const dHint = $('dHint'), dConfirm = $('dConfirm'), codeOut = $('codeOut'), codeIn = $('codeIn'), codeErr = $('codeErr'), copyBtn = $('codeCopy');
+const dHint = $('dHint'), dConfirm = $('dConfirm'), dBackup = $('dBackup');
+const codeOut = $('codeOut'), codeIn = $('codeIn'), codeErr = $('codeErr'), copyBtn = $('codeCopy');
+const backupOut = $('backupOut'), backupCopyBtn = $('backupCopy');
 let dlgFrom = null, dlgOpen = null;
 function openDlg(el, focus) { dlgFrom = document.activeElement; dlgOpen = el; el.hidden = false; focus.focus(); }
 function closeDlg() { if (!dlgOpen) return; dlgOpen.hidden = true; dlgOpen = null; if (dlgFrom && dlgFrom.isConnected && !dlgFrom.hidden) dlgFrom.focus(); }
@@ -165,7 +180,7 @@ document.addEventListener('keydown', e => {
   if (!dlgOpen) return;
   if (e.key === 'Escape') { e.preventDefault(); closeDlg(); }
   if (e.key === 'Tab') {   // keep focus inside the dialog
-    const f = [...dlgOpen.querySelectorAll('button, input')];
+    const f = [...dlgOpen.querySelectorAll('button, input, textarea')];
     const i = f.indexOf(document.activeElement);
     if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
   }
@@ -188,15 +203,43 @@ function openCode(name) { codeTab(name); panel('code'); $(name === 'save' ? 'tab
 $('codeBtn').addEventListener('click', () => { sfx.click(); openCode('save'); });
 $('tabSave').addEventListener('click', () => { sfx.click(); codeTab('save'); });
 $('tabLoad').addEventListener('click', () => { sfx.click(); codeTab('load'); });
-copyBtn.addEventListener('click', async () => {
-  sfx.click();
+async function copyCode(field, button) {
   let ok = false;
-  try { await navigator.clipboard.writeText(codeOut.value); ok = true; } catch { /* fall back to selecting the text */ }
-  if (!ok) { codeOut.focus(); codeOut.select(); try { ok = document.execCommand('copy'); } catch { ok = false; } }
-  copyBtn.textContent = ok ? '복사됨' : '선택했어요. 길게 눌러 복사해요';
-  setTimeout(() => { copyBtn.textContent = '코드 복사'; }, 1800);
-});
+  try { await navigator.clipboard.writeText(field.value); ok = true; } catch { /* fall back to selecting the text */ }
+  if (!ok) { field.focus(); field.select(); try { ok = document.execCommand('copy'); } catch { ok = false; } }
+  button.textContent = ok ? '복사됨' : '선택했어요. 길게 눌러 복사해요';
+  setTimeout(() => { button.textContent = '코드 복사'; }, 1800);
+}
+copyBtn.addEventListener('click', () => { sfx.click(); copyCode(codeOut, copyBtn); });
+backupCopyBtn.addEventListener('click', () => { sfx.click(); copyCode(backupOut, backupCopyBtn); });
 codeOut.addEventListener('focus', () => codeOut.select());
+backupOut.addEventListener('focus', () => backupOut.select());
+function currentProgressCode() { return encodeProgress(progressEntries(progress, LEVELS.map(L => L.id))); }
+function showBackupDialog(stageNumber) {
+  const entries = progressEntries(progress, LEVELS.map(L => L.id));
+  $('backupTitle').textContent = `${stageNumber}판을 마쳤어요`;
+  $('backupStat').textContent = `별 ${countStars(entries)} / ${LEVELS.length * 3} · 클리어 ${countCleared(entries)} / ${LEVELS.length}`;
+  backupOut.value = currentProgressCode();
+  backupCopyBtn.textContent = '코드 복사';
+  $('backupContinue').textContent = idx + 1 < LEVELS.length ? '다음 스테이지' : '스테이지 선택';
+  openDlg(dBackup, backupCopyBtn);
+}
+function noteBackupMilestone(stageNumber) {
+  if (stageNumber % 5 !== 0 || backupNotices.has(stageNumber)) return;
+  backupNotices.add(stageNumber);
+  save(KEY_BACKUP_NOTICES, [...backupNotices]);
+  const show = () => showBackupDialog(stageNumber);
+  const onlineDialog = document.querySelector('dialog.online-score-dialog');
+  if (onlineDialog?.open) onlineDialog.addEventListener('close', show, { once: true });
+  else show();
+}
+$('backupLater').addEventListener('click', () => { sfx.click(); closeDlg(); });
+$('backupContinue').addEventListener('click', () => {
+  sfx.click(); dlgFrom = null; closeDlg();
+  if (state !== 'clear') return;
+  if (idx + 1 < LEVELS.length) startStage(idx + 1);
+  else { buildStages(); panel('stages'); }
+});
 const CODE_ERR = { format: '코드가 틀려요', marker: '이 게임 코드가 아니에요', more: '판이 더 많은 코드예요' };
 let pending = null;
 $('codeApply').addEventListener('click', () => {
@@ -295,12 +338,16 @@ function finishStage() {
   const L = LEVELS[idx], st = starsFor(game), n = st.filter(Boolean).length;
   const prev = progress[L.id];
   const isNew = !prev || game.t < prev.best;
-  progress[L.id] = { s: prev ? prev.s.map((v, k) => v || st[k]) : st, best: prev ? Math.min(prev.best, game.t) : game.t };
+  progress[L.id] = {
+    s: prev ? prev.s.map((v, k) => v || st[k]) : st,
+    best: prev ? Math.min(prev.best, game.t) : game.t,
+    revision: L.revision,
+  };
   save(KEY_PROG, progress);
   window.__onlineLeaderboard?.record(totalStars() * 100 + clearCount(), 'progress', `★ ${totalStars()} · ${clearCount()}/${LEVELS.length}탄`);
   const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const top = cleanTop(load(KEY_TOP, []));
-  top.push({ uid, stage: L.id, name: L.name, stars: n, time: Math.round(game.t * 10) / 10 });
+  top.push({ uid, stage: L.id, name: L.name, stars: n, time: Math.round(game.t * 10) / 10, revision: L.revision });
   top.sort((a, b) => b.stars - a.stars || a.time - b.time);
   const kept = top.slice(0, 10);
   save(KEY_TOP, kept);
@@ -323,6 +370,7 @@ function finishStage() {
   startBtn.textContent = lastStage ? '스테이지 선택' : '다음 스테이지';
   secButtons(true);
   panel('main');
+  noteBackupMilestone(idx + 1);
   st.forEach((g, k) => { if (g) setTimeout(() => sfx.star(k), 250 + k * 180); });
 }
 
@@ -455,7 +503,6 @@ window.addEventListener('pointerdown', () => unlock(), { once: true });
 
 resize();
 showTitle();
-if (saveWiped) msgEl.textContent = '스테이지가 새로 바뀌어 기록을 초기화했어요';
 requestAnimationFrame(frame);
 
 // ---------- test hook (automation; harmless in normal play) ----------

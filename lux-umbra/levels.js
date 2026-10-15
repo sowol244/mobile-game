@@ -35,16 +35,11 @@ export const CHAPTERS = [
   { name: '안개', sub: '마지막 장' },
 ];
 
-// Bump when the stages are rebuilt: saves from another stage set are wiped (stars, best times, unlocks, ranking),
-// settings such as 'lux-mute' are kept. Returns true when there was an old record to wipe.
-export const LEVELS_VERSION = 6;
-export function resetOldSave(store) {
-  if (store.getItem('lux-levels') === String(LEVELS_VERSION)) return false;
-  const had = store.getItem('lux-progress') !== null || store.getItem('lux-top') !== null;
-  store.removeItem('lux-progress'); store.removeItem('lux-top');
-  store.setItem('lux-levels', String(LEVELS_VERSION));
-  return had;
-}
-
-// Stage ids come from the order: chapter-number.
-export const LEVELS = [c1, c2, c3, c4, c5, c6, c7, c8].flatMap((list, ch) => list.map((L, k) => ({ ...L, ch, id: `${ch + 1}-${k + 1}` })));
+// Stage ids come from the order: chapter-number. Increment an individual stage's `revision`
+// when its playable layout or puzzle changes; existing saves then show that stage as updated.
+export const LEVELS = [c1, c2, c3, c4, c5, c6, c7, c8].flatMap((list, ch) => list.map((L, k) => ({
+  ...L,
+  ch,
+  id: `${ch + 1}-${k + 1}`,
+  revision: Number.isSafeInteger(L.revision) && L.revision > 0 ? L.revision : 1,
+})));

@@ -51,6 +51,19 @@
         </div>
       </div>
     </div>
+    <div class="dlg" id="dBackup" role="dialog" aria-modal="true" aria-labelledby="backupTitle" hidden>
+      <div class="card backup-card">
+        <h2 id="backupTitle">진행 기록을 저장해요</h2>
+        <p>기록 코드를 복사해 안전한 곳에 보관하세요. 코드는 스테이지 진행과 별을 옮깁니다. 최고 시간과 이 기기의 스테이지별 순위는 포함되지 않으며, 온라인 순위는 닉네임 등록 후 서버에 기록됩니다.</p>
+        <p id="backupStat"></p>
+        <textarea class="codebox" id="backupOut" readonly rows="3" spellcheck="false" aria-label="진행 기록 코드"></textarea>
+        <div class="row">
+          <button class="go" id="backupCopy" type="button">코드 복사</button>
+          <button class="go ghost" id="backupContinue" type="button">다음 스테이지</button>
+          <button class="go ghost" id="backupLater" type="button">나중에</button>
+        </div>
+      </div>
+    </div>
     <div id="overlay">
       <div class="panel" id="pMain">
         <small id="eyebrow">LUX &amp; UMBRA</small>
@@ -119,7 +132,7 @@
           <p id="codeStat"></p>
           <textarea class="codebox" id="codeOut" readonly rows="4" spellcheck="false" aria-label="내 기록 코드"></textarea>
           <button class="go" id="codeCopy" type="button">코드 복사</button>
-          <small class="hint">코드를 메모해 두면 다른 기기에서도 이어서 할 수 있어요.</small>
+          <small class="hint">진행도와 별을 옮기는 코드예요. 최고 시간과 이 기기의 스테이지별 순위는 포함되지 않아요.</small>
         </div>
         <div class="codebody" id="codeLoad" role="tabpanel" aria-labelledby="tabLoad" hidden>
           <textarea class="codebox" id="codeIn" rows="4" spellcheck="false" autocapitalize="characters" autocomplete="off" placeholder="여기에 코드를 붙여 넣어요" aria-label="기록 코드 붙여넣기"></textarea>
@@ -154,6 +167,6 @@
   </div>
 </div>
 <script type="application/x-game-gated" data-script-type="module" data-script-src="../online-scoreboard.js?game=lux-umbra"></script>
-<script type="application/x-game-gated" data-script-type="module" data-script-src="main.js?v=20261015-chapter5-balance-1"></script>
+<script type="application/x-game-gated" data-script-type="module" data-script-src="main.js?v=20261015-save-preservation-1"></script>
 </body>
 </html>

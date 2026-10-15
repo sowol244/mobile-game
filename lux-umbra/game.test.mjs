@@ -1,6 +1,6 @@
 // Rule checks and stage solvability for 룩스 앤 움브라. Run: node lux-umbra/game.test.mjs
 import assert from 'node:assert/strict';
-import { LEVELS, CHAPTERS, LEVELS_VERSION, resetOldSave } from './levels.js';
+import { LEVELS, CHAPTERS } from './levels.js';
 import { SOLUTIONS, MAIN_SOLUTIONS } from './solutions.js';
 import { createGame, step, isSolid, tileLight, lightSources, starsFor, castRay } from './game.js';
 import { driver } from './bot.js';
@@ -553,20 +553,10 @@ test('no room template is used more than 3 times', () => {
   for (const list of uses.values()) assert.ok(list.length <= 3, `template used ${list.length} times: ${list.join(' ')}`);
 });
 
-test('a save from another stage set is wiped (settings kept); a current one is kept', () => {
-  const mem = init => { const m = new Map(Object.entries(init)); return { m, getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; };
-  const old = { 'lux-progress': '{"1-1":{"s":[true,true,true],"best":9}}', 'lux-top': '[{"stage":"1-1","time":9,"stars":3}]', 'lux-mute': '1' };
-  for (const ver of [undefined, '2', '3', '4']) {
-    const st = mem(ver ? { ...old, 'lux-levels': ver } : old);
-    assert.equal(resetOldSave(st), true);
-    assert.equal(st.getItem('lux-progress'), null); assert.equal(st.getItem('lux-top'), null);
-    assert.equal(st.getItem('lux-mute'), '1'); assert.equal(st.getItem('lux-levels'), String(LEVELS_VERSION));
-    assert.equal(resetOldSave(st), false, 'only once');
+test('stage revisions default to one and stay positive', () => {
+  for (const L of LEVELS) {
+    assert.ok(Number.isSafeInteger(L.revision) && L.revision > 0, `${L.id} revision ${L.revision}`);
   }
-  const cur = mem({ ...old, 'lux-levels': String(LEVELS_VERSION) });
-  assert.equal(resetOldSave(cur), false);
-  assert.equal(cur.getItem('lux-progress'), old['lux-progress']); assert.equal(cur.getItem('lux-top'), old['lux-top']);
-  assert.equal(resetOldSave(mem({})), false, 'a new player sees no notice');
 });
 
 console.log(`\n${n} tests passed`);

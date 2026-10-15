@@ -4,7 +4,7 @@
 // Bytes before scrambling:   crc32(4) | marker(1) | stage count N(1) | N nibbles (cleared bit, 3 shard bits)
 // The CRC covers marker, N and the nibbles, seeded with a fixed salt. Everything after the CRC is XOR-ed with a keystream
 // from a fixed seed mixed with the CRC, so different states never share a prefix and the text looks random.
-// Text: Crockford base32 in groups of 4 joined by "-". LEVELS_VERSION is deliberately not part of the code.
+// Text: Crockford base32 in groups of 4 joined by "-". Stage revisions and times stay outside this progress-only code.
 
 const MARKER = 0xB7;
 const SALT = 0x4C55584F;     // fixed secret salt for the checksum
