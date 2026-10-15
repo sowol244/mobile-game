@@ -837,6 +837,7 @@ function crashOver() {
     top.push({ ...entry, mode: 'crash' }); top.sort((a, b) => b.score - a.score);
     save('top', top.slice(0, 10));
   }
+  window.__onlineLeaderboard?.record(C.score, daily ? 'daily' : 'crash', `LV ${C.level} · ${daily ? '오늘의 챌린지' : '크래시'}`);
   lastEntry = entry.id;
   const prevBest = daily ? dailyBest() : best;
   const isBest = C.score > 0 && C.score > prevBest;

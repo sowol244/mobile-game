@@ -297,6 +297,7 @@ function finishStage() {
   const isNew = !prev || game.t < prev.best;
   progress[L.id] = { s: prev ? prev.s.map((v, k) => v || st[k]) : st, best: prev ? Math.min(prev.best, game.t) : game.t };
   save(KEY_PROG, progress);
+  window.__onlineLeaderboard?.record(totalStars() * 100 + clearCount(), 'progress', `★ ${totalStars()} · ${clearCount()}/${LEVELS.length}탄`);
   const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const top = cleanTop(load(KEY_TOP, []));
   top.push({ uid, stage: L.id, name: L.name, stars: n, time: Math.round(game.t * 10) / 10 });

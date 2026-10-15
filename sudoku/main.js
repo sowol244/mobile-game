@@ -346,6 +346,9 @@ function win() {
   const newBest = !prev || t < prev.best;
   book[slot] = { stars: Math.max(stars, prev ? prev.stars : 0), best: prev ? Math.min(prev.best, t) : t };
   if (daily) store.set('daily', dailyRecs); else store.set('rec', recs);
+  const cleared = Object.keys(recs).length, total = totalStars();
+  const dailyClears = Object.values(dailyRecs).reduce((n, day) => n + Number(!!day.easy) + Number(!!day.hard), 0);
+  window.__onlineLeaderboard?.record(cleared * 10_000 + total + dailyClears, 'progress', `${cleared}/100탄 · ★${total} · 오늘의 퍼즐 ${dailyClears}개`);
   dropSave(saveKey());
   const best = book[slot].best;
   sel = -1; paintSel(); hud();

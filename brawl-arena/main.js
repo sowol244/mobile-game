@@ -321,6 +321,7 @@ function finish() {
   const top = load(KEY_TOP, []); top.push(entry);
   top.sort((a, b) => b.trophy - a.trophy || b.kills - a.kills || b.id - a.id);
   save(KEY_TOP, top.slice(0, 10)); lastEntry = entry.id;
+  window.__onlineLeaderboard?.record(Math.max(0, gain), survival ? 'survival' : 'team', `${survival ? `${place}등` : (won ? '승리' : draw ? '무승부' : '패배')} · ${me.def.name} · 처치 ${me.kills}`);
 
   titleEl.textContent = survival ? (place === 1 ? '1등! 최후의 생존자' : `${place}등`) : draw ? '무승부' : won ? '승리!' : '패배';
   msgEl.innerHTML = survival ? `6명 중 <b>${place}등</b> · 파워 큐브 <b>${me.cubes}</b>개` : `파랑 <b>${match.score[0]}</b> : <b>${match.score[1]}</b> 빨강`;

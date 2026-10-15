@@ -200,6 +200,7 @@
   </div>
 </div>
 
+<script type="application/x-game-gated" data-script-type="module" data-script-src="../online-scoreboard.js?game=super-jump"></script>
 <script type="application/x-game-gated">
 (() => {
   const T = 16, ROWS = 15, STEP = 1 / 120, GRAV = 1500, MAX_HP = 3, SWING = 0.22, SWING_CD = 0.1;
@@ -1536,10 +1537,12 @@
   }
   function gameOver() {
     state = 'over'; lastEntry = addTop(Math.floor(score), (stageIdx + 1) + '스테이지 Lv' + lvl);
+    window.__onlineLeaderboard?.record(Math.floor(score), 'main', (stageIdx + 1) + '스테이지 · Lv' + lvl);
     show('게임 오버', `${stageIdx + 1}스테이지에서 쓰러졌어요.`, pad(score, 6) + '점', '다시 하기');
   }
   function win() {
     state = 'win'; lastEntry = addTop(Math.floor(score), '전체 클리어 Lv' + lvl);
+    window.__onlineLeaderboard?.record(Math.floor(score), 'main', '전체 클리어 · Lv' + lvl);
     show('모험 완료!', `${'♥'.repeat(hp)} · 코인 ${coinCount}개`, pad(score, 6) + '점', '다시 하기');
   }
 

@@ -209,6 +209,7 @@ function finishGame(result) {
     elapsed: Math.floor(game.t), barrels: game.barrelsBroken,
     date: new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' }).format(new Date()),
   };
+  window.__onlineLeaderboard?.record(game.score, 'main', `${entry.result} · 처치 ${game.kills} · 보급 ${game.barrelsBroken}`);
   const records = top();
   records.push(entry);
   records.sort((a, b) => b.score - a.score);

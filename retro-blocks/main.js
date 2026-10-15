@@ -241,12 +241,16 @@ function endGame() {
     $('nameIn').value = load('name', '');
     panel('entry');
     setTimeout(() => { try { $('nameIn').focus({ preventScroll: true }); } catch { } }, 50);
-  } else showResult();
+  } else {
+    window.__onlineLeaderboard?.record(g.score, g.mode === 'B' ? 'type-b' : 'type-a', `${g.mode}-TYPE · LV ${g.level} · ${g.lines}줄`, load('name', ''));
+    showResult();
+  }
 }
 function saveEntry() {
   const g = game;
   const name = ($('nameIn').value.trim() || 'PLAYER').slice(0, 8);
   save('name', name);
+  window.__onlineLeaderboard?.record(g.score, g.mode === 'B' ? 'type-b' : 'type-a', `${g.mode}-TYPE · LV ${g.level} · ${g.lines}줄`, name);
   const d = new Date();
   const entry = { id: Date.now(), t: Date.now(), name, score: g.score, lines: g.lines, level: g.level, mode: g.mode, start: g.start, date: `${d.getMonth() + 1}/${d.getDate()}` };
   const { list } = L.insertScore(topList(), entry);

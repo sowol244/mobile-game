@@ -146,6 +146,7 @@
   </div>
 </div>
 
+<script type="application/x-game-gated" data-script-type="module" data-script-src="../online-scoreboard.js?game=meteor-dodge"></script>
 <script type="application/x-game-gated">
 (() => {
   const $ = id => document.getElementById(id);
@@ -1391,6 +1392,7 @@
       : (isBest ? '최고 기록을 갱신했어요. (' + where + ')' : `${where}에서 끝났어요. 최고 기록은 ${best}점이에요.`);
     finalEl.textContent = final + '점'; finalEl.hidden = false;
     lastEntry = addTop(final, win ? '전체 클리어' : where);
+    window.__onlineLeaderboard?.record(final, 'main', win ? '3개 스테이지 클리어' : where);
     renderRec(); startBtn.textContent = '다시 하기'; buttons(false); panel('main'); overlay.hidden = false;
   }
   function begin() { reset(); lastEntry = null; overlay.hidden = true; running = true; beep(520, 0.1); }
