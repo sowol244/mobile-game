@@ -84,7 +84,7 @@ export function createGame(w, h, stageId = DEFAULT_STAGE_ID) {
     w, h, t: 0, finished: null,
     stageId: stageDefinition.id, stageDefinition,
     stageRuntime: createStageRuntime(stageDefinition.id),
-    x: w * 0.5, targetX: w * 0.5, y: h * PLAYER_BASE_Y_RATIO,
+    x: w * 0.5, targetX: w * 0.5, y: h * PLAYER_BASE_Y_RATIO, playerMoveAmount: 0,
     hp: 100, maxHp: 100, invulnerable: 0, flash: 0, hitShake: 0,
     passDamageWindow: 0, passDamageTaken: 0, defenseFlash: 0,
     moveTutorialShown: !stageDefinition.showMoveTutorial, moveTutorialVisible: false, moveTutorialTimer: 0,
@@ -941,6 +941,9 @@ export function updateGame(s, dt, targetX) {
   const maxX = s.w * 0.5 + movementReach - rightReserve;
   s.targetX = clamp(s.targetX, minX, maxX);
   s.x += (s.targetX - s.x) * Math.min(1, dt * 12);
+  const lateralSpeed = Math.abs(s.x - previousX) / Math.max(dt, 0.001);
+  const moveTarget = clamp(lateralSpeed / 240, 0, 1);
+  s.playerMoveAmount += (moveTarget - s.playerMoveAmount) * Math.min(1, dt * 9);
   if (Math.abs(s.x - previousX) > 0.5) {
     s.hasPlayerMoved = true;
     s.moveTutorialVisible = false;

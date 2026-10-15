@@ -1,4 +1,4 @@
-import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=2-1-20261015e';
+import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=2-1-20261015f';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const smoothstep = value => {
@@ -188,7 +188,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
 
     for (let lane = 1; lane <= 2; lane++) {
       for (let i = 0; i < 9; i++) {
-        const depth = ((i / 9 + offset) % 1);
+        const depth = i / 9;
         const y = horizon + depth * (h - horizon);
         const half = roadHalfWidth(w, h, y);
         const x = w / 2 + (lane - 1.5) * half * 0.385;
@@ -214,6 +214,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
     return;
   }
   const horizon = h * 0.13;
+  const groundOffset = 0;
   const sky = g.createLinearGradient(0, 0, 0, h);
   sky.addColorStop(0, tollgate ? '#626a6d' : '#707572'); sky.addColorStop(0.23, tollgate ? '#494f51' : '#555b59'); sky.addColorStop(0.48, tollgate ? '#303638' : '#39413f'); sky.addColorStop(1, tollgate ? '#191e20' : '#1e2926');
   g.fillStyle = sky; g.fillRect(0, 0, w, h);
@@ -262,13 +263,13 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
 
   for (const side of [-1, 1]) {
     for (let i = 0; i < 5; i++) {
-      const depth = ((i / 5 + offset * 0.56 + (side > 0 ? 0.17 : 0)) % 1);
+      const depth = ((i / 5 + groundOffset * 0.56 + (side > 0 ? 0.17 : 0)) % 1);
       const y = horizon + depth * (h - horizon);
       const half = roadHalfWidth(w, h, y);
       const scale = 0.18 + depth * 0.78;
       const x = clamp(w * 0.5 + side * (half + 18 * scale), 8, w - 8);
       const kind = (i + (side > 0 ? 1 : 0)) % 4;
-      if (kind === 0) drawStreetLamp(g, x, y, scale, side, offset * 15 + i);
+      if (kind === 0) drawStreetLamp(g, x, y, scale, side, groundOffset * 15 + i);
       else if (kind === 1) drawRoadSign(g, x, y, scale, side, i);
       else if (kind === 2) drawRubble(g, x, y, scale, side);
       else drawRubble(g, x, y, scale * 0.78, side);
@@ -295,7 +296,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
   }
 
   for (let i = 0; i < 8; i++) {
-    const depth = ((i / 8 + offset * 0.74) % 1);
+    const depth = ((i / 8 + groundOffset * 0.74) % 1);
     const y = horizon + depth * (h - horizon);
     const half = roadHalfWidth(w, h, y);
     const scale = 0.3 + depth * 0.8;
@@ -310,7 +311,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
 
   for (let lane = 1; lane <= 2; lane++) {
     for (let i = 0; i < 9; i++) {
-      const depth = ((i / 9 + offset) % 1);
+      const depth = ((i / 9 + groundOffset) % 1);
       const y = horizon + depth * (h - horizon);
       const half = roadHalfWidth(w, h, y);
       const x = w / 2 + (lane - 1.5) * half * 0.385;
@@ -321,7 +322,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
   }
 
   for (let i = 0; i < 9; i++) {
-    const depth = ((i / 9 + offset * 1.12) % 1);
+    const depth = ((i / 9 + groundOffset * 1.12) % 1);
     const y = horizon + depth * (h - horizon);
     const half = roadHalfWidth(w, h, y);
     const scale = 0.3 + depth * 0.8;
@@ -334,7 +335,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
   }
 
   for (let i = 0; i < 12; i++) {
-    const depth = ((i / 12 + offset * 1.45) % 1);
+    const depth = ((i / 12 + groundOffset * 1.45) % 1);
     const y = horizon + depth * (h - horizon);
     const half = roadHalfWidth(w, h, y);
     const size = 1.5 + depth * 4;
@@ -345,7 +346,7 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
 
   g.fillStyle = 'rgba(255,228,168,.035)';
   g.fillRect(w * 0.39, horizon, w * 0.22, h - horizon);
-  if (tollgate) drawTollgateDetails(g, w, h, offset);
+  if (tollgate) drawTollgateDetails(g, w, h, groundOffset);
 }
 
 function depthScale(h, y) {
@@ -866,12 +867,16 @@ function drawSupport(g, s, time, assets) {
 function drawPlayer(g, s, time, assets) {
   const h = 96, w = 80;
   const stride = time * 12;
-  const bob = Math.abs(Math.sin(stride)) * 3.5;
+  const isMoving = (s.playerMoveAmount || 0) > 0.22;
+  const bob = isMoving ? Math.abs(Math.sin(stride)) * 3.5 : Math.sin(time * 2.2) * 0.8;
   if (s.invulnerable > 0 && Math.floor(time * 18) % 2 === 0) return;
-  drawFootstepDust(g, s.x, s.y + 16, 1.05, stride, '#c8b898');
-  const image = Math.sin(stride) > 0 && assets.playerRun ? assets.playerRun : assets.player;
+  if (isMoving) drawFootstepDust(g, s.x, s.y + 16, 1.05, stride, '#c8b898');
+  const image = isMoving
+    ? Math.sin(stride) > 0 && assets.playerRun ? assets.playerRun : assets.player
+    : assets.playerReady || assets.player;
   const recoil = clamp(s.playerRecoil / 0.11, 0, 1);
-  drawSprite(g, image, s.x, s.y + 17 + bob + recoil * 2, w, h, 0, Math.sin(stride) * 0.035 - recoil * 0.045, 1, s.flash > 0 ? '#ff7068' : null);
+  const lean = isMoving ? Math.sin(stride) * 0.035 : Math.sin(time * 1.1) * 0.004;
+  drawSprite(g, image, s.x, s.y + 17 + bob + recoil * 2, w, h, 0, lean - recoil * 0.045, 1, s.flash > 0 ? '#ff7068' : null);
   if (s.playerMuzzleFlash > 0) {
     const aim = s.target ? Math.atan2(s.target.x - s.x, s.y - s.target.y) : 0;
     const flash = clamp(s.playerMuzzleFlash / 0.075, 0, 1);
@@ -1239,11 +1244,8 @@ function drawTitleScene(g, w, h, time, assets, stageId) {
     kind: stageId === 'stage02' ? 'twin' : 'weapon',
     x: w * 0.72, y: h * 0.62, lane: 2, hp: stageId === 'stage02' ? 58 : 40,
   }, w, h, time / 1000);
-  const runPhase = time / 1000 * 12;
-  drawFootstepDust(g, w * 0.5, h * 0.90, 1, runPhase, '#c8b898');
-  const runningPose = Math.sin(runPhase) > 0;
-  const playerImage = runningPose && assets.playerRun ? assets.playerRun : assets.player;
-  drawSprite(g, playerImage, w * 0.5, h * 0.90 + Math.abs(Math.sin(runPhase)) * 3, 87, 106, 0, Math.sin(runPhase) * 0.035, 1);
+  const idleBob = Math.sin(time * 0.0022) * 1.2;
+  drawSprite(g, assets.playerReady || assets.player, w * 0.5, h * 0.90 + idleBob, 87, 106, 0, Math.sin(time * 0.0011) * 0.004, 1);
   const shade = g.createLinearGradient(0, 0, 0, h);
   shade.addColorStop(0, 'rgba(12,21,20,.07)');
   shade.addColorStop(0.45, 'rgba(10,17,17,.2)');

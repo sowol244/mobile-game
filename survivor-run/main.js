@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, DEFAULT_STAGE_ID, getStageDefinition, applyPlayerDrag } from './game.js?v=2-1-20261015e';
-import { drawScene } from './render.js?v=2-1-20261015f';
+import { createGame, resizeGame, updateGame, DEFAULT_STAGE_ID, getStageDefinition, applyPlayerDrag } from './game.js?v=2-1-20261015f';
+import { drawScene } from './render.js?v=2-1-20261015g';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014o';
 
 const $ = id => document.getElementById(id);
@@ -47,6 +47,7 @@ const sprite = path => {
 const assets = {
   player: sprite('assets/player-back-a.webp'),
   playerRun: sprite('assets/player-back-b.webp'),
+  playerReady: sprite('assets/player-back-ready.webp'),
   walker: sprite('assets/zombie-walker.webp'),
   walkerRun: sprite('assets/zombie-walker-run.webp'),
   runner: sprite('assets/zombie-runner.webp'),
@@ -172,12 +173,12 @@ function updateHud() {
   hud.stageNumber.textContent = game.stageDefinition.number;
   hud.routeName.textContent = game.stageDefinition.name;
   hud.bossName.textContent = game.stageDefinition.boss.label;
-  hud.distance.textContent = game.distance.toLocaleString('ko-KR') + ' m';
   const progress = game.bossDefeated
     ? 100
     : game.boss
       ? 88 + (1 - game.boss.hp / game.boss.maxHp) * 11
       : Math.min(88, game.t / game.stageDefinition.boss.startAt * 88);
+  hud.distance.textContent = Math.floor(progress) + '%';
   hud.progress.style.width = progress + '%';
   const elapsed = Math.floor(game.t);
   hud.timer.textContent = String(Math.floor(elapsed / 60)).padStart(2, '0') + ':' + String(elapsed % 60).padStart(2, '0');
