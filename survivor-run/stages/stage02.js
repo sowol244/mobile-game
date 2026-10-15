@@ -95,7 +95,7 @@ export const STAGE_02 = Object.freeze({
   name: '붕괴된 톨게이트',
   background: 'tollgate',
   intro: '붕괴된 톨게이트를 돌파하세요.',
-  clearMessage: '방패 파괴자를 격파하고 2-1을 돌파했습니다.',
+  clearMessage: '철갑 파쇄자를 격파하고 2-1을 돌파했습니다.',
   maxActiveZombies: 22,
   showMoveTutorial: false,
   barrelSpeed: 0.16,
@@ -103,7 +103,7 @@ export const STAGE_02 = Object.freeze({
   explosiveRadiusMode: 'lane',
   companionDuplicatePower: 0.2,
   boss: Object.freeze({
-    label: '방패 파괴자',
+    label: '철갑 파쇄자',
     warningAt: 90,
     startAt: 92,
     hp: 850,

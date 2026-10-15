@@ -1,6 +1,6 @@
 import {
   collectStageActions, createStageRuntime, DEFAULT_STAGE_ID, getStageDefinition,
-} from './stages/stageManager.js?v=20261015p';
+} from './stages/stageManager.js?v=20261015q';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const smoothstep = value => {

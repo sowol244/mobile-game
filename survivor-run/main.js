@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, DEFAULT_STAGE_ID, getStageDefinition, applyPlayerDrag } from './game.js?v=2-1-20261015d';
-import { drawScene } from './render.js?v=2-1-20261015d';
+import { createGame, resizeGame, updateGame, DEFAULT_STAGE_ID, getStageDefinition, applyPlayerDrag } from './game.js?v=2-1-20261015e';
+import { drawScene } from './render.js?v=2-1-20261015e';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014o';
 
 const $ = id => document.getElementById(id);
@@ -68,7 +68,7 @@ function loadStage02Assets() {
   if (stage02AssetsRequested) return;
   stage02AssetsRequested = true;
   Object.assign(assets, {
-    stage02Backdrop: sprite('assets/stage02-background.webp'),
+    stage02Backdrop: sprite('assets/stage02-background-motion.webp'),
     bossBreakerIdle: sprite('assets/boss-breaker-idle.webp'),
     bossBreakerWalk: sprite('assets/boss-breaker-walk.webp'),
     bossBreakerWindup: sprite('assets/boss-breaker-windup.webp'),

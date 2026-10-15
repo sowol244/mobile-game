@@ -1,4 +1,4 @@
-import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=2-1-20261015d';
+import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=2-1-20261015e';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const smoothstep = value => {
@@ -173,16 +173,23 @@ function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
     g.fillRect(0, 0, w, h);
 
     const horizon = h * 0.27;
-    for (let i = 0; i < 9; i++) {
-      const depth = ((i / 9 + offset * 0.78) % 1);
-      const y = horizon + depth * (h - horizon);
-      const half = w * (0.28 + depth * 0.22);
-      const dashH = 3 + depth * 17;
-      g.fillStyle = 'rgba(224,222,202,' + (0.08 + depth * 0.2) + ')';
+    const roadTravel = offset * 1.08;
+    for (let i = 0; i < 8; i++) {
+      const depth = ((i / 8 + roadTravel) % 1);
+      const perspective = Math.pow(depth, 1.42);
+      const y = horizon + perspective * (h - horizon);
+      const half = w * (0.28 + perspective * 0.22);
+      const dashH = 2 + perspective * 27;
+      const stripeWidth = 1.2 + perspective * 2.4;
+      g.save();
+      g.shadowColor = 'rgba(218,222,211,' + (0.12 + perspective * 0.18) + ')';
+      g.shadowBlur = 1 + perspective * 3;
+      g.fillStyle = 'rgba(211,215,202,' + (0.2 + perspective * 0.34) + ')';
       for (const lane of [1, 2]) {
         const x = w * 0.5 + (lane - 1.5) * half * 0.385;
-        roundRect(g, x - 0.8 - depth * 0.6, y, 1.6 + depth * 1.2, dashH, 1.2, g.fillStyle);
+        roundRect(g, x - stripeWidth / 2, y, stripeWidth, dashH, stripeWidth * 0.42, g.fillStyle);
       }
+      g.restore();
     }
     g.save();
     for (let i = 0; i < 46; i++) {
