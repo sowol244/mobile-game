@@ -3,6 +3,7 @@ const smoothstep = value => {
   const t = clamp(value, 0, 1);
   return t * t * (3 - 2 * t);
 };
+const repeated = (kind, count) => Array.from({ length: count }, () => kind);
 
 export function updateStage01Boss(s, boss, dt, events, api) {
   const previousX = boss.x;
@@ -75,10 +76,12 @@ export const STAGE_01 = Object.freeze({
   intro: '폐허가 된 고속도로에서 최종 보스를 돌파하세요.',
   clearMessage: '최종 보스를 격파하고 1-1을 돌파했습니다.',
   maxActiveZombies: 40,
+  maxPassDamagePerSecond: 8,
   showMoveTutorial: true,
   explosiveDamage: 65,
   explosiveRadiusMode: 'screen',
   companionDuplicatePower: 0.25,
+  playerDamage: 12,
   boss: Object.freeze({
     label: '대형 변이체',
     warningAt: 62,
@@ -94,25 +97,25 @@ export const STAGE_01 = Object.freeze({
     update: updateStage01Boss,
   }),
   waves: [
-    { start: 0.6, count: 5, interval: 1.45, pattern: ['walker'], lanes: [1, 0, 1, 2, 0] },
-    { start: 8.35, count: 6, interval: 1.32, pattern: ['walker'], lanes: [0, 2, 0, 2, 1, 1] },
-    { start: 16.25, count: 9, interval: 1.18, pattern: ['walker'], lanes: [1, 0, 2, 1, 0, 2, 1, 0, 2] },
-    { start: 28.2, count: 14, interval: 0.86, pattern: ['walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'walker', 'runner', 'runner'], lanes: [0, 2, 1, 0, 0, 0, 2, 2, 1, 1, 1, 2, 0, 2] },
-    { start: 40.25, count: 15, interval: 0.78, pattern: ['walker'], lanes: [0, 2, 1, 0, 2, 1, 0, 1, 2, 0, 2, 1, 0, 2, 1] },
-    { start: 55, count: 10, interval: 0.65, pattern: ['walker', 'walker', 'walker', 'walker', 'runner'], lanes: [1, 0, 2, 1, 0, 2, 1, 0, 2, 1] },
+    { start: 0.6, count: 6, interval: 0.55, pattern: repeated('walker', 6), lanes: [1, 0, 2, 1, 2, 0] },
+    { start: 4.8, count: 7, interval: 0.44, pattern: repeated('walker', 7), lanes: [0, 2, 1, 0, 2, 1, 0] },
+    { start: 13.6, count: 10, interval: 0.46, pattern: [...repeated('walker', 8), ...repeated('runner', 2)], lanes: [1, 0, 2, 0, 1, 2, 1, 0, 2, 1] },
+    { start: 23.5, count: 13, interval: 0.48, pattern: [...repeated('walker', 10), ...repeated('runner', 3)], lanes: [1, 0, 2, 1, 0, 2, 1, 1, 0, 2, 0, 2, 1] },
+    { start: 32.5, count: 15, interval: 0.44, pattern: [...repeated('walker', 11), ...repeated('runner', 4)], lanes: [0, 2, 1, 0, 2, 1, 0, 1, 2, 0, 2, 1, 0, 2, 1] },
+    { start: 47.5, count: 18, interval: 0.42, pattern: [...repeated('walker', 12), ...repeated('runner', 6)], lanes: [1, 0, 2, 1, 2, 0, 1, 0, 2, 1, 0, 2, 0, 1, 2, 1, 0, 2] },
+    { start: 56, count: 12, interval: 0.4, pattern: [...repeated('walker', 8), ...repeated('runner', 4)], lanes: [1, 0, 2, 1, 0, 2, 1, 2, 0, 1, 2, 0] },
   ],
   events: [
-    { at: 8, type: 'barrel', lane: 1, kind: 'rapidfire', hp: 35, permanent: true },
-    { at: 16, type: 'offer', rewards: [
+    { at: 8, type: 'offer', rewards: [
       { lane: 0, kind: 'companion', hp: 40 },
       { lane: 2, kind: 'upgrade', hp: 45 },
     ] },
-    { at: 41.5, type: 'explosive', lane: 0 },
-    { at: 45, type: 'offer', rewards: [
-      { lane: 0, kind: 'companion', hp: 40 },
+    { at: 34.5, type: 'explosive', lane: 0 },
+    { at: 40, type: 'offer', rewards: [
+      { lane: 0, kind: 'twin', hp: 58 },
       { lane: 2, kind: 'rocket', hp: 100 },
     ] },
-    { at: 50, type: 'explosive', lane: 2 },
-    { at: 52, type: 'obstacle', lane: 1 },
+    { at: 48.5, type: 'explosive', lane: 2 },
+    { at: 54, type: 'obstacle', lane: 1 },
   ],
 });

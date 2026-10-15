@@ -1,4 +1,5 @@
 let audio = null;
+let noiseBuffer = null;
 let muted = false;
 try { muted = localStorage.getItem('survivor-run-mute') === '1'; } catch { /* 저장할 수 없어도 플레이할 수 있어요. */ }
 
@@ -11,6 +12,11 @@ export function setMuted(value) {
 export function unlock() {
   try {
     if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (!noiseBuffer) {
+      noiseBuffer = audio.createBuffer(1, Math.floor(audio.sampleRate * 0.6), audio.sampleRate);
+      const samples = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+    }
     if (audio.state === 'suspended') audio.resume();
   } catch { audio = null; }
 }
@@ -28,15 +34,35 @@ function tone(from, to, duration, type, volume) {
   osc.start(at); osc.stop(at + duration + 0.02);
 }
 
+function noiseBurst(type, frequency, duration, volume) {
+  if (muted || !audio || !noiseBuffer) return;
+  const at = audio.currentTime;
+  const source = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  source.buffer = noiseBuffer;
+  filter.type = type;
+  filter.frequency.setValueAtTime(frequency, at);
+  filter.Q.setValueAtTime(0.72, at);
+  gain.gain.setValueAtTime(volume, at);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+  source.connect(filter).connect(gain).connect(audio.destination);
+  source.start(at);
+  source.stop(at + duration);
+}
+
 export const sfx = {
   shot() {
-    tone(145, 48, 0.09, 'triangle', 0.045);
-    tone(540, 185, 0.045, 'square', 0.012);
+    noiseBurst('highpass', 1550, 0.026, 0.018);
+    tone(126, 44, 0.105, 'triangle', 0.042);
   },
-  allyShot() { tone(410, 160, 0.052, 'triangle', 0.009); },
+  allyShot() {
+    noiseBurst('highpass', 1250, 0.021, 0.007);
+    tone(118, 52, 0.075, 'triangle', 0.015);
+  },
   hit() {
-    tone(185, 58, 0.085, 'triangle', 0.038);
-    tone(880, 320, 0.032, 'square', 0.01);
+    noiseBurst('bandpass', 720, 0.04, 0.018);
+    tone(142, 48, 0.09, 'triangle', 0.032);
   },
   kill(combo = 1) {
     tone(125, 42, 0.12, 'triangle', 0.05);
@@ -44,10 +70,13 @@ export const sfx = {
   },
   pick() { tone(620, 1040, 0.14, 'triangle', 0.05); },
   hurt() { tone(165, 62, 0.22, 'sawtooth', 0.065); },
-  explosion() { tone(105, 36, 0.42, 'sawtooth', 0.075); },
+  explosion() {
+    noiseBurst('lowpass', 520, 0.48, 0.07);
+    tone(76, 30, 0.46, 'triangle', 0.082);
+  },
   bossSlam() {
-    tone(82, 34, 0.28, 'sawtooth', 0.052);
-    tone(145, 48, 0.13, 'triangle', 0.032);
+    noiseBurst('lowpass', 330, 0.25, 0.055);
+    tone(68, 28, 0.36, 'triangle', 0.066);
   },
   upgrade() { [740, 990].forEach((f, i) => setTimeout(() => tone(f, f * 1.15, 0.11, 'triangle', 0.035), i * 70)); },
   boss() { tone(115, 58, 0.52, 'sawtooth', 0.075); },

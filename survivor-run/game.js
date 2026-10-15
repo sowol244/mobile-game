@@ -17,9 +17,10 @@ export const MAX_PASS_DAMAGE_PER_SECOND = 14;
 export const DIRECT_HIT_INVULNERABILITY = 0.85;
 export const MOVE_TUTORIAL_DELAY = 0.9;
 export const MOVE_TUTORIAL_DURATION = 2;
-export const AIM_ASSIST_ANGLE = 8;
+export const AIM_ASSIST_ANGLE = 14;
 const AIM_ASSIST_ANGLE_RADIANS = AIM_ASSIST_ANGLE * Math.PI / 180;
 const AIM_ASSIST_DISTANCE_TIE_EPSILON = 8;
+const MAX_ACTIVE_BARRELS = 2;
 export const BARREL_CONFIG = Object.freeze({
   companion: Object.freeze({ hp: 40, color: '#75836f' }),
   drone: Object.freeze({ hp: 70, color: '#a65ae8' }),
@@ -32,7 +33,8 @@ export const BARREL_CONFIG = Object.freeze({
 export const SUPPORT_CONFIG = Object.freeze({
   companionMaxCount: 2,
   companionSlotOffset: 52,
-  companionDamage: 4,
+  companionSlotSpacing: 26,
+  companionDamage: 4.5,
   companionDuplicatePower: 0.25,
   companionMaxPower: 2,
   companionFireInterval: 0.26,
@@ -52,6 +54,10 @@ export const SUPPORT_CONFIG = Object.freeze({
   rapidFireMultiplier: 0.77,
   healAmount: 25,
 });
+
+function companionOffset(slot) {
+  return SUPPORT_CONFIG.companionSlotOffset + SUPPORT_CONFIG.companionSlotSpacing * slot;
+}
 export const ZOMBIE_DAMAGE = Object.freeze({
   normal: Object.freeze({ pass: 2, collision: 9 }),
   fast: Object.freeze({ pass: 3, collision: 10 }),
@@ -157,20 +163,25 @@ function spawnZombie(s, forcedKind, forcedLane) {
   const stageTwo = s.stageId === 'stage02';
   const hp = kind === 'tank' || kind === 'tanker'
     ? (stageTwo ? 112 : 150)
-    : kind === 'runner' ? (stageTwo ? 12 : 15) : (stageTwo ? 16 : 20);
+    : kind === 'runner' ? (stageTwo ? 12 : 15) : (stageTwo ? 16 : s.stageId === 'stage01' ? 15 : 20);
   s.zombies.push({
     kind, lane, x: laneX(s.w, s.h, y, lane), y,
     hp, maxHp: hp, radius: kind === 'tank' || kind === 'tanker' ? 25 : kind === 'runner' ? 13 : 16,
     speed: s.h * (kind === 'tank' || kind === 'tanker' ? 0.17 : kind === 'runner' ? 0.42 : 0.26)
-      * (stageTwo ? 0.92 : 1) * (1 + Math.min(0.2, s.t / 500)),
+      * (stageTwo ? 0.92 : s.stageId === 'stage01' ? 0.84 : 1) * (1 + Math.min(0.2, s.t / 500)),
     phase: Math.random() * Math.PI * 2, dead: false, dying: 0,
     hitFlash: 0, recoilX: 0, recoilY: 0, deathSide: 1, hasAppliedDamage: false,
   });
 }
 
+function activeBarrelCount(s) {
+  return s.barrels.reduce((count, barrel) => count + (!barrel.dead ? 1 : 0), 0);
+}
+
 function spawnBarrelOffer(s, rewards) {
+  if (activeBarrelCount(s) + Math.min(MAX_ACTIVE_BARRELS, rewards.length) > MAX_ACTIVE_BARRELS) return;
   const offer = {};
-  for (const item of rewards.slice(0, 2)) {
+  for (const item of rewards.slice(0, MAX_ACTIVE_BARRELS)) {
     const y = s.h * 0.18;
     s.barrels.push({
       lane: item.lane, kind: item.kind, hp: item.hp || BARREL_CONFIG[item.kind]?.hp || 40, maxHp: item.hp || BARREL_CONFIG[item.kind]?.hp || 40,
@@ -180,6 +191,7 @@ function spawnBarrelOffer(s, rewards) {
 }
 
 function spawnRewardBarrel(s, lane, kind, options = {}) {
+  if (activeBarrelCount(s) >= MAX_ACTIVE_BARRELS) return;
   const hp = options.hp || BARREL_CONFIG[kind]?.hp || 40;
   const y = s.h * 0.18;
   s.barrels.push({
@@ -189,6 +201,7 @@ function spawnRewardBarrel(s, lane, kind, options = {}) {
 }
 
 function spawnExplosiveBarrel(s, lane) {
+  if (activeBarrelCount(s) >= MAX_ACTIVE_BARRELS) return;
   const y = s.h * 0.17;
   s.barrels.push({
     lane, kind: 'explosive', hp: 30, maxHp: 30,
@@ -239,6 +252,13 @@ function zombieDamageProfile(s, zombie) {
     if (zombie.kind === 'boss' || zombie.kind === 'brute') return ZOMBIE_DAMAGE.boss;
     return { pass: 1, collision: 6 };
   }
+  if (s.stageId === 'stage01') {
+    if (zombie.kind === 'runner') return { pass: 2, collision: 8 };
+    if (zombie.kind === 'tank' || zombie.kind === 'tanker') return { pass: 6, collision: 14 };
+    if (zombie.kind === 'explosive') return { pass: 5, collision: 11 };
+    if (zombie.kind === 'boss' || zombie.kind === 'brute') return ZOMBIE_DAMAGE.boss;
+    return { pass: 1, collision: 7 };
+  }
   if (zombie.kind === 'runner') return ZOMBIE_DAMAGE.fast;
   if (zombie.kind === 'tank' || zombie.kind === 'tanker') {
     return ZOMBIE_DAMAGE.tanker;
@@ -269,7 +289,8 @@ function resolveZombieContact(s, zombie, contact, events) {
     s.passDamageWindow = damageWindow;
     s.passDamageTaken = 0;
   }
-  const available = Math.max(0, MAX_PASS_DAMAGE_PER_SECOND - s.passDamageTaken);
+  const passDamageLimit = s.stageDefinition.maxPassDamagePerSecond ?? MAX_PASS_DAMAGE_PER_SECOND;
+  const available = Math.max(0, passDamageLimit - s.passDamageTaken);
   const requested = Math.min(profile.pass, available, s.hp);
   const lineY = s.h * DEFENSE_LINE_Y_RATIO;
   s.defenseFlash = Math.max(s.defenseFlash, 0.38);
@@ -281,7 +302,7 @@ function resolveZombieContact(s, zombie, contact, events) {
     x: zombie.x,
     y: lineY - 15,
   });
-  s.passDamageTaken = Math.min(MAX_PASS_DAMAGE_PER_SECOND, s.passDamageTaken + applied);
+  s.passDamageTaken = Math.min(passDamageLimit, s.passDamageTaken + applied);
 }
 
 function addParticle(s, particle) {
@@ -398,11 +419,11 @@ function rewardBarrel(s, barrel, events) {
       const occupiedSlots = new Set(active.map(companion => companion.slot));
       const slot = Array.from({ length: SUPPORT_CONFIG.companionMaxCount }, (_, index) => index)
         .find(index => !occupiedSlots.has(index)) ?? active.length % SUPPORT_CONFIG.companionMaxCount;
-      const side = slot === 0 ? -1 : 1;
-      const offsetX = side * SUPPORT_CONFIG.companionSlotOffset;
+      const side = -1;
+      const offsetX = -companionOffset(slot);
       s.companions.push({
         id: s.nextCompanionId++, side, slot, permanent: true,
-        x: s.x + offsetX, y: s.y + 10,
+        x: s.x + offsetX, y: s.y + 10 + slot * 8,
         life: Infinity, maxLife: Infinity,
         fireTimer: 0.16, appear: 0.4, exit: 0, recoil: 0, muzzleFlash: 0, phase: Math.random() * 6,
       });
@@ -475,7 +496,7 @@ function killZombie(s, zombie, sourceX, events) {
   const reward = zombie.kind === 'tank' || zombie.kind === 'tanker' ? 30 : zombie.kind === 'runner' ? 15 : 10;
   s.score += reward;
   s.effects.push({ kind: 'kill', x: zombie.x, y: zombie.y - 24, combo: s.killStreak, amount: reward, life: 0.62, total: 0.62 });
-  s.hitShake = Math.max(s.hitShake, s.killStreak >= 3 ? 0.14 : 0.085);
+  s.hitShake = Math.max(s.hitShake, s.killStreak >= 3 ? 0.26 : 0.15);
   events.push({ type: 'kill', combo: s.killStreak });
 }
 
@@ -483,8 +504,8 @@ function damageZombie(s, zombie, damage, sourceX, events, quiet = false) {
   if (zombie.dead) return;
   zombie.hp -= damage;
   zombie.hitFlash = 0.2;
-  zombie.recoilX = (zombie.x >= sourceX ? 1 : -1) * 19;
-  zombie.recoilY = 145;
+  zombie.recoilX = (zombie.x >= sourceX ? 1 : -1) * 26;
+  zombie.recoilY = 210;
   addHitEffect(s, zombie.x, zombie.y - 19, Math.max(10, zombie.radius * 0.78), 'flesh');
   if (!quiet) events.push('hit');
   if (zombie.hp <= 0) killZombie(s, zombie, sourceX, events);
@@ -561,12 +582,13 @@ function defeatBoss(s, events, impactX) {
 
 export function findAimTarget(s, fromX = s.x, fromY = s.y - 28, includeBarrels = true) {
   const side = roadHalfWidth(s.w, s.h, s.y) * 1.15;
+  const playerLane = closestLane(s, s.x);
   const targets = [];
   for (const zombie of s.zombies) if (!zombie.dead) targets.push(zombie);
   if (includeBarrels) for (const barrel of s.barrels) if (!barrel.dead) targets.push(barrel);
   if (s.boss && s.boss.hp > 0) targets.push(s.boss);
 
-  let best = null, bestDistance = Infinity, bestAngle = Infinity;
+  let best = null, bestScore = Infinity, bestAngle = Infinity;
   for (const target of targets) {
     const dx = target.x - fromX;
     const dy = fromY - target.y;
@@ -578,11 +600,18 @@ export function findAimTarget(s, fromX = s.x, fromY = s.y - 28, includeBarrels =
     if (angleFromForward > AIM_ASSIST_ANGLE_RADIANS) continue;
 
     const distance = Math.hypot(dx, dy);
-    const isCloser = distance < bestDistance - AIM_ASSIST_DISTANCE_TIE_EPSILON;
-    const isSimilarDistance = Math.abs(distance - bestDistance) <= AIM_ASSIST_DISTANCE_TIE_EPSILON;
+    const targetLane = Number.isInteger(target.lane) ? target.lane : closestLane(s, target.x);
+    const laneChoiceWeight = includeBarrels ? roadHalfWidth(s.w, s.h, target.y) * 0.72 : 0;
+    const isBarrel = includeBarrels && s.barrels.includes(target);
+    const barrelChoiceWeight = isBarrel && targetLane === playerLane
+      ? roadHalfWidth(s.w, s.h, target.y) * 2.1
+      : 0;
+    const score = distance + Math.abs(targetLane - playerLane) * laneChoiceWeight - barrelChoiceWeight;
+    const isCloser = score < bestScore - AIM_ASSIST_DISTANCE_TIE_EPSILON;
+    const isSimilarDistance = Math.abs(score - bestScore) <= AIM_ASSIST_DISTANCE_TIE_EPSILON;
     if (isCloser || (isSimilarDistance && angleFromForward < bestAngle)) {
       best = target;
-      bestDistance = distance;
+      bestScore = score;
       bestAngle = angleFromForward;
     }
   }
@@ -603,7 +632,7 @@ function shoot(s, events, owner = 'player', fromX = s.x + (s.weapon === 'twin' ?
     ? SUPPORT_CONFIG.companionDamage * s.companionPower
     : owner === 'drone'
       ? SUPPORT_CONFIG.droneDamage
-      : ((smg ? 7 : twin ? 8.5 : 10) + s.damageBonus * (twin ? 0.65 : 1)) * damageScale * s.damageMultiplier;
+      : ((smg ? 7 : twin ? 8.5 : (s.stageDefinition.playerDamage ?? 10)) + s.damageBonus * (twin ? 0.65 : 1)) * damageScale * s.damageMultiplier;
   const spreads = owner === 'player' && smg && s.weaponLevel.smg >= 3 ? [-0.075, 0, 0.075] : [0];
   const shots = twin
     ? [-1, 1].map(side => ({ angleOffset: 0, sideOffset: side * (7 + (s.weaponLevel.twin - 1) * 0.7), damageScale: 1 }))
@@ -686,12 +715,10 @@ function updateCompanions(s, dt, events) {
     companion.recoil *= Math.exp(-dt * 12);
     if (companion.life > 0) {
       if (!companion.permanent) companion.life = Math.max(0, companion.life - dt);
-      const offsetX = (companion.slot === 0 ? -1 : 1) * SUPPORT_CONFIG.companionSlotOffset;
-      const reducedPlayerTrack = s.w * 0.5 + (s.x - s.w * 0.5) * 0.82;
-      const targetX = clamp(reducedPlayerTrack + offsetX, roadLeft, roadRight);
+      const targetX = clamp(s.x - companionOffset(companion.slot), roadLeft, s.x - 16);
       companion.x += (targetX - companion.x) * Math.min(1, dt * 7);
-      companion.side = companion.slot === 0 ? -1 : 1;
-      companion.y = s.y + 13 + Math.sin(companion.phase) * 1.5;
+      companion.side = -1;
+      companion.y = s.y + 13 + companion.slot * 8 + Math.sin(companion.phase) * 1.2;
       if (companion.life <= 0) {
         companion.exit = 0.42;
         continue;
@@ -699,7 +726,7 @@ function updateCompanions(s, dt, events) {
       companion.fireTimer -= dt;
       if (companion.fireTimer <= 0) {
         const muzzleSide = companion.side < 0 ? 1 : -1;
-        shoot(s, events, 'companion', companion.x + muzzleSide * 14, companion.y - 58, 0.5);
+        shoot(s, events, 'companion', companion.x + muzzleSide * 14, companion.y - 58, 1);
         companion.fireTimer = SUPPORT_CONFIG.companionFireInterval;
         companion.recoil = 1;
         companion.muzzleFlash = 0.085;
@@ -935,8 +962,8 @@ export function updateGame(s, dt, targetX) {
   const previousX = s.x;
   const supportSlots = new Set(s.companions.filter(companion => companion.life > 0).map(companion => companion.slot));
   const movementReach = roadHalfWidth(s.w, s.h, s.y) * 0.95;
-  const leftReserve = supportSlots.has(0) ? SUPPORT_CONFIG.companionSlotOffset : 0;
-  const rightReserve = supportSlots.has(1) ? SUPPORT_CONFIG.companionSlotOffset : 0;
+  const leftReserve = supportSlots.size ? Math.max(...Array.from(supportSlots, companionOffset)) : 0;
+  const rightReserve = 0;
   const minX = s.w * 0.5 - movementReach + leftReserve;
   const maxX = s.w * 0.5 + movementReach - rightReserve;
   s.targetX = clamp(s.targetX, minX, maxX);

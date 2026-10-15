@@ -388,6 +388,39 @@ function depthScale(h, y) {
   return 0.48 + depth * 0.72;
 }
 
+function drawStage01Atmosphere(g, w, h, time) {
+  g.save();
+  for (const side of [-1, 1]) {
+    for (let plume = 0; plume < 2; plume++) {
+      const phase = time * 0.11 + plume * 1.7 + (side > 0 ? 0.8 : 0);
+      const rise = (phase % 1) * h * 0.055;
+      const x = w * (side < 0 ? 0.08 : 0.92) + Math.sin(phase * 2.4) * w * 0.012;
+      const y = h * (0.245 + plume * 0.045) - rise;
+      const radius = w * (0.035 + plume * 0.009);
+      const smoke = g.createRadialGradient(x, y, radius * 0.08, x, y, radius);
+      smoke.addColorStop(0, 'rgba(137,132,120,.17)');
+      smoke.addColorStop(0.5, 'rgba(117,115,108,.09)');
+      smoke.addColorStop(1, 'rgba(84,87,83,0)');
+      g.fillStyle = smoke;
+      g.beginPath(); g.ellipse(x, y, radius * 1.25, radius * 0.72, -side * 0.12, 0, Math.PI * 2); g.fill();
+    }
+  }
+
+  for (let i = 0; i < 18; i++) {
+    const depth = (i * 0.317 + time * 0.11) % 1;
+    const y = h * (0.16 + depth * 0.72);
+    const half = roadHalfWidth(w, h, y);
+    const side = i % 2 ? 1 : -1;
+    const x = w * 0.5 + side * (half + 4 + depth * 14 + Math.sin(time * 0.7 + i) * 2);
+    const size = 0.7 + depth * 1.1;
+    g.globalAlpha = 0.08 + depth * 0.1;
+    g.strokeStyle = i % 3 ? '#c5b99d' : '#77736b';
+    g.lineWidth = size;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x - side * size * 1.8, y + size * (1.4 + depth)); g.stroke();
+  }
+  g.restore();
+}
+
 function drawBarrel(g, barrel, w, h, time) {
   const style = BARREL_VISUALS[barrel.kind] || BARREL_VISUALS.supply;
   const scale = Math.max(0.58, depthScale(h, barrel.y));
@@ -855,7 +888,7 @@ function drawSupport(g, s, time, assets) {
     const muzzleX = drawX + (flipX ? -12 : 12);
     const muzzleY = companion.y - 48 + bob;
     drawFootstepDust(g, companion.x, companion.y, 0.45, stride, '#958b74');
-    drawSprite(g, image, drawX, companion.y + bob, 36, 62, 0, step * 0.045 - companion.recoil * 0.025, alpha, null, flipX);
+    drawSprite(g, image, drawX, companion.y + bob, 33, 56, 0, step * 0.045 - companion.recoil * 0.025, alpha, null, flipX);
     drawSupportMuzzle(g, muzzleX, muzzleY, companion.muzzleFlash, '#d9b27a');
   }
 
@@ -1217,18 +1250,35 @@ function drawEffect(g, effect, time) {
     return;
   }
   if (effect.kind === 'hit') {
-    const size = effect.radius * (0.45 + progress * 1.15);
-    const color = effect.material === 'armor' ? '#fff0b0' : effect.material === 'metal' ? '#d0a66d' : '#b9956c';
-    g.globalAlpha = 1 - progress;
-    g.strokeStyle = color; g.lineWidth = effect.material === 'armor' ? 2.8 : 1.5;
-    g.beginPath(); g.ellipse(effect.x, effect.y, size * 0.72, size * 0.52, 0, 0, Math.PI * 2); g.stroke();
-    for (let ray = 0; ray < 6; ray++) {
-      const angle = ray * Math.PI / 3 + progress * 0.24;
-      const inner = size * 0.48, outer = size * (0.78 + (ray % 2) * 0.32);
-      g.beginPath();
-      g.moveTo(effect.x + Math.cos(angle) * inner, effect.y + Math.sin(angle) * inner);
-      g.lineTo(effect.x + Math.cos(angle) * outer, effect.y + Math.sin(angle) * outer);
-      g.stroke();
+    const size = effect.radius * (0.28 + progress * 0.68);
+    const armor = effect.material === 'armor' || effect.material === 'metal';
+    g.globalAlpha = (1 - progress) * 0.9;
+    if (armor) {
+      g.fillStyle = effect.material === 'armor' ? '#f2d59c' : '#c9a77c';
+      g.beginPath(); g.ellipse(effect.x, effect.y, size * 0.32, size * 0.19, -0.18, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#e4c78c';
+      g.lineWidth = 1.15;
+      for (let ray = 0; ray < 3; ray++) {
+        const angle = ray * 2.1 + 0.35 + progress * 0.42;
+        const inner = size * 0.25, outer = size * (0.5 + (ray % 2) * 0.22);
+        g.beginPath();
+        g.moveTo(effect.x + Math.cos(angle) * inner, effect.y + Math.sin(angle) * inner);
+        g.lineTo(effect.x + Math.cos(angle) * outer, effect.y + Math.sin(angle) * outer);
+        g.stroke();
+      }
+    } else {
+      const dust = g.createRadialGradient(effect.x, effect.y, 0, effect.x, effect.y, size);
+      dust.addColorStop(0, 'rgba(151,104,75,.38)');
+      dust.addColorStop(0.46, 'rgba(119,73,55,.2)');
+      dust.addColorStop(1, 'rgba(86,57,44,0)');
+      g.fillStyle = dust;
+      g.beginPath(); g.ellipse(effect.x, effect.y, size, size * 0.62, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(173,128,95,.64)';
+      for (let speck = 0; speck < 3; speck++) {
+        const angle = speck * 2.16 + progress * 0.35;
+        const distance = size * (0.28 + progress * 0.42);
+        g.beginPath(); g.arc(effect.x + Math.cos(angle) * distance, effect.y + Math.sin(angle) * distance * 0.7, Math.max(0.7, 1.1 * (1 - progress)), 0, Math.PI * 2); g.fill();
+      }
     }
   } else if (effect.kind === 'slam') {
     const half = effect.radius * (1 + progress * 0.18);
@@ -1301,6 +1351,7 @@ export function drawScene(ctx, s, w, h, now, title, assets, previewStageId = 'st
     return;
   }
   drawRoad(ctx, w, h, offset, assets, s.stageDefinition.background);
+  if (s.stageId === 'stage01') drawStage01Atmosphere(ctx, w, h, s.t);
   drawDefenseLine(ctx, w, h, s.defenseFlash);
   const time = s.t;
   const objects = [];
