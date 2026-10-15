@@ -616,56 +616,7 @@ function drawArmoredZombie(g, zombie, width, height, yOffset, rotation, alpha) {
   g.restore();
 }
 
-function drawShooterWeapon(g, zombie, width, height, bob, rotation, targetX, targetY) {
-  if (zombie.dead) return;
-  const scale = height / 60;
-  const aim = Math.atan2((targetX ?? zombie.x) - zombie.x, (targetY ?? zombie.y + 80) - zombie.y);
-  g.save();
-  g.globalAlpha = 0.92;
-  g.translate(zombie.x + width * 0.13, zombie.y - height * 0.48 + bob);
-  g.rotate(aim + rotation * 0.16);
-  roundRect(g, -2.7 * scale, -3 * scale, 5.4 * scale, 9 * scale, 1.2 * scale, '#25292a', '#090c0c', 0.8 * scale);
-  roundRect(g, -1.45 * scale, 5 * scale, 2.9 * scale, 10 * scale, 0.7 * scale, '#303433', '#151918', 0.55 * scale);
-  roundRect(g, -3.8 * scale, -1.4 * scale, 2 * scale, 5 * scale, 0.65 * scale, '#292b29', '#111414', 0.45 * scale);
-  g.fillStyle = '#77756b';
-  g.fillRect(-0.45 * scale, -1.8 * scale, 0.9 * scale, 7 * scale);
-  if (zombie.muzzleFlash > 0) {
-    const pulse = zombie.muzzleFlash / 0.14;
-    g.globalAlpha = pulse;
-    g.fillStyle = '#ffc36b';
-    g.shadowColor = '#ff7546'; g.shadowBlur = 8 * scale;
-    g.beginPath(); g.ellipse(0, 16 * scale, 2.4 * scale, 5 * scale, 0, 0, Math.PI * 2); g.fill();
-    g.shadowBlur = 0;
-  }
-  g.restore();
-}
-
-function drawEnemyShotWarnings(g, s, time) {
-  for (const zombie of s.zombies) {
-    if (zombie.dead || zombie.kind !== 'shooter' || zombie.shotWarning <= 0) continue;
-    const progress = clamp(1 - zombie.shotWarning / (zombie.shotWarningTotal || 0.52), 0, 1);
-    const pulse = 0.4 + Math.sin(time * 25) * 0.12 + progress * 0.3;
-    g.save();
-    g.globalAlpha = pulse;
-    g.strokeStyle = '#c95845';
-    g.lineWidth = 1.4;
-    g.setLineDash([3, 7]);
-    g.beginPath(); g.moveTo(zombie.x, zombie.y + 10); g.lineTo(zombie.aimX, zombie.aimY); g.stroke();
-    g.setLineDash([]);
-    const radius = 11 + progress * 3;
-    g.lineWidth = 1.5;
-    g.beginPath(); g.arc(zombie.aimX, zombie.aimY, radius, 0, Math.PI * 2); g.stroke();
-    g.beginPath();
-    g.moveTo(zombie.aimX - radius - 4, zombie.aimY); g.lineTo(zombie.aimX - radius + 2, zombie.aimY);
-    g.moveTo(zombie.aimX + radius - 2, zombie.aimY); g.lineTo(zombie.aimX + radius + 4, zombie.aimY);
-    g.moveTo(zombie.aimX, zombie.aimY - radius - 4); g.lineTo(zombie.aimX, zombie.aimY - radius + 2);
-    g.moveTo(zombie.aimX, zombie.aimY + radius - 2); g.lineTo(zombie.aimX, zombie.aimY + radius + 4);
-    g.stroke();
-    g.restore();
-  }
-}
-
-function drawZombie(g, zombie, h, time, assets, targetX, targetY) {
+function drawZombie(g, zombie, h, time, assets) {
   const scale = depthScale(h, zombie.y);
   const tank = zombie.kind === 'tank' || zombie.kind === 'tanker';
   const height = (tank ? 87 : zombie.kind === 'runner' ? 56 : 60) * scale;
@@ -684,7 +635,6 @@ function drawZombie(g, zombie, h, time, assets, targetX, targetY) {
   if (!zombie.dead) drawFootstepDust(g, zombie.x, zombie.y, scale * (tank ? 1.2 : 1), stride, tank ? '#827c70' : runner ? '#d4c29b' : '#9daf8d');
   drawSprite(g, image, zombie.x, zombie.y + bob + (zombie.dead ? (1 - dying) * 9 : 0), width, height, 0, rotation, dying, zombie.hitFlash > 0 ? '#fff0bd' : null);
   if (tank) drawArmoredZombie(g, zombie, width, height, bob + (zombie.dead ? (1 - dying) * 9 : 0), rotation, dying);
-  if (zombie.kind === 'shooter') drawShooterWeapon(g, zombie, width, height, bob, rotation, targetX, targetY);
   if (!zombie.dead && zombie.hp < zombie.maxHp) {
     const barW = (tank ? 42 : 30) * scale;
     roundRect(g, zombie.x - barW / 2, zombie.y - height - 5, barW, 5 * scale, 2, 'rgba(10,15,14,.9)');
@@ -780,6 +730,68 @@ function drawHydraulicBoss(g, boss, w, h, time, assets) {
       g.beginPath(); g.moveTo(ramX + Math.cos(angle) * inner, ramY + Math.sin(angle) * inner);
       g.lineTo(ramX + Math.cos(angle) * outer, ramY + Math.sin(angle) * outer); g.stroke();
     }
+    g.restore();
+  }
+}
+
+function bossGunPose(boss, size, offsetX = 0) {
+  const side = Math.sign((boss.gunAimX ?? boss.x) - boss.x) || 1;
+  const startX = boss.x + offsetX + side * size * 0.13;
+  const startY = boss.y + 16;
+  const dx = (boss.gunAimX ?? boss.x) - startX;
+  const dy = (boss.gunAimY ?? boss.y + 240) - startY;
+  const distance = Math.max(1, Math.hypot(dx, dy));
+  const angle = Math.atan2(dy, dx);
+  const muzzleX = startX + Math.cos(angle) * size * 0.24;
+  const muzzleY = startY + Math.sin(angle) * size * 0.24;
+  return { startX, startY, muzzleX, muzzleY, angle };
+}
+
+function drawBossRifle(g, boss, size, offsetX, entryScale, time) {
+  if (boss.deathTimer != null) return;
+  const gunSize = size * entryScale;
+  const scale = gunSize / 140;
+  const pose = bossGunPose(boss, gunSize, offsetX);
+  const barrelLength = gunSize * 0.24;
+  g.save();
+  g.translate(pose.startX, pose.startY);
+  g.rotate(pose.angle);
+  g.scale(scale, scale);
+  g.globalAlpha = 0.98;
+  roundRect(g, -17, -3.5, 18, 7, 1.5, '#282b29', '#101312', 1.2);
+  roundRect(g, -2, -5, 19, 10, 1.8, '#333735', '#111514', 1.4);
+  roundRect(g, 14, -2.2, barrelLength / scale - 14, 4.4, 1.2, '#202625', '#090c0c', 1.1);
+  roundRect(g, 1, 3, 5, 9, 1, '#252a28', '#101413', 0.8);
+  roundRect(g, 5, -3.6, 5, 1, 0.4, '#7d7768');
+  g.strokeStyle = 'rgba(179,174,153,.6)';
+  g.lineWidth = 0.8;
+  g.beginPath(); g.moveTo(3, -5); g.lineTo(3, -7.5); g.lineTo(8, -7.5); g.stroke();
+  if (boss.gunMuzzleFlash > 0) {
+    const pulse = boss.gunMuzzleFlash / 0.12;
+    g.globalAlpha = pulse;
+    g.shadowColor = '#ff613b'; g.shadowBlur = 12;
+    polygon(g, [[barrelLength / scale - 1, 0], [barrelLength / scale + 11, -5], [barrelLength / scale + 7, 0], [barrelLength / scale + 11, 5]], '#ffd58b', '#ff7548');
+    g.shadowBlur = 0;
+  }
+  g.restore();
+  if (boss.gunWarning > 0) {
+    const progress = clamp(1 - boss.gunWarning / (boss.gunWarningTotal || 0.82), 0, 1);
+    const pulse = 0.35 + progress * 0.35 + (Math.sin(time * 25) + 1) * 0.09;
+    const radius = 12 + progress * 5;
+    g.save();
+    g.globalAlpha = pulse;
+    g.strokeStyle = '#ff684e';
+    g.lineWidth = 1.6;
+    g.setLineDash([6, 7]);
+    g.beginPath(); g.moveTo(pose.muzzleX, pose.muzzleY); g.lineTo(boss.gunAimX, boss.gunAimY); g.stroke();
+    g.setLineDash([]);
+    g.beginPath(); g.arc(boss.gunAimX, boss.gunAimY, radius, 0, Math.PI * 2); g.stroke();
+    g.beginPath();
+    g.moveTo(boss.gunAimX - radius - 5, boss.gunAimY); g.lineTo(boss.gunAimX - radius + 3, boss.gunAimY);
+    g.moveTo(boss.gunAimX + radius - 3, boss.gunAimY); g.lineTo(boss.gunAimX + radius + 5, boss.gunAimY);
+    g.moveTo(boss.gunAimX, boss.gunAimY - radius - 5); g.lineTo(boss.gunAimX, boss.gunAimY - radius + 3);
+    g.moveTo(boss.gunAimX, boss.gunAimY + radius - 3); g.lineTo(boss.gunAimX, boss.gunAimY + radius + 5);
+    g.stroke();
     g.restore();
   }
 }
@@ -906,6 +918,7 @@ function drawBoss(g, boss, w, h, time, assets) {
     g.beginPath(); g.ellipse(boss.x + offsetX, boss.y + 42, size * (0.3 + progress * 0.64), size * (0.075 + progress * 0.13), 0, 0, Math.PI * 2); g.stroke();
     g.restore();
   }
+  drawBossRifle(g, boss, size, offsetX, entryScale, time);
 }
 
 function drawSupportMuzzle(g, x, y, alpha, color = '#ffe6a1') {
@@ -1068,12 +1081,12 @@ function drawBullet(g, bullet) {
   g.save();
   g.translate(bullet.x, bullet.y);
   g.rotate(Math.atan2(bullet.vy, bullet.vx) - Math.PI / 2);
-  if (bullet.owner === 'enemy') {
+  if (bullet.owner === 'boss') {
     g.shadowColor = '#ff684f'; g.shadowBlur = 7;
     g.strokeStyle = 'rgba(255,119,83,.72)'; g.lineWidth = 2.5;
     g.beginPath(); g.moveTo(0, 5); g.lineTo(0, 18); g.stroke();
-    g.fillStyle = '#ffc177';
-    g.beginPath(); g.ellipse(0, -1, 2.4, 5.5, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#ffd28d';
+    g.beginPath(); g.ellipse(0, -1, 2.8, 6.2, 0, 0, Math.PI * 2); g.fill();
     g.restore();
     return;
   }
@@ -1278,7 +1291,7 @@ function drawEffect(g, effect, time) {
   g.save();
   if (effect.kind === 'damageNumber') {
     const y = effect.y - progress * 21;
-    const label = '-' + effect.amount;
+    const label = '-' + Math.round(effect.amount);
     g.globalAlpha = clamp(1 - progress * 0.88, 0, 1);
     g.font = '900 19px "Black Han Sans", sans-serif';
     g.textAlign = 'center';
@@ -1286,7 +1299,7 @@ function drawEffect(g, effect, time) {
     g.lineWidth = 3;
     g.strokeStyle = 'rgba(16,20,19,.92)';
     g.strokeText(label, effect.x, y);
-    g.fillStyle = effect.source === 'breach' ? '#ffd37b' : '#ff7770';
+    g.fillStyle = effect.source === 'breach' ? '#ffd37b' : effect.source === 'bossShot' ? '#ff9878' : '#ff7770';
     g.fillText(label, effect.x, y);
     g.restore();
     return;
@@ -1412,7 +1425,6 @@ export function drawScene(ctx, s, w, h, now, title, assets, previewStageId = 'st
   drawRoad(ctx, w, h, offset, assets, s.stageDefinition.background);
   if (s.stageId === 'stage01') drawStage01Atmosphere(ctx, w, h, s.t);
   drawDefenseLine(ctx, w, h, s.defenseFlash);
-  drawEnemyShotWarnings(ctx, s, s.t);
   const time = s.t;
   const objects = [];
   for (const barrel of s.barrels) objects.push({ y: barrel.y, kind: 'barrel', item: barrel });
@@ -1422,7 +1434,7 @@ export function drawScene(ctx, s, w, h, now, title, assets, previewStageId = 'st
   objects.sort((a, b) => a.y - b.y);
   for (const object of objects) {
     if (object.kind === 'barrel') drawBarrel(ctx, object.item, w, h, time);
-    else if (object.kind === 'zombie') drawZombie(ctx, object.item, h, time, assets || {}, s.x, s.y - 10);
+    else if (object.kind === 'zombie') drawZombie(ctx, object.item, h, time, assets || {});
     else if (object.kind === 'obstacle') drawObstacle(ctx, object.item, h, time);
     else drawBoss(ctx, object.item, w, h, time, assets || {});
   }

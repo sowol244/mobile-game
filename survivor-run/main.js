@@ -233,7 +233,7 @@ function handleEvents(events) {
   for (const event of events) {
     if (event === 'shot') sfx.shot();
     else if (event === 'allyShot') sfx.allyShot();
-    else if (event === 'enemyShot') sfx.enemyShot();
+    else if (event === 'bossShot') sfx.bossShot();
     else if (event === 'hit') {
       if (!hitSoundPlayed) { sfx.hit(); hitSoundPlayed = true; }
     }
