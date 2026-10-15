@@ -41,10 +41,13 @@
   .game:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   button.game { width: 100%; border: 0; text-align: left; font: inherit; cursor: pointer; }
   button.game:hover { background: var(--card-hi); }
-  .game-admin-row { display: grid; grid-template-columns: minmax(0, 1fr) 88px; align-items: center; gap: 6px; margin: 6px 0; }
+  .game-admin-row { display: grid; grid-template-columns: minmax(0, 1fr) 104px; align-items: center; gap: 8px; margin: 6px 0; }
   .game-admin-row > .game { min-width: 0; margin: 0; }
-  .game-admin-row select { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 7px 3px; background: var(--card); color: var(--fg); font: inherit; font-size: 11px; }
-  .game-admin-row select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .game-admin-controls { display: grid; gap: 7px; }
+  .game-admin-controls select { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 7px 3px; background: var(--card); color: var(--fg); font: inherit; font-size: 11px; }
+  .game-admin-controls select:focus-visible, .game-new-toggle input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .game-new-toggle { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; cursor: pointer; }
+  .game-new-toggle input { width: 14px; height: 14px; margin: 0; accent-color: var(--new); }
   .game img { width: 56px; height: 56px; border-radius: 12px; display: block; background: #1b1630; }
   .game small { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; line-height: 1.35; }
   .game .badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; vertical-align: 2px; }
@@ -91,7 +94,7 @@
     <div class="row"></div>
   </section>
   <nav id="tree" aria-label="게임 목록"><p class="note">게임 목록을 불러오는 중입니다.</p></nav>
-  <p id="admin-note" class="note" hidden>게임 상태 설정은 모든 방문자에게 적용됩니다.</p>
+  <p id="admin-note" class="note" hidden>게임 상태와 NEW 표시 설정은 모든 방문자에게 적용됩니다.</p>
   <p class="note">이곳의 게임들은 예고 없이 추가되거나 삭제될 수 있습니다.</p>
 </main>
 <dialog id="admin-dialog" aria-labelledby="admin-title">
@@ -115,17 +118,17 @@
   <iframe id="game-frame" title="선택한 게임" allow="autoplay; fullscreen; gamepad" allowfullscreen></iframe>
 </dialog>
 <script>
-// The game list. To add a game: one line here, in the right group. `added` drives the NEW badge for 30 days;
+// The game list. To add a game: one line here, in the right group.
 // `wip: true` lists it greyed out without a link.
 const GAMES = [
-  { id: 'brawl-arena', name: '대난투 아레나', desc: '봇과 총을 쏘며 겨루는 난투 게임', group: ['액션'], added: '2026-10-08' },
+  { id: 'brawl-arena', name: '대난투 아레나', desc: '봇과 총을 쏘며 겨루는 난투 게임', group: ['액션'] },
   { id: 'meteor-dodge', name: '스타 슈터', desc: '적을 쏘며 우주를 나는 슈팅 게임', group: ['액션'] },
   { id: 'super-jump', name: '교행이의 모험', desc: '칼로 몬스터를 베며 달리는 모험 게임', group: ['액션'], status: 'maintenance' },
   { id: 'neon-block', name: '네온 블록', desc: '블록을 채워 줄을 지우는 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'] },
-  { id: 'retro-blocks', name: '레트로 블록', desc: '떨어지는 블록으로 줄을 지우는 고전 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'], added: '2026-10-09' },
-  { id: 'gravity-crash', name: 'Gravity Crash', desc: '중력을 돌려 블록을 터뜨리는 퍼즐 게임', group: ['창작'], added: '2026-10-08' },
-  { id: 'sudoku', name: '스도쿠', desc: '빈칸에 1~9를 채우는 숫자 퍼즐 게임', group: ['퍼즐', '숫자 퍼즐'], added: '2026-10-09' },
-  { id: 'lux-umbra', name: 'Lux & Umbra', desc: '빛을 켜고 꺼서 길을 여는 퍼즐 게임', group: ['창작'], added: '2026-10-08' },
+  { id: 'retro-blocks', name: '레트로 블록', desc: '떨어지는 블록으로 줄을 지우는 고전 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'] },
+  { id: 'gravity-crash', name: 'Gravity Crash', desc: '중력을 돌려 블록을 터뜨리는 퍼즐 게임', group: ['창작'] },
+  { id: 'sudoku', name: '스도쿠', desc: '빈칸에 1~9를 채우는 숫자 퍼즐 게임', group: ['퍼즐', '숫자 퍼즐'] },
+  { id: 'lux-umbra', name: 'Lux & Umbra', desc: '빛을 켜고 꺼서 길을 여는 퍼즐 게임', group: ['창작'] },
   { id: 'survivor-run', name: 'DEAD ROUTE', desc: '길을 고르고 좀비 떼를 쓸어내는 슈팅 게임', group: ['창작'], requiresAdmin: true, icon: 'survivor-run.svg' },
 ];
 // The Godot build is listed only for the current page session after admin verification.
@@ -137,21 +140,22 @@ const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_3RU0xXklMJKZWbsc5NTswQ_qH1Sr_1N
 const STATUS_REST_URL = `${SUPABASE_URL}/rest/v1/game_status_config?id=eq.1&select=statuses`;
 const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-game-status`;
 const TOP = [{ name: "석's 오리지널", key: '창작', icon: '💡', own: true }, { name: '액션', icon: '🎮' }, { name: '퍼즐', icon: '🧩' }];
-const NEW_DAYS = 30;
+// Preserve the current NEW badges until the admin saves a manual selection.
+const DEFAULT_NEW_GAME_IDS = ['brawl-arena', 'retro-blocks', 'gravity-crash', 'sudoku', 'lux-umbra'];
 
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } };
 const recent = load('hub-recent', []);   // ids, most recent first
-const visited = load('hub-visited', {}); // id → true once opened (hides NEW)
 const closed = load('hub-closed', {});   // group path → true when folded
 let statusOverrides = {};
+let newGameIds = [...DEFAULT_NEW_GAME_IDS];
 let cloudStatusLoaded = false;
 let currentAdminPassword = '';
 let showDevGames = false;
 try { sessionStorage.removeItem('hub-admin-unlocked'); } catch { /* session storage may be unavailable */ }
 
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
-const isNew = g => g.added && !visited[g.id] && (Date.now() - Date.parse(g.added)) / 864e5 < NEW_DAYS;
+const isNew = g => newGameIds.includes(g.id);
 
 function configuredStatus(g) {
   if (Object.prototype.hasOwnProperty.call(statusOverrides, g.id)) return statusOverrides[g.id];
@@ -178,22 +182,44 @@ function withAdminStatusControl(g, card) {
     select.append(el('option', { value }, label));
   }
   select.value = configuredStatus(g) || '';
+  const newToggle = el('input', { type: 'checkbox', checked: isNew(g) });
+  newToggle.setAttribute('aria-label', `${g.name} NEW 배지 표시`);
+  const newLabel = el('label', { className: 'game-new-toggle' }, newToggle, 'NEW 표시');
+  const setControlsBusy = busy => { select.disabled = busy; newToggle.disabled = busy; };
   select.addEventListener('change', async () => {
     const value = select.value || null;
-    select.disabled = true;
+    setControlsBusy(true);
     try {
       const result = await callAdminFunction({ action: 'set-status', password: currentAdminPassword, gameId: g.id, status: value });
-      statusOverrides = result.statuses;
+      applySharedSettings(result.statuses);
       renderTree();
       renderRecent();
     } catch (error) {
       select.value = configuredStatus(g) || '';
       alert(error.message || '상태를 저장하지 못했습니다.');
     } finally {
-      select.disabled = false;
+      setControlsBusy(false);
     }
   });
-  return el('div', { className: 'game-admin-row' }, card, select);
+
+  newToggle.addEventListener('change', async () => {
+    const next = new Set(newGameIds);
+    if (newToggle.checked) next.add(g.id);
+    else next.delete(g.id);
+    setControlsBusy(true);
+    try {
+      const result = await callAdminFunction({ action: 'set-new-games', password: currentAdminPassword, newGames: [...next] });
+      applySharedSettings(result.statuses);
+      renderTree();
+      renderRecent();
+    } catch (error) {
+      newToggle.checked = isNew(g);
+      alert(error.message || 'NEW 표시를 저장하지 못했습니다.');
+    } finally {
+      setControlsBusy(false);
+    }
+  });
+  return el('div', { className: 'game-admin-row' }, card, el('div', { className: 'game-admin-controls' }, select, newLabel));
 }
 
 function playableCard(g, img, title) {
@@ -211,8 +237,8 @@ function gameRow(g) {
     if (status === 'development') title.append(el('span', { className: 'badge dev' }, '개발 중'));
     if (status === 'maintenance') title.append(el('span', { className: 'badge maintenance' }, '점검 중'));
     if (!status && g.dev) title.append(el('span', { className: 'badge dev' }, '개발 중'));
-    if (isNew(g)) title.append(el('span', { className: 'badge new' }, 'NEW'));
   }
+  if (isNew(g)) title.append(el('span', { className: 'badge new' }, 'NEW'));
   title.append(el('small', {}, g.desc));
   const img = el('img', { src: 'icons/' + (g.icon || g.id + '.png'), alt: '' });
   img.onerror = () => { img.style.visibility = 'hidden'; };
@@ -226,7 +252,6 @@ function gameRow(g) {
 }
 
 function open(id) {
-  visited[id] = true; save('hub-visited', visited);
   save('hub-recent', [id, ...recent.filter(x => x !== id)].slice(0, 3));
   const game = [...GAMES, ...DEV_GAMES].find(item => item.id === id);
   if (!game) return;
@@ -312,8 +337,8 @@ function renderRecent() {
   document.getElementById('recent').hidden = rec.length === 0;
   document.getElementById('admin-note').hidden = !showDevGames;
   document.getElementById('admin-note').textContent = cloudStatusLoaded
-    ? '게임 상태 설정은 모든 방문자에게 적용됩니다.'
-    : '공유 상태를 불러오는 중입니다.';
+    ? '게임 상태와 NEW 표시 설정은 모든 방문자에게 적용됩니다.'
+    : '공유 설정을 불러오는 중입니다.';
 }
 
 function cleanStatuses(value) {
@@ -324,6 +349,17 @@ function cleanStatuses(value) {
   ));
 }
 
+function cleanNewGames(value) {
+  if (!Array.isArray(value)) return [...DEFAULT_NEW_GAME_IDS];
+  const allowed = new Set([...GAMES, ...DEV_GAMES].map(game => game.id));
+  return [...new Set(value.filter(id => allowed.has(id)))];
+}
+
+function applySharedSettings(value) {
+  statusOverrides = cleanStatuses(value);
+  newGameIds = cleanNewGames(value?.__meta?.newGames);
+}
+
 async function refreshGameStatuses() {
   try {
     const response = await fetch(STATUS_REST_URL, {
@@ -332,10 +368,13 @@ async function refreshGameStatuses() {
     });
     if (!response.ok) throw new Error(`상태를 불러오지 못했습니다 (${response.status}).`);
     const rows = await response.json();
-    const next = cleanStatuses(rows[0]?.statuses);
+    const sharedSettings = rows[0]?.statuses;
+    const next = cleanStatuses(sharedSettings);
+    const nextNewGames = cleanNewGames(sharedSettings?.__meta?.newGames);
     const firstLoad = !cloudStatusLoaded;
-    const changed = JSON.stringify(next) !== JSON.stringify(statusOverrides);
-    statusOverrides = next;
+    const changed = JSON.stringify(next) !== JSON.stringify(statusOverrides)
+      || JSON.stringify(nextNewGames) !== JSON.stringify(newGameIds);
+    applySharedSettings(sharedSettings);
     cloudStatusLoaded = true;
     if (firstLoad || changed) { renderTree(); renderRecent(); }
     else if (showDevGames) renderRecent();

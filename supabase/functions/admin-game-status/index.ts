@@ -151,13 +151,8 @@ Deno.serve(async request => {
     }
 
     if (action === 'authenticate') return json({ ok: true });
-    if (action !== 'set-status') return json({ error: '요청 내용을 확인해 주세요.' }, 400);
-
-    const gameId = input?.gameId;
-    const status = input?.status;
-    if (!allowedGameIds.has(gameId)) return json({ error: '게임을 확인할 수 없습니다.' }, 400);
-    if (status !== null && status !== 'hidden' && status !== 'development' && status !== 'maintenance') {
-      return json({ error: '상태를 확인해 주세요.' }, 400);
+    if (action !== 'set-status' && action !== 'set-new-games') {
+      return json({ error: '요청 내용을 확인해 주세요.' }, 400);
     }
 
     const rows = await restJson(
@@ -166,13 +161,36 @@ Deno.serve(async request => {
     ) as Array<{ statuses: Record<string, unknown> }>;
     if (!rows[0]) throw new Error('The shared game status row does not exist.');
 
-    const statuses = { ...rows[0].statuses, [gameId]: status };
+    let statuses: Record<string, unknown>;
+    if (action === 'set-status') {
+      const gameId = input?.gameId;
+      const status = input?.status;
+      if (!allowedGameIds.has(gameId)) return json({ error: '게임을 확인할 수 없습니다.' }, 400);
+      if (status !== null && status !== 'hidden' && status !== 'development' && status !== 'maintenance') {
+        return json({ error: '상태를 확인해 주세요.' }, 400);
+      }
+      statuses = { ...rows[0].statuses, [gameId]: status };
+    } else {
+      const requestedNewGames = input?.newGames;
+      if (!Array.isArray(requestedNewGames) || requestedNewGames.length > allowedGameIds.size
+        || requestedNewGames.some((gameId: unknown) => typeof gameId !== 'string' || !allowedGameIds.has(gameId))) {
+        return json({ error: 'NEW 표시할 게임을 확인해 주세요.' }, 400);
+      }
+
+      const metaValue = rows[0].statuses.__meta;
+      const meta = metaValue && typeof metaValue === 'object' && !Array.isArray(metaValue)
+        ? metaValue as Record<string, unknown>
+        : {};
+      const newGames = [...new Set(requestedNewGames as string[])];
+      statuses = { ...rows[0].statuses, __meta: { ...meta, newGames } };
+    }
+
     await restJson(`${projectUrl}/rest/v1/game_status_config?id=eq.1`, serviceKey, {
       method: 'PATCH',
       headers: { Prefer: 'return=minimal' },
       body: JSON.stringify({ statuses, updated_at: new Date().toISOString() }),
     });
-    return json({ ok: true, statuses });
+    return json({ ok: true, statuses, newGames: (statuses.__meta as Record<string, unknown> | undefined)?.newGames });
   } catch (error) {
     console.error('admin-game-status error:', error);
     return json({ error: '관리자 서버 설정이 아직 완료되지 않았습니다.' }, 500);
