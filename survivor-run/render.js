@@ -1,4 +1,4 @@
-import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=1-1-20261015g';
+import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=1-1-20261015h';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const smoothstep = value => {
@@ -1038,15 +1038,28 @@ export function drawScene(ctx, s, w, h, now, title, assets) {
   ctx.fillStyle = vignette; ctx.fillRect(0, 0, w, h);
   if (s.flash > 0) { ctx.fillStyle = 'rgba(255,66,48,' + (s.flash * 0.34) + ')'; ctx.fillRect(0, 0, w, h); }
   if (s.bossAlertTimer > 0) {
-    const pulse = 0.045 + (Math.sin(now * 0.018) + 1) * 0.018;
-    const warningShade = ctx.createLinearGradient(0, 0, 0, h * 0.15);
-    warningShade.addColorStop(0, 'rgba(132,30,25,' + pulse * 2 + ')');
-    warningShade.addColorStop(1, 'rgba(132,30,25,0)');
-    ctx.fillStyle = warningShade;
-    ctx.fillRect(0, 0, w, h * 0.15);
-    ctx.strokeStyle = 'rgba(218,75,58,' + pulse * 5 + ')';
+    const pulse = (Math.sin(now * 0.018) + 1) * 0.5;
+    ctx.fillStyle = 'rgba(76,8,9,' + (0.035 + pulse * 0.045) + ')';
+    ctx.fillRect(0, 0, w, h);
+
+    const edgeAlpha = 0.11 + pulse * 0.27;
+    const topSignal = ctx.createLinearGradient(0, 0, 0, h * 0.22);
+    topSignal.addColorStop(0, 'rgba(176,24,22,' + edgeAlpha + ')');
+    topSignal.addColorStop(1, 'rgba(176,24,22,0)');
+    ctx.fillStyle = topSignal;
+    ctx.fillRect(0, 0, w, h * 0.22);
+    const bottomSignal = ctx.createLinearGradient(0, h, 0, h * 0.78);
+    bottomSignal.addColorStop(0, 'rgba(176,24,22,' + edgeAlpha + ')');
+    bottomSignal.addColorStop(1, 'rgba(176,24,22,0)');
+    ctx.fillStyle = bottomSignal;
+    ctx.fillRect(0, h * 0.78, w, h * 0.22);
+
+    ctx.strokeStyle = 'rgba(239,58,48,' + (0.24 + pulse * 0.48) + ')';
     ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, 2); ctx.lineTo(w, 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, 3); ctx.lineTo(w, 3);
+    ctx.moveTo(0, h - 3); ctx.lineTo(w, h - 3);
+    ctx.stroke();
   }
   ctx.restore();
 }

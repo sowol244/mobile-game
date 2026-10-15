@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261015g';
-import { drawScene } from './render.js?v=1-1-20261015g';
+import { createGame, resizeGame, updateGame, BOSS_START_AT, applyPlayerDrag } from './game.js?v=1-1-20261015h';
+import { drawScene } from './render.js?v=1-1-20261015h';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014o';
 
 const $ = id => document.getElementById(id);
@@ -91,6 +91,7 @@ function resize() {
 function showTitle() {
   resetPointerInput();
   state = 'title'; game = null; keys.clear();
+  $('banner').classList.remove('on', 'boss-warning');
   hud.root.hidden = true; hud.bossRoot.hidden = true; hud.tutorialHint.hidden = true;
   $('pause').hidden = true;
   $('title').innerHTML = 'DEAD<br>ROUTE';
@@ -106,7 +107,7 @@ function beginGame() {
   game = createGame(viewW, viewH);
   state = 'play'; keys.clear(); resetPointerInput(false);
   bannerTimer = 0;
-  $('banner').classList.remove('on');
+  $('banner').classList.remove('on', 'boss-warning');
   hud.tutorialHint.hidden = true;
   hud.root.hidden = false; $('pause').hidden = false;
   hud.bossRoot.hidden = true;
@@ -160,9 +161,10 @@ function updateHud() {
   if (game.boss) hud.bossFill.style.width = Math.max(0, game.boss.hp / game.boss.maxHp * 100) + '%';
 }
 
-function announce(message, seconds) {
+function announce(message, seconds, variant) {
   const el = $('banner');
-  el.textContent = message;
+  $('bannerMessage').textContent = message;
+  el.classList.toggle('boss-warning', variant === 'boss-warning');
   el.classList.add('on');
   bannerTimer = seconds || 1.6;
 }
@@ -184,7 +186,7 @@ function handleEvents(events) {
     else if (event === 'hurt' || (event && typeof event === 'object' && event.type === 'hurt')) {
       if (!hurtSoundPlayed) { sfx.hurt(); hurtSoundPlayed = true; }
     }
-    else if (event === 'bossIncoming') announce('WARNING · 거대 변이체 접근', 2.2);
+    else if (event === 'bossIncoming') announce('WARNING', 2.2, 'boss-warning');
     else if (event === 'bossStart') sfx.boss();
     else if (event === 'bossSlam') sfx.bossSlam();
     else if (event === 'bossDown') sfx.pick();
