@@ -172,7 +172,9 @@ function updateHud() {
   if (!game) return;
   hud.stageNumber.textContent = game.stageDefinition.number;
   hud.routeName.textContent = game.stageDefinition.name;
-  hud.bossName.textContent = game.stageDefinition.boss.label;
+  hud.bossName.textContent = game.boss && !game.boss.vulnerable
+    ? game.stageDefinition.boss.label + ' · 장갑'
+    : game.stageDefinition.boss.label;
   const progress = game.bossDefeated
     ? 100
     : game.boss
@@ -231,6 +233,7 @@ function handleEvents(events) {
   for (const event of events) {
     if (event === 'shot') sfx.shot();
     else if (event === 'allyShot') sfx.allyShot();
+    else if (event === 'enemyShot') sfx.enemyShot();
     else if (event === 'hit') {
       if (!hitSoundPlayed) { sfx.hit(); hitSoundPlayed = true; }
     }

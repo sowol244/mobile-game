@@ -60,6 +60,10 @@ export const sfx = {
     noiseBurst('highpass', 1250, 0.021, 0.007);
     tone(118, 52, 0.075, 'triangle', 0.015);
   },
+  enemyShot() {
+    noiseBurst('highpass', 980, 0.035, 0.014);
+    tone(102, 47, 0.105, 'triangle', 0.027);
+  },
   hit() {
     noiseBurst('bandpass', 720, 0.04, 0.018);
     tone(142, 48, 0.09, 'triangle', 0.032);

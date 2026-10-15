@@ -616,7 +616,56 @@ function drawArmoredZombie(g, zombie, width, height, yOffset, rotation, alpha) {
   g.restore();
 }
 
-function drawZombie(g, zombie, h, time, assets) {
+function drawShooterWeapon(g, zombie, width, height, bob, rotation, targetX, targetY) {
+  if (zombie.dead) return;
+  const scale = height / 60;
+  const aim = Math.atan2((targetX ?? zombie.x) - zombie.x, (targetY ?? zombie.y + 80) - zombie.y);
+  g.save();
+  g.globalAlpha = 0.92;
+  g.translate(zombie.x + width * 0.13, zombie.y - height * 0.48 + bob);
+  g.rotate(aim + rotation * 0.16);
+  roundRect(g, -2.7 * scale, -3 * scale, 5.4 * scale, 9 * scale, 1.2 * scale, '#25292a', '#090c0c', 0.8 * scale);
+  roundRect(g, -1.45 * scale, 5 * scale, 2.9 * scale, 10 * scale, 0.7 * scale, '#303433', '#151918', 0.55 * scale);
+  roundRect(g, -3.8 * scale, -1.4 * scale, 2 * scale, 5 * scale, 0.65 * scale, '#292b29', '#111414', 0.45 * scale);
+  g.fillStyle = '#77756b';
+  g.fillRect(-0.45 * scale, -1.8 * scale, 0.9 * scale, 7 * scale);
+  if (zombie.muzzleFlash > 0) {
+    const pulse = zombie.muzzleFlash / 0.14;
+    g.globalAlpha = pulse;
+    g.fillStyle = '#ffc36b';
+    g.shadowColor = '#ff7546'; g.shadowBlur = 8 * scale;
+    g.beginPath(); g.ellipse(0, 16 * scale, 2.4 * scale, 5 * scale, 0, 0, Math.PI * 2); g.fill();
+    g.shadowBlur = 0;
+  }
+  g.restore();
+}
+
+function drawEnemyShotWarnings(g, s, time) {
+  for (const zombie of s.zombies) {
+    if (zombie.dead || zombie.kind !== 'shooter' || zombie.shotWarning <= 0) continue;
+    const progress = clamp(1 - zombie.shotWarning / (zombie.shotWarningTotal || 0.52), 0, 1);
+    const pulse = 0.4 + Math.sin(time * 25) * 0.12 + progress * 0.3;
+    g.save();
+    g.globalAlpha = pulse;
+    g.strokeStyle = '#c95845';
+    g.lineWidth = 1.4;
+    g.setLineDash([3, 7]);
+    g.beginPath(); g.moveTo(zombie.x, zombie.y + 10); g.lineTo(zombie.aimX, zombie.aimY); g.stroke();
+    g.setLineDash([]);
+    const radius = 11 + progress * 3;
+    g.lineWidth = 1.5;
+    g.beginPath(); g.arc(zombie.aimX, zombie.aimY, radius, 0, Math.PI * 2); g.stroke();
+    g.beginPath();
+    g.moveTo(zombie.aimX - radius - 4, zombie.aimY); g.lineTo(zombie.aimX - radius + 2, zombie.aimY);
+    g.moveTo(zombie.aimX + radius - 2, zombie.aimY); g.lineTo(zombie.aimX + radius + 4, zombie.aimY);
+    g.moveTo(zombie.aimX, zombie.aimY - radius - 4); g.lineTo(zombie.aimX, zombie.aimY - radius + 2);
+    g.moveTo(zombie.aimX, zombie.aimY + radius - 2); g.lineTo(zombie.aimX, zombie.aimY + radius + 4);
+    g.stroke();
+    g.restore();
+  }
+}
+
+function drawZombie(g, zombie, h, time, assets, targetX, targetY) {
   const scale = depthScale(h, zombie.y);
   const tank = zombie.kind === 'tank' || zombie.kind === 'tanker';
   const height = (tank ? 87 : zombie.kind === 'runner' ? 56 : 60) * scale;
@@ -635,6 +684,7 @@ function drawZombie(g, zombie, h, time, assets) {
   if (!zombie.dead) drawFootstepDust(g, zombie.x, zombie.y, scale * (tank ? 1.2 : 1), stride, tank ? '#827c70' : runner ? '#d4c29b' : '#9daf8d');
   drawSprite(g, image, zombie.x, zombie.y + bob + (zombie.dead ? (1 - dying) * 9 : 0), width, height, 0, rotation, dying, zombie.hitFlash > 0 ? '#fff0bd' : null);
   if (tank) drawArmoredZombie(g, zombie, width, height, bob + (zombie.dead ? (1 - dying) * 9 : 0), rotation, dying);
+  if (zombie.kind === 'shooter') drawShooterWeapon(g, zombie, width, height, bob, rotation, targetX, targetY);
   if (!zombie.dead && zombie.hp < zombie.maxHp) {
     const barW = (tank ? 42 : 30) * scale;
     roundRect(g, zombie.x - barW / 2, zombie.y - height - 5, barW, 5 * scale, 2, 'rgba(10,15,14,.9)');
@@ -1018,6 +1068,15 @@ function drawBullet(g, bullet) {
   g.save();
   g.translate(bullet.x, bullet.y);
   g.rotate(Math.atan2(bullet.vy, bullet.vx) - Math.PI / 2);
+  if (bullet.owner === 'enemy') {
+    g.shadowColor = '#ff684f'; g.shadowBlur = 7;
+    g.strokeStyle = 'rgba(255,119,83,.72)'; g.lineWidth = 2.5;
+    g.beginPath(); g.moveTo(0, 5); g.lineTo(0, 18); g.stroke();
+    g.fillStyle = '#ffc177';
+    g.beginPath(); g.ellipse(0, -1, 2.4, 5.5, 0, 0, Math.PI * 2); g.fill();
+    g.restore();
+    return;
+  }
   const color = bullet.owner === 'drone' ? '#9bb5b7' : bullet.owner === 'companion' ? '#b18b54' : bullet.weapon === 'twin' ? '#d0c58e' : bullet.rapid ? '#c7a358' : bullet.weapon === 'smg' ? '#c3a066' : '#bd9655';
   g.shadowColor = color;
   g.shadowBlur = 3;
@@ -1353,6 +1412,7 @@ export function drawScene(ctx, s, w, h, now, title, assets, previewStageId = 'st
   drawRoad(ctx, w, h, offset, assets, s.stageDefinition.background);
   if (s.stageId === 'stage01') drawStage01Atmosphere(ctx, w, h, s.t);
   drawDefenseLine(ctx, w, h, s.defenseFlash);
+  drawEnemyShotWarnings(ctx, s, s.t);
   const time = s.t;
   const objects = [];
   for (const barrel of s.barrels) objects.push({ y: barrel.y, kind: 'barrel', item: barrel });
@@ -1362,7 +1422,7 @@ export function drawScene(ctx, s, w, h, now, title, assets, previewStageId = 'st
   objects.sort((a, b) => a.y - b.y);
   for (const object of objects) {
     if (object.kind === 'barrel') drawBarrel(ctx, object.item, w, h, time);
-    else if (object.kind === 'zombie') drawZombie(ctx, object.item, h, time, assets || {});
+    else if (object.kind === 'zombie') drawZombie(ctx, object.item, h, time, assets || {}, s.x, s.y - 10);
     else if (object.kind === 'obstacle') drawObstacle(ctx, object.item, h, time);
     else drawBoss(ctx, object.item, w, h, time, assets || {});
   }

@@ -55,6 +55,7 @@ export function updateStage01Boss(s, boss, dt, events, api) {
   } else {
     boss.attackTimer -= dt;
     if (boss.attackTimer <= 0) {
+      boss.vulnerable = true;
       boss.attackLane = api.closestLane(s, s.x);
       boss.attackOriginX = boss.x;
       boss.attackDirection = Math.sign(api.laneX(s.w, s.h, boss.y, boss.attackLane) - boss.x);
@@ -77,6 +78,7 @@ export const STAGE_01 = Object.freeze({
   clearMessage: '최종 보스를 격파하고 1-1을 돌파했습니다.',
   maxActiveZombies: 40,
   maxPassDamagePerSecond: 8,
+  damageTakenMultiplier: 0.8,
   showMoveTutorial: true,
   explosiveDamage: 65,
   explosiveRadiusMode: 'screen',
@@ -98,12 +100,14 @@ export const STAGE_01 = Object.freeze({
   }),
   waves: [
     { start: 0.6, count: 6, interval: 0.55, pattern: repeated('walker', 6), lanes: [1, 0, 2, 1, 2, 0] },
-    { start: 4.8, count: 7, interval: 0.44, pattern: repeated('walker', 7), lanes: [0, 2, 1, 0, 2, 1, 0] },
-    { start: 13.6, count: 10, interval: 0.46, pattern: [...repeated('walker', 8), ...repeated('runner', 2)], lanes: [1, 0, 2, 0, 1, 2, 1, 0, 2, 1] },
-    { start: 23.5, count: 13, interval: 0.48, pattern: [...repeated('walker', 10), ...repeated('runner', 3)], lanes: [1, 0, 2, 1, 0, 2, 1, 1, 0, 2, 0, 2, 1] },
-    { start: 32.5, count: 15, interval: 0.44, pattern: [...repeated('walker', 11), ...repeated('runner', 4)], lanes: [0, 2, 1, 0, 2, 1, 0, 1, 2, 0, 2, 1, 0, 2, 1] },
-    { start: 47.5, count: 18, interval: 0.42, pattern: [...repeated('walker', 12), ...repeated('runner', 6)], lanes: [1, 0, 2, 1, 2, 0, 1, 0, 2, 1, 0, 2, 0, 1, 2, 1, 0, 2] },
-    { start: 56, count: 12, interval: 0.4, pattern: [...repeated('walker', 8), ...repeated('runner', 4)], lanes: [1, 0, 2, 1, 0, 2, 1, 2, 0, 1, 2, 0] },
+    { start: 4.2, count: 7, interval: 0.44, pattern: repeated('walker', 7), lanes: [0, 2, 1, 0, 2, 1, 0] },
+    { start: 8.4, count: 10, interval: 0.46, pattern: [...repeated('walker', 7), ...repeated('runner', 2), 'shooter'], lanes: [1, 0, 2, 0, 1, 2, 1, 0, 2, 1] },
+    { start: 14, count: 13, interval: 0.48, pattern: [...repeated('walker', 9), ...repeated('runner', 3), 'shooter'], lanes: [1, 0, 2, 1, 0, 2, 1, 1, 0, 2, 0, 2, 1] },
+    { start: 21, count: 15, interval: 0.44, pattern: [...repeated('walker', 10), ...repeated('runner', 4), 'shooter'], lanes: [0, 2, 1, 0, 2, 1, 0, 1, 2, 0, 2, 1, 0, 2, 1] },
+    { start: 29, count: 18, interval: 0.42, pattern: [...repeated('walker', 12), ...repeated('runner', 4), ...repeated('shooter', 2)], lanes: [1, 0, 2, 1, 2, 0, 1, 0, 2, 1, 0, 2, 0, 1, 2, 1, 0, 2] },
+    { start: 37, count: 12, interval: 0.4, pattern: [...repeated('walker', 7), ...repeated('runner', 3), ...repeated('shooter', 2)], lanes: [1, 0, 2, 1, 0, 2, 1, 2, 0, 1, 2, 0] },
+    { start: 45, count: 12, interval: 0.42, pattern: [...repeated('walker', 7), ...repeated('runner', 3), ...repeated('shooter', 2)], lanes: [0, 2, 1, 0, 2, 1, 0, 1, 2, 0, 2, 1] },
+    { start: 53, count: 14, interval: 0.4, pattern: [...repeated('walker', 9), ...repeated('runner', 3), ...repeated('shooter', 2)], lanes: [1, 0, 2, 1, 0, 2, 1, 0, 2, 1, 0, 2, 0, 1] },
   ],
   events: [
     { at: 8, type: 'offer', rewards: [

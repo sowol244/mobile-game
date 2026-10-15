@@ -21,6 +21,7 @@ export const AIM_ASSIST_ANGLE = 14;
 const AIM_ASSIST_ANGLE_RADIANS = AIM_ASSIST_ANGLE * Math.PI / 180;
 const AIM_ASSIST_DISTANCE_TIE_EPSILON = 8;
 const MAX_ACTIVE_BARRELS = 2;
+const ENEMY_SHOT_WARNING = 0.52;
 export const BARREL_CONFIG = Object.freeze({
   companion: Object.freeze({ hp: 40, color: '#75836f' }),
   drone: Object.freeze({ hp: 70, color: '#a65ae8' }),
@@ -163,15 +164,62 @@ function spawnZombie(s, forcedKind, forcedLane) {
   const stageTwo = s.stageId === 'stage02';
   const hp = kind === 'tank' || kind === 'tanker'
     ? (stageTwo ? 112 : 150)
-    : kind === 'runner' ? (stageTwo ? 12 : 15) : (stageTwo ? 16 : s.stageId === 'stage01' ? 15 : 20);
+    : kind === 'shooter'
+      ? (stageTwo ? 20 : 26)
+      : kind === 'runner'
+        ? (stageTwo ? 12 : 15)
+        : (stageTwo ? 16 : s.stageId === 'stage01' ? 15 : 20);
   s.zombies.push({
     kind, lane, x: laneX(s.w, s.h, y, lane), y,
     hp, maxHp: hp, radius: kind === 'tank' || kind === 'tanker' ? 25 : kind === 'runner' ? 13 : 16,
-    speed: s.h * (kind === 'tank' || kind === 'tanker' ? 0.17 : kind === 'runner' ? 0.42 : 0.26)
+    speed: s.h * (kind === 'tank' || kind === 'tanker' ? 0.17 : kind === 'runner' ? 0.42 : kind === 'shooter' ? 0.19 : 0.26)
       * (stageTwo ? 0.92 : s.stageId === 'stage01' ? 0.84 : 1) * (1 + Math.min(0.2, s.t / 500)),
-    phase: Math.random() * Math.PI * 2, dead: false, dying: 0,
+    phase: Math.random() * Math.PI * 2,
+    fireTimer: kind === 'shooter' ? 0.58 + Math.random() * 0.18 : Infinity,
+    shotWarning: 0, shotWarningTotal: ENEMY_SHOT_WARNING, aimX: s.x, aimY: s.y - 26, muzzleFlash: 0,
+    dead: false, dying: 0,
     hitFlash: 0, recoilX: 0, recoilY: 0, deathSide: 1, hasAppliedDamage: false,
   });
+}
+
+function isBossVulnerable(s) {
+  return Boolean(s.boss && s.boss.hp > 0 && s.boss.vulnerable !== false);
+}
+
+function updateEnemyGunners(s, dt, events) {
+  if (s.stageId !== 'stage01') return;
+  for (const zombie of s.zombies) {
+    if (zombie.dead || zombie.kind !== 'shooter') continue;
+    zombie.muzzleFlash = Math.max(0, zombie.muzzleFlash - dt);
+    if (zombie.shotWarning > 0) {
+      zombie.shotWarning = Math.max(0, zombie.shotWarning - dt);
+      if (zombie.shotWarning === 0) {
+        const originX = zombie.x + (zombie.aimSide || 0) * 5;
+        const originY = zombie.y + 10;
+        const dx = zombie.aimX - originX;
+        const dy = zombie.aimY - originY;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const speed = 570;
+        s.bullets.push({
+          owner: 'enemy', x: originX, y: originY,
+          vx: dx / distance * speed, vy: dy / distance * speed,
+          damage: 6, radius: 4.5, life: 1.55, weapon: 'enemy',
+        });
+        zombie.muzzleFlash = 0.14;
+        zombie.fireTimer = 1.65 + Math.random() * 0.48;
+        events.push('enemyShot');
+      }
+    } else {
+      zombie.fireTimer -= dt;
+      if (zombie.fireTimer <= 0 && zombie.y > s.h * 0.25 && zombie.y < s.y - s.h * 0.12) {
+        zombie.shotWarning = ENEMY_SHOT_WARNING;
+        zombie.shotWarningTotal = ENEMY_SHOT_WARNING;
+        zombie.aimX = s.x;
+        zombie.aimY = s.y - 10;
+        zombie.aimSide = Math.sign(zombie.aimX - zombie.x);
+      }
+    }
+  }
 }
 
 function activeBarrelCount(s) {
@@ -219,7 +267,8 @@ function spawnObstacle(s, lane = 1) {
 
 function hurtPlayer(s, damage, events, options = {}) {
   if (s.finished || (!options.ignoreInvulnerability && s.invulnerable > 0)) return 0;
-  const actualDamage = Math.min(s.hp, Math.max(0, damage));
+  const damageMultiplier = s.stageDefinition.damageTakenMultiplier ?? 1;
+  const actualDamage = Math.min(s.hp, Math.max(0, damage * damageMultiplier));
   if (actualDamage <= 0) return 0;
   s.hp = clamp(s.hp - actualDamage, 0, s.maxHp);
   if (!options.ignoreInvulnerability && options.grantInvulnerability !== false) {
@@ -253,6 +302,7 @@ function zombieDamageProfile(s, zombie) {
     return { pass: 1, collision: 6 };
   }
   if (s.stageId === 'stage01') {
+    if (zombie.kind === 'shooter') return { pass: 1, collision: 7 };
     if (zombie.kind === 'runner') return { pass: 2, collision: 8 };
     if (zombie.kind === 'tank' || zombie.kind === 'tanker') return { pass: 6, collision: 14 };
     if (zombie.kind === 'explosive') return { pass: 5, collision: 11 };
@@ -532,7 +582,7 @@ function addExplosion(s, x, y, radius, events) {
       if (zombie.dead || Math.hypot(zombie.x - point.x, zombie.y - point.y) > radius) continue;
       damageZombie(s, zombie, damage, point.x, events, true);
     }
-    if (s.boss && s.boss.hp > 0 && Math.hypot(s.boss.x - point.x, s.boss.y - point.y) < radius * 0.85) {
+    if (isBossVulnerable(s) && Math.hypot(s.boss.x - point.x, s.boss.y - point.y) < radius * 0.85) {
       s.boss.hp -= damage;
       s.boss.hitFlash = 0.16;
       if (s.boss.hp <= 0) defeatBoss(s, events, point.x);
@@ -586,7 +636,7 @@ export function findAimTarget(s, fromX = s.x, fromY = s.y - 28, includeBarrels =
   const targets = [];
   for (const zombie of s.zombies) if (!zombie.dead) targets.push(zombie);
   if (includeBarrels) for (const barrel of s.barrels) if (!barrel.dead) targets.push(barrel);
-  if (s.boss && s.boss.hp > 0) targets.push(s.boss);
+  if (isBossVulnerable(s)) targets.push(s.boss);
 
   let best = null, bestScore = Infinity, bestAngle = Infinity;
   for (const target of targets) {
@@ -652,16 +702,19 @@ function shoot(s, events, owner = 'player', fromX = s.x + (s.weapon === 'twin' ?
 
 function damageTarget(s, target, damage, events, sourceX) {
   if (target === s.boss) {
-    if (target.hp <= 0) return;
+    if (!isBossVulnerable(s)) {
+      addHitEffect(s, target.x + (Math.random() - 0.5) * 42, target.y - 24 + (Math.random() - 0.5) * 35, 16, 'armor');
+      return;
+    }
     target.hp -= damage;
-      target.hitFlash = 0.12;
+    target.hitFlash = 0.12;
     target.hitShake = 0.12;
     addHitEffect(s, target.x + (Math.random() - 0.5) * 42, target.y - 24 + (Math.random() - 0.5) * 35, 20, 'armor');
     events.push('hit');
     if (target.hp <= 0) defeatBoss(s, events, sourceX);
     return;
   }
-  if (target.kind === 'walker' || target.kind === 'runner' || target.kind === 'tank' || target.kind === 'tanker') {
+  if (target.kind === 'walker' || target.kind === 'runner' || target.kind === 'shooter' || target.kind === 'tank' || target.kind === 'tanker') {
     damageZombie(s, target, damage, sourceX, events);
     return;
   }
@@ -698,7 +751,7 @@ function findDroneTarget(s, fromX, fromY) {
     Math.hypot(current.x - fromX, current.y - fromY) < Math.hypot(nearest.x - fromX, nearest.y - fromY)
       ? current : nearest
   ));
-  if (s.boss && s.boss.hp > 0
+  if (isBossVulnerable(s)
     && fromY - s.boss.y > 12
     && Math.hypot(s.boss.x - fromX, s.boss.y - fromY) <= maxRange) return s.boss;
   return null;
@@ -790,7 +843,7 @@ function chooseRocketPoint(s) {
     }
     return best;
   }
-  if (s.boss && s.boss.hp > 0) return { x: s.boss.x, y: s.boss.y + 34 };
+  if (isBossVulnerable(s)) return { x: s.boss.x, y: s.boss.y + 34 };
   return { x: laneX(s.w, s.h, s.h * 0.4, 1), y: s.h * 0.4 };
 }
 
@@ -799,7 +852,7 @@ function detonateRocket(s, missile, events) {
     if (zombie.dead || Math.hypot(zombie.x - missile.targetX, zombie.y - missile.targetY) > missile.radius) continue;
     damageZombie(s, zombie, SUPPORT_CONFIG.rocketDamage, missile.targetX, events, true);
   }
-  if (s.boss && s.boss.hp > 0 && Math.hypot(s.boss.x - missile.targetX, s.boss.y - missile.targetY) <= missile.radius + 44) {
+  if (isBossVulnerable(s) && Math.hypot(s.boss.x - missile.targetX, s.boss.y - missile.targetY) <= missile.radius + 44) {
     s.boss.hp -= SUPPORT_CONFIG.rocketDamage;
     s.boss.hitFlash = 0.2;
     if (s.boss.hp <= 0) defeatBoss(s, events, missile.targetX);
@@ -885,6 +938,7 @@ function updateBoss(s, dt, events) {
     s.boss = {
       kind: config.kind,
       x: s.w * 0.5, y: entryStartY, hp: config.hp, maxHp: config.hp,
+      vulnerable: config.pattern !== 'stage01',
       entryDuration, entryTimer: entryDuration, entryProgress: 0,
       entryStartY, entryEndY,
       phase: 0, attackTimer: config.initialAttackDelay, warning: 0, warningTotal: 1.25, attackLane: 1,
@@ -1023,6 +1077,8 @@ export function updateGame(s, dt, targetX) {
   }
   if (s.finished) { s.events = events; return events; }
 
+  updateEnemyGunners(s, dt, events);
+
   for (const barrel of s.barrels) {
     barrel.y += s.h * (s.stageDefinition.barrelSpeed ?? 0.19) * dt;
     barrel.x = laneX(s.w, s.h, barrel.y, barrel.lane);
@@ -1053,6 +1109,14 @@ export function updateGame(s, dt, targetX) {
     bullet.y += bullet.vy * dt;
     bullet.life -= dt;
     if (bullet.life <= 0) { bullet.dead = true; continue; }
+    if (bullet.owner === 'enemy') {
+      if (Math.hypot(bullet.x - s.x, bullet.y - (s.y - 10)) <= (bullet.radius || 5) + 19) {
+        hurtPlayer(s, bullet.damage, events, { source: 'enemyShot', x: bullet.x, y: bullet.y });
+        addHitEffect(s, bullet.x, bullet.y, 12, 'flesh');
+        bullet.dead = true;
+      }
+      continue;
+    }
     let hit = false;
     if (bullet.owner === 'player') {
       for (const barrel of s.barrels) {
