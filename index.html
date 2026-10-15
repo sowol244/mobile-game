@@ -29,6 +29,7 @@
   summary .count { font-size: 13px; font-weight: 500; color: var(--muted); }
   summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
   .branch { margin-left: 12px; padding-left: 14px; border-left: 2px solid var(--line); }
+  #tree > details:last-child > .branch::after { content: ""; display: block; position: relative; left: -14px; width: 14px; height: 10px; border-left: 2px solid var(--line); border-bottom: 2px solid var(--line); }
   .sub > summary { font-size: 15px; font-weight: 600; color: #d9d2f2; padding: 8px 4px; }
   /* A short horizontal tick from the tree line to each item */
   .branch > details, .branch > .game, .branch > .game-admin-row { position: relative; }
