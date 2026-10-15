@@ -28,8 +28,8 @@
   details[open] > summary .arrow { transform: rotate(90deg); }
   summary .count { font-size: 13px; font-weight: 500; color: var(--muted); }
   summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
-  .branch { margin-left: 12px; padding-left: 14px; border-left: 2px solid var(--line); }
-  #tree > details:last-child > .branch::after { content: ""; display: block; position: relative; left: -14px; width: 14px; height: 10px; border-left: 2px solid var(--line); border-bottom: 2px solid var(--line); }
+  .branch { position: relative; margin-left: 12px; padding-left: 14px; border-left: 2px solid transparent; --branch-line-color: var(--line); }
+  .branch::before { content: ""; position: absolute; left: 0; top: 0; height: var(--branch-line-end, 100%); border-left: 2px solid var(--branch-line-color); pointer-events: none; }
   .sub > summary { font-size: 15px; font-weight: 600; color: #d9d2f2; padding: 8px 4px; }
   /* A short horizontal tick from the tree line to each item */
   .branch > details, .branch > .game, .branch > .game-admin-row { position: relative; }
@@ -61,7 +61,7 @@
   /* My own designs: a highlighted group at the top */
   details.own { margin-bottom: 8px; padding: 2px 10px 6px; border-radius: 18px; background: linear-gradient(160deg, rgba(255, 210, 63, 0.12), rgba(255, 93, 122, 0.08)); box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.35); }
   details.own > summary { color: var(--accent); }
-  details.own > .branch { border-left-color: rgba(255, 210, 63, 0.45); }
+  details.own > .branch { --branch-line-color: rgba(255, 210, 63, 0.45); }
   details.own > .branch > .game::before, details.own > .branch > .game-admin-row::before { border-top-color: rgba(255, 210, 63, 0.45); }
   .note { margin: 22px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; }
   #admin-button { position: fixed; top: 12px; right: 12px; z-index: 5; border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px; background: var(--card); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
@@ -293,13 +293,25 @@ window.addEventListener('message', event => {
 function group(path, label, count, children, sub) {
   const d = el('details', { className: sub ? 'sub' : '' });
   d.open = !closed[path];
-  d.addEventListener('toggle', () => { if (d.open) delete closed[path]; else closed[path] = true; save('hub-closed', closed); });
+  d.addEventListener('toggle', () => { if (d.open) delete closed[path]; else closed[path] = true; save('hub-closed', closed); requestAnimationFrame(updateTreeBranchEnds); });
   d.append(el('summary', {}, el('span', { className: 'arrow' }, '▶'), label, el('span', { className: 'count' }, `(${count})`)));
   d.append(el('div', { className: 'branch' }, ...children));
   return d;
 }
 
 const tree = document.getElementById('tree');
+function updateTreeBranchEnds() {
+  for (const branch of tree.querySelectorAll('.branch')) {
+    const last = branch.lastElementChild;
+    if (!last) continue;
+    const branchRect = branch.getBoundingClientRect();
+    const lastRect = last.getBoundingClientRect();
+    const tickOffset = last.matches('details') ? 22 : lastRect.height / 2;
+    branch.style.setProperty('--branch-line-end', `${Math.max(0, lastRect.top - branchRect.top + tickOffset)}px`);
+  }
+}
+window.addEventListener('resize', updateTreeBranchEnds);
+
 function visibleGames() {
   const games = showDevGames ? [...GAMES, ...DEV_GAMES] : GAMES;
   return showDevGames ? games : games.filter(g => gameStatus(g) !== 'hidden');
@@ -322,6 +334,7 @@ function renderTree() {
     if (top.own) d.classList.add('own');
     tree.append(d);
   }
+  updateTreeBranchEnds();
 }
 
 function renderRecent() {
