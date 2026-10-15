@@ -1,4 +1,4 @@
-import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=2-1-20261015b';
+import { DEFENSE_LINE_Y_RATIO, roadHalfWidth, laneX } from './game.js?v=2-1-20261015d';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const smoothstep = value => {
@@ -13,6 +13,7 @@ const BARREL_VISUALS = {
   rapidfire: { colors: ['#a39463', '#6d6036', '#343125'], accent: '#f0d177', tag: '연사 +30%', stencil: '연사' },
   heal: { colors: ['#929783', '#59694d', '#2d372d'], accent: '#bdd093', tag: '응급 키트', stencil: '치료' },
   weapon: { colors: ['#929b99', '#5b6a68', '#2c3432'], accent: '#c1d0cb', tag: '기관단총', stencil: 'SMG' },
+  twin: { colors: ['#788f92', '#465d61', '#273538'], accent: '#c8d8cc', tag: '쌍열 기관총', stencil: 'DUAL' },
   upgrade: { colors: ['#93665a', '#663d36', '#2e2725'], accent: '#e19a82', tag: '공격력 +25%', stencil: '화력' },
   explosive: { colors: ['#9b5c49', '#713a32', '#372b27'], accent: '#ffae60', tag: '폭발통', stencil: '위험' },
   supply: { colors: ['#999585', '#706b59', '#39372f'], accent: '#d4c69d', tag: '보급품', stencil: '보급' },
@@ -162,6 +163,43 @@ function drawTollgateDetails(g, w, h, offset) {
 
 function drawRoad(g, w, h, offset, assets = {}, theme = 'highway') {
   const tollgate = theme === 'tollgate';
+  const stageBackdrop = assets.stage02Backdrop;
+  if (tollgate && stageBackdrop?.complete && stageBackdrop.naturalWidth) {
+    const scale = Math.max(w / stageBackdrop.naturalWidth, h / stageBackdrop.naturalHeight);
+    const drawW = stageBackdrop.naturalWidth * scale;
+    const drawH = stageBackdrop.naturalHeight * scale;
+    g.drawImage(stageBackdrop, (w - drawW) * 0.5, (h - drawH) * 0.5, drawW, drawH);
+    g.fillStyle = 'rgba(7,12,15,.13)';
+    g.fillRect(0, 0, w, h);
+
+    const horizon = h * 0.27;
+    for (let i = 0; i < 9; i++) {
+      const depth = ((i / 9 + offset * 0.78) % 1);
+      const y = horizon + depth * (h - horizon);
+      const half = w * (0.28 + depth * 0.22);
+      const dashH = 3 + depth * 17;
+      g.fillStyle = 'rgba(224,222,202,' + (0.08 + depth * 0.2) + ')';
+      for (const lane of [1, 2]) {
+        const x = w * 0.5 + (lane - 1.5) * half * 0.385;
+        roundRect(g, x - 0.8 - depth * 0.6, y, 1.6 + depth * 1.2, dashH, 1.2, g.fillStyle);
+      }
+    }
+    g.save();
+    for (let i = 0; i < 46; i++) {
+      const x = ((Math.sin(i * 71.3) * 0.5 + 0.5) * w + offset * (12 + i % 13)) % w;
+      const y = ((i * 0.173 + offset * 1.7) % 1) * h;
+      g.strokeStyle = 'rgba(181,200,204,' + (0.08 + (i % 4) * 0.025) + ')';
+      g.lineWidth = 0.55 + (i % 3) * 0.2;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x - 2.5, y + 8 + i % 10); g.stroke();
+    }
+    g.restore();
+    const vignette = g.createLinearGradient(0, 0, 0, h);
+    vignette.addColorStop(0, 'rgba(5,9,12,.05)');
+    vignette.addColorStop(0.56, 'rgba(5,9,12,0)');
+    vignette.addColorStop(1, 'rgba(5,9,12,.25)');
+    g.fillStyle = vignette; g.fillRect(0, 0, w, h);
+    return;
+  }
   const horizon = h * 0.13;
   const sky = g.createLinearGradient(0, 0, 0, h);
   sky.addColorStop(0, tollgate ? '#626a6d' : '#707572'); sky.addColorStop(0.23, tollgate ? '#494f51' : '#555b59'); sky.addColorStop(0.48, tollgate ? '#303638' : '#39413f'); sky.addColorStop(1, tollgate ? '#191e20' : '#1e2926');
@@ -523,56 +561,96 @@ function drawZombie(g, zombie, h, time, assets) {
   }
 }
 
-function drawShieldBreakerArmor(g, boss, x, y, width, height, rotation, alpha, time, collapsing) {
-  if (boss.kind !== 'shield-breaker') return;
-  g.save();
-  g.translate(x, y);
-  g.rotate(rotation);
-  g.globalAlpha = alpha;
-  const damage = 1 - clamp(boss.hp / boss.maxHp, 0, 1);
-  polygon(g, [
-    [-width * 0.2, -height * 0.53], [-width * 0.11, -height * 0.59],
-    [width * 0.12, -height * 0.58], [width * 0.21, -height * 0.49],
-    [width * 0.17, -height * 0.33], [width * 0.02, -height * 0.29],
-    [-width * 0.18, -height * 0.36],
-  ], boss.hitFlash > 0 ? '#a8a18d' : '#41494a', '#111719', 2);
-  polygon(g, [
-    [-width * 0.13, -height * 0.52], [-width * 0.04, -height * 0.55],
-    [width * 0.08, -height * 0.53], [width * 0.14, -height * 0.47],
-    [width * 0.1, -height * 0.39], [-width * 0.1, -height * 0.4],
-  ], '#252d2f', '#81827a', 0.8);
-  g.strokeStyle = 'rgba(190,174,139,.7)'; g.lineWidth = 1.3;
-  g.beginPath(); g.moveTo(-width * 0.1, -height * 0.49); g.lineTo(width * 0.08, -height * 0.47); g.stroke();
-  // The damaged slab shield stays attached to the same arm through movement and the fall animation.
-  const sx = -width * 0.29, sy = -height * 0.3;
-  polygon(g, [
-    [sx - width * 0.16, sy - height * 0.18], [sx + width * 0.12, sy - height * 0.16],
-    [sx + width * 0.16, sy + height * 0.08], [sx + width * 0.03, sy + height * 0.27],
-    [sx - width * 0.17, sy + height * 0.18], [sx - width * 0.21, sy - height * 0.03],
-  ], boss.hitFlash > 0 ? '#9c9887' : '#333b3d', '#111719', 2.2);
-  polygon(g, [
-    [sx - width * 0.13, sy - height * 0.13], [sx + width * 0.08, sy - height * 0.12],
-    [sx + width * 0.1, sy + height * 0.07], [sx + width * 0.01, sy + height * 0.19],
-    [sx - width * 0.12, sy + height * 0.13], [sx - width * 0.16, sy - height * 0.02],
-  ], '#50595a', '#202729', 1);
-  g.strokeStyle = 'rgba(177,158,120,.76)'; g.lineWidth = 1.2;
-  g.beginPath();
-  g.moveTo(sx - width * 0.11, sy - height * 0.05); g.lineTo(sx + width * 0.07, sy - height * 0.02);
-  g.moveTo(sx - width * 0.1, sy + height * 0.09); g.lineTo(sx + width * 0.06, sy + height * 0.12);
-  g.stroke();
-  for (const [rx, ry] of [[-0.14, -0.08], [0.08, -0.07], [-0.12, 0.13], [0.08, 0.11]]) {
-    g.fillStyle = '#c2a766';
-    g.beginPath(); g.arc(sx + width * rx, sy + height * ry, Math.max(1.5, width * 0.014), 0, Math.PI * 2); g.fill();
+function drawHydraulicBoss(g, boss, w, h, time, assets) {
+  const entryProgress = clamp(boss.entryProgress ?? 1, 0, 1);
+  const entryScale = 0.26 + 0.74 * smoothstep(entryProgress);
+  const height = clamp(w * 0.74, 214, 282) * entryScale;
+  const idle = assets.bossBreakerIdle?.complete && assets.bossBreakerIdle.naturalWidth
+    ? assets.bossBreakerIdle : assets.brute;
+  const walk = assets.bossBreakerWalk?.complete && assets.bossBreakerWalk.naturalWidth
+    ? assets.bossBreakerWalk : idle;
+  const windup = assets.bossBreakerWindup?.complete && assets.bossBreakerWindup.naturalWidth
+    ? assets.bossBreakerWindup : idle;
+  const impact = assets.bossBreakerImpact?.complete && assets.bossBreakerImpact.naturalWidth
+    ? assets.bossBreakerImpact : windup;
+  const down = assets.bossBreakerDown?.complete && assets.bossBreakerDown.naturalWidth
+    ? assets.bossBreakerDown : idle;
+  const aspect = idle.naturalWidth && idle.naturalHeight ? idle.naturalWidth / idle.naturalHeight : 0.68;
+  const width = height * aspect;
+  const collapsing = boss.deathTimer != null;
+  const fall = collapsing ? clamp(1 - boss.deathTimer / boss.deathDuration, 0, 1) : 0;
+  const topple = collapsing ? smoothstep(clamp((fall - 0.04) / 0.7, 0, 1)) : 0;
+  const entering = !collapsing && boss.entryTimer > 0;
+  const warningProgress = boss.warning > 0 ? clamp(1 - boss.warning / (boss.warningTotal || 1.2), 0, 1) : 0;
+  const windupMix = !collapsing && boss.warning > 0
+    ? smoothstep(clamp((warningProgress - 0.08) / 0.68, 0, 1)) : 0;
+  const slamMix = !collapsing && boss.stomp > 0 ? smoothstep(clamp(boss.stomp / 0.42, 0, 1)) : 0;
+  const moveSpeed = Math.abs(boss.moveSpeed || 0);
+  const gait = collapsing || boss.warning > 0 || boss.attackRecover > 0
+    ? 0
+    : entering ? 0.82 : clamp(moveSpeed / Math.max(1, w * 0.14), 0, 0.78);
+  const walkMix = gait * (1 - windupMix) * (1 - slamMix);
+  const impactMix = slamMix;
+  const windupWeight = windupMix * (1 - impactMix);
+  const idleWeight = Math.max(0, 1 - walkMix - windupWeight - impactMix);
+  const breath = collapsing ? 0 : Math.sin(time * 3.2) * 1.8;
+  const stride = Math.abs(Math.sin((boss.walkPhase || 0) * 1.7)) * gait * 5;
+  const warningLunge = boss.warning > 0 ? smoothstep((warningProgress - 0.7) / 0.3) : 0;
+  const impactKick = boss.stomp > 0 ? smoothstep((0.42 - boss.stomp) / 0.18) : 0;
+  const hitShake = boss.hitShake > 0 ? Math.sin(time * 91) * boss.hitShake * 15 : 0;
+  const deathSide = boss.deathSide || 1;
+  const deathJolt = collapsing && fall < 0.17 ? Math.sin(time * 62) * (1 - fall / 0.17) * 0.035 : 0;
+  const direction = Math.sign(boss.moveSpeed || boss.attackDirection || 0);
+  const rotation = collapsing
+    ? deathSide * (topple * 0.78 + deathJolt)
+    : direction * gait * 0.09 + warningLunge * (boss.attackDirection || 0) * 0.13 + hitShake * 0.003;
+  const alpha = collapsing ? 1 - smoothstep(clamp((fall - 0.91) / 0.09, 0, 1)) * 0.12 : 1;
+  const x = boss.x + direction * warningLunge * width * 0.055 + hitShake + (collapsing ? deathSide * topple * width * 0.08 : 0);
+  const groundY = boss.y + height * 0.33 * entryScale + breath + stride - warningLunge * height * 0.035
+    + impactKick * height * 0.03 + (collapsing ? topple * height * 0.12 : 0);
+
+  if (collapsing) {
+    g.save();
+    g.fillStyle = 'rgba(3,6,8,' + (0.34 + topple * 0.2) + ')';
+    g.beginPath(); g.ellipse(x, groundY + 4, width * (0.48 + topple * 0.24), width * (0.13 + topple * 0.07), 0, 0, Math.PI * 2); g.fill();
+    g.restore();
   }
-  if (damage > 0.48 && !collapsing) {
-    g.strokeStyle = 'rgba(26,19,16,' + clamp(damage, 0.45, 0.85) + ')'; g.lineWidth = 1.5;
-    g.beginPath(); g.moveTo(sx - width * 0.015, sy - height * 0.015); g.lineTo(sx + width * 0.04, sy + height * 0.045); g.lineTo(sx - width * 0.025, sy + height * 0.1); g.stroke();
-    if (Math.sin(time * 8) > 0.82) {
-      g.fillStyle = 'rgba(232,143,75,.75)';
-      g.beginPath(); g.arc(sx + width * 0.02, sy + height * 0.04, 2.2, 0, Math.PI * 2); g.fill();
+  if (gait > 0.12 || entering) drawFootstepDust(g, x, groundY, 0.78 + gait * 0.32, boss.walkPhase || 0, '#797873');
+
+  const tint = boss.hitFlash > 0 ? '#f1b98f' : null;
+  const downMix = collapsing ? smoothstep(clamp((fall - 0.04) / 0.42, 0, 1)) : 0;
+  const uprightAlpha = alpha * (1 - downMix);
+  if (entering) {
+    const canopyEdge = h * 0.27 * (1 - entryProgress);
+    g.save();
+    g.beginPath(); g.rect(0, canopyEdge, w, h - canopyEdge); g.clip();
+  }
+  if (idleWeight > 0.015) drawSprite(g, idle, x, groundY, width, height, 0, rotation, uprightAlpha * idleWeight, tint);
+  if (walkMix > 0.015) drawSprite(g, walk, x, groundY, width, height, 0, rotation, uprightAlpha * walkMix, tint);
+  if (windupWeight > 0.015) drawSprite(g, windup, x, groundY, width, height, 0, rotation - (boss.attackDirection || -1) * windupWeight * 0.035, uprightAlpha * windupWeight, tint);
+  if (impactMix > 0.015) drawSprite(g, impact, x, groundY, width, height, 0, rotation + (boss.attackDirection || -1) * impactMix * 0.055, uprightAlpha * impactMix, tint);
+  if (downMix > 0.01) drawSprite(g, down, x, groundY + height * topple * 0.025, width, height, 0, deathSide * topple * 0.78 + deathJolt, alpha * downMix, tint);
+  if (entering) g.restore();
+
+  if (boss.stomp > 0) {
+    const progress = 1 - boss.stomp / 0.42;
+    const ramX = x - width * 0.28;
+    const ramY = groundY - height * 0.17;
+    g.save();
+    g.globalAlpha = (1 - progress) * 0.9;
+    g.shadowColor = '#e98c43'; g.shadowBlur = 11 * (1 - progress);
+    g.fillStyle = '#ffdc9b';
+    g.beginPath(); g.arc(ramX, ramY, 5 + progress * 13, 0, Math.PI * 2); g.fill();
+    g.shadowBlur = 0;
+    g.strokeStyle = 'rgba(255,201,128,.86)'; g.lineWidth = 1.4;
+    for (let i = 0; i < 7; i++) {
+      const angle = i * Math.PI * 2 / 7 + 0.4;
+      const inner = 7 + progress * 8, outer = 18 + progress * 19;
+      g.beginPath(); g.moveTo(ramX + Math.cos(angle) * inner, ramY + Math.sin(angle) * inner);
+      g.lineTo(ramX + Math.cos(angle) * outer, ramY + Math.sin(angle) * outer); g.stroke();
     }
+    g.restore();
   }
-  g.restore();
 }
 
 function drawBoss(g, boss, w, h, time, assets) {
@@ -602,6 +680,18 @@ function drawBoss(g, boss, w, h, time, assets) {
     g.fillStyle = '#fff3d6'; g.font = '900 14px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText('!', 0, 1);
     g.restore();
+  }
+  if (boss.kind === 'shield-breaker') {
+    drawHydraulicBoss(g, boss, w, h, time, assets);
+    if (boss.stomp > 0) {
+      const progress = 1 - boss.stomp / 0.42;
+      g.save();
+      g.globalAlpha = (1 - progress) * 0.78;
+      g.strokeStyle = '#ffc177'; g.lineWidth = 2.5 * (1 - progress) + 0.8;
+      g.beginPath(); g.ellipse(boss.x, boss.y + h * 0.12, clamp(w * 0.18, 34, 76) * (0.55 + progress), clamp(w * 0.045, 9, 18) * (0.55 + progress), 0, 0, Math.PI * 2); g.stroke();
+      g.restore();
+    }
+    return;
   }
   const collapsing = boss.deathTimer != null;
   const fall = collapsing ? clamp(1 - boss.deathTimer / boss.deathDuration, 0, 1) : 0;
@@ -677,7 +767,6 @@ function drawBoss(g, boss, w, h, time, assets) {
     drawSprite(g, assets.brute, boss.x + offsetX, offsetY, width, height, 0, rotation, alpha * (1 - attackMix), tint);
     drawSprite(g, assets.bruteAttack, boss.x + offsetX, offsetY, width * 1.02, height * 1.02, 0, rotation, alpha * attackMix, tint);
   }
-  drawShieldBreakerArmor(g, boss, boss.x + offsetX, offsetY, width, height, rotation, alpha, time, collapsing);
   if (boss.stomp > 0) {
     const progress = 1 - boss.stomp / 0.42;
     g.save();
@@ -774,14 +863,19 @@ function drawPlayer(g, s, time, assets) {
     const aim = s.target ? Math.atan2(s.target.x - s.x, s.y - s.target.y) : 0;
     const flash = clamp(s.playerMuzzleFlash / 0.075, 0, 1);
     g.save();
-    g.translate(s.x + 16, s.y - 57);
-    g.rotate(aim);
-    g.globalAlpha = flash;
-    g.shadowColor = '#f4bd62'; g.shadowBlur = 11;
-    polygon(g, [[-3, 2], [-4, -5], [-1, -12], [0, -20], [3, -11], [5, -5], [2, 2]], '#f8dfa2', '#e79b48');
-    g.shadowBlur = 0;
-    g.fillStyle = '#fff4cf';
-    g.beginPath(); g.ellipse(0, -5, 2.1, 6.5, 0, 0, Math.PI * 2); g.fill();
+    const muzzles = s.weapon === 'twin' ? [8, 22] : [16];
+    for (const muzzle of muzzles) {
+      g.save();
+      g.translate(s.x + muzzle, s.y - 57);
+      g.rotate(aim);
+      g.globalAlpha = flash;
+      g.shadowColor = s.weapon === 'twin' ? '#d7c78c' : '#f4bd62'; g.shadowBlur = 11;
+      polygon(g, [[-3, 2], [-4, -5], [-1, -12], [0, -20], [3, -11], [5, -5], [2, 2]], '#f8dfa2', '#e79b48');
+      g.shadowBlur = 0;
+      g.fillStyle = '#fff4cf';
+      g.beginPath(); g.ellipse(0, -5, 2.1, 6.5, 0, 0, Math.PI * 2); g.fill();
+      g.restore();
+    }
     g.restore();
   }
 }
@@ -839,12 +933,12 @@ function drawBullet(g, bullet) {
   g.save();
   g.translate(bullet.x, bullet.y);
   g.rotate(Math.atan2(bullet.vy, bullet.vx) - Math.PI / 2);
-  const color = bullet.owner === 'drone' ? '#9bb5b7' : bullet.owner === 'companion' ? '#b18b54' : bullet.rapid ? '#c7a358' : bullet.weapon === 'smg' ? '#c3a066' : '#bd9655';
+  const color = bullet.owner === 'drone' ? '#9bb5b7' : bullet.owner === 'companion' ? '#b18b54' : bullet.weapon === 'twin' ? '#d0c58e' : bullet.rapid ? '#c7a358' : bullet.weapon === 'smg' ? '#c3a066' : '#bd9655';
   g.shadowColor = color;
   g.shadowBlur = 3;
   const grad = g.createLinearGradient(0, -7, 0, 5);
   grad.addColorStop(0, 'rgba(204,170,111,0)'); grad.addColorStop(0.55, color); grad.addColorStop(1, '#e1bd79');
-  const width = bullet.owner === 'drone' ? 3 : bullet.rapid ? 3 : 2.6;
+  const width = bullet.owner === 'drone' || bullet.weapon === 'twin' ? 3 : bullet.rapid ? 3 : 2.6;
   g.strokeStyle = color;
   g.lineWidth = width * 0.72;
   g.globalAlpha = 0.68;
@@ -1099,7 +1193,7 @@ function drawTargetLock(g, s, time) {
   const target = s.target;
   if (!target || target.dead) return;
   const isBoss = target === s.boss;
-  const isSupply = ['weapon', 'upgrade', 'companion', 'drone', 'rocket', 'rapidfire', 'heal'].includes(target.kind);
+  const isSupply = ['weapon', 'twin', 'upgrade', 'companion', 'drone', 'rocket', 'rapidfire', 'heal'].includes(target.kind);
   const isExplosive = target.kind === 'explosive';
   const color = isBoss || isExplosive ? '#bc8067' : isSupply ? '#a99772' : '#887b65';
   const scale = depthScale(s.h, target.y);
@@ -1128,7 +1222,10 @@ function drawTitleScene(g, w, h, time, assets, stageId) {
   drawZombie(g, { kind: 'walker', x: w * 0.42, y: h * 0.34, radius: 14, hp: 20, maxHp: 20, phase: 1 }, h, time / 1000, assets);
   drawZombie(g, { kind: 'runner', x: w * 0.66, y: h * 0.48, radius: 14, hp: 15, maxHp: 15, phase: 2 }, h, time / 1000, assets);
   drawBarrel(g, { kind: 'companion', x: w * 0.32, y: h * 0.59, lane: 0, hp: 40 }, w, h, time / 1000);
-  drawBarrel(g, { kind: 'weapon', x: w * 0.72, y: h * 0.62, lane: 2, hp: 40 }, w, h, time / 1000);
+  drawBarrel(g, {
+    kind: stageId === 'stage02' ? 'twin' : 'weapon',
+    x: w * 0.72, y: h * 0.62, lane: 2, hp: stageId === 'stage02' ? 58 : 40,
+  }, w, h, time / 1000);
   const runPhase = time / 1000 * 12;
   drawFootstepDust(g, w * 0.5, h * 0.90, 1, runPhase, '#c8b898');
   const runningPose = Math.sin(runPhase) > 0;

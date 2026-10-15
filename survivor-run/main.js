@@ -1,5 +1,5 @@
-import { createGame, resizeGame, updateGame, DEFAULT_STAGE_ID, getStageDefinition, applyPlayerDrag } from './game.js?v=2-1-20261015b';
-import { drawScene } from './render.js?v=2-1-20261015b';
+import { createGame, resizeGame, updateGame, DEFAULT_STAGE_ID, getStageDefinition, applyPlayerDrag } from './game.js?v=2-1-20261015d';
+import { drawScene } from './render.js?v=2-1-20261015d';
 import { isMuted, setMuted, unlock, sfx } from './sound.js?v=1-1-20261014o';
 
 const $ = id => document.getElementById(id);
@@ -63,6 +63,19 @@ const assets = {
   combatDrone: sprite('assets/combat-drone.svg'),
   rocketProjectile: sprite('assets/rocket-projectile.svg'),
 };
+let stage02AssetsRequested = false;
+function loadStage02Assets() {
+  if (stage02AssetsRequested) return;
+  stage02AssetsRequested = true;
+  Object.assign(assets, {
+    stage02Backdrop: sprite('assets/stage02-background.webp'),
+    bossBreakerIdle: sprite('assets/boss-breaker-idle.webp'),
+    bossBreakerWalk: sprite('assets/boss-breaker-walk.webp'),
+    bossBreakerWindup: sprite('assets/boss-breaker-windup.webp'),
+    bossBreakerImpact: sprite('assets/boss-breaker-impact.webp'),
+    bossBreakerDown: sprite('assets/boss-breaker-down.webp'),
+  });
+}
 const tutorials = [
   ['이동', '화면을 좌우로 끌어 도로 안에서 움직입니다. PC에서는 A/D 또는 ←/→ 키를 사용하세요.'],
   ['자동 사격', '총은 자동으로 발사됩니다. 원하는 좀비나 보급통 쪽으로 움직이면 표적이 바뀝니다.'],
@@ -140,6 +153,7 @@ function showTitle() {
 
 function beginGame() {
   unlock();
+  if (selectedStageId === 'stage02') loadStage02Assets();
   resize();
   game = createGame(viewW, viewH, selectedStageId);
   state = 'play'; keys.clear(); resetPointerInput(false);
@@ -170,8 +184,8 @@ function updateHud() {
   hud.healthText.textContent = Math.ceil(game.hp) + ' / ' + game.maxHp;
   hud.health.style.width = Math.max(0, game.hp / game.maxHp * 100) + '%';
   hud.health.classList.toggle('critical', game.hp <= 30);
-  hud.weapon.textContent = game.weapon === 'smg' ? '기관단총' : '권총';
-  hud.weaponIcon.textContent = game.weapon === 'smg' ? '▰' : '●';
+  hud.weapon.textContent = game.weapon === 'smg' ? '기관단총' : game.weapon === 'twin' ? '쌍열' : '권총';
+  hud.weaponIcon.textContent = game.weapon === 'smg' ? '▰' : game.weapon === 'twin' ? 'Ⅱ' : '●';
   hud.weaponLevel.textContent = String(game.weaponLevel[game.weapon] || 1);
   hud.kills.textContent = String(game.kills);
   hud.tutorialHint.hidden = !game.moveTutorialVisible;
@@ -248,6 +262,7 @@ function finishGame(result) {
       progress.stage01Cleared = true;
       progress.stage02Unlocked = true;
       selectedStageId = 'stage02';
+      loadStage02Assets();
     } else if (game.stageId === 'stage02') {
       progress.stage02Cleared = true;
     }
@@ -335,6 +350,7 @@ $('stageChoices').addEventListener('click', event => {
   const button = event.target.closest('.stage-choice');
   if (!button || button.disabled) return;
   selectedStageId = button.dataset.stageId;
+  if (selectedStageId === 'stage02') loadStage02Assets();
   updateStageChoices();
 });
 $('askYes').addEventListener('click', showTutorial);

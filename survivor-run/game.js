@@ -1,6 +1,6 @@
 import {
   collectStageActions, createStageRuntime, DEFAULT_STAGE_ID, getStageDefinition,
-} from './stages/stageManager.js?v=20261015o';
+} from './stages/stageManager.js?v=20261015p';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const smoothstep = value => {
@@ -27,6 +27,7 @@ export const BARREL_CONFIG = Object.freeze({
   rapidfire: Object.freeze({ hp: 35, color: '#b99a50' }),
   heal: Object.freeze({ hp: 35, color: '#4cc878' }),
   explosive: Object.freeze({ hp: 30, color: '#8d4937' }),
+  twin: Object.freeze({ hp: 58, color: '#8aa0a4' }),
 });
 export const SUPPORT_CONFIG = Object.freeze({
   companionMaxCount: 2,
@@ -88,7 +89,7 @@ export function createGame(w, h, stageId = DEFAULT_STAGE_ID) {
     passDamageWindow: 0, passDamageTaken: 0, defenseFlash: 0,
     moveTutorialShown: !stageDefinition.showMoveTutorial, moveTutorialVisible: false, moveTutorialTimer: 0,
     hasPlayerMoved: false, showAimGuide: false,
-    weapon: 'pistol', weaponLevel: { pistol: 1, smg: 0 },
+    weapon: 'pistol', weaponLevel: { pistol: 1, smg: 0, twin: 0 },
     damageBonus: 0, damageMultiplier: 1, fireTimer: 0.15, powerFlash: 0,
     playerMuzzleFlash: 0, playerRecoil: 0, killStreak: 0, killStreakTimer: 0,
     companions: [], nextCompanionId: 1, companionPower: 1, drone: null, rocketAmmo: 0, rocketTimer: 0,
@@ -153,11 +154,15 @@ function spawnZombie(s, forcedKind, forcedLane) {
   const kind = forcedKind || 'walker';
   const lane = Number.isInteger(forcedLane) ? clamp(forcedLane, 0, 2) : Math.floor(Math.random() * 3);
   const y = s.h * (0.15 + Math.random() * 0.035);
-  const hp = kind === 'tank' || kind === 'tanker' ? 150 : kind === 'runner' ? 15 : 20;
+  const stageTwo = s.stageId === 'stage02';
+  const hp = kind === 'tank' || kind === 'tanker'
+    ? (stageTwo ? 112 : 150)
+    : kind === 'runner' ? (stageTwo ? 12 : 15) : (stageTwo ? 16 : 20);
   s.zombies.push({
     kind, lane, x: laneX(s.w, s.h, y, lane), y,
     hp, maxHp: hp, radius: kind === 'tank' || kind === 'tanker' ? 25 : kind === 'runner' ? 13 : 16,
-    speed: s.h * (kind === 'tank' || kind === 'tanker' ? 0.17 : kind === 'runner' ? 0.42 : 0.26) * (1 + Math.min(0.2, s.t / 500)),
+    speed: s.h * (kind === 'tank' || kind === 'tanker' ? 0.17 : kind === 'runner' ? 0.42 : 0.26)
+      * (stageTwo ? 0.92 : 1) * (1 + Math.min(0.2, s.t / 500)),
     phase: Math.random() * Math.PI * 2, dead: false, dying: 0,
     hitFlash: 0, recoilX: 0, recoilY: 0, deathSide: 1, hasAppliedDamage: false,
   });
@@ -227,9 +232,16 @@ function hurtPlayer(s, damage, events, options = {}) {
 }
 
 function zombieDamageProfile(s, zombie) {
+  if (s.stageId === 'stage02') {
+    if (zombie.kind === 'runner') return { pass: 2, collision: 7 };
+    if (zombie.kind === 'tank' || zombie.kind === 'tanker') return { pass: 7, collision: 18 };
+    if (zombie.kind === 'explosive') return { pass: 5, collision: 12 };
+    if (zombie.kind === 'boss' || zombie.kind === 'brute') return ZOMBIE_DAMAGE.boss;
+    return { pass: 1, collision: 6 };
+  }
   if (zombie.kind === 'runner') return ZOMBIE_DAMAGE.fast;
   if (zombie.kind === 'tank' || zombie.kind === 'tanker') {
-    return s.stageId === 'stage02' ? { pass: 10, collision: 25 } : ZOMBIE_DAMAGE.tanker;
+    return ZOMBIE_DAMAGE.tanker;
   }
   if (zombie.kind === 'explosive') return ZOMBIE_DAMAGE.explosive;
   if (zombie.kind === 'boss' || zombie.kind === 'brute') return ZOMBIE_DAMAGE.boss;
@@ -365,6 +377,13 @@ function rewardBarrel(s, barrel, events) {
       s.damageBonus += 1;
       events.push({ type: 'reward', label: '기관단총 강화 Lv.' + s.weaponLevel.smg });
     }
+  } else if (barrel.kind === 'twin') {
+    s.weapon = 'twin';
+    s.weaponLevel.twin = Math.min(5, (s.weaponLevel.twin || 0) + 1);
+    events.push({
+      type: 'reward',
+      label: s.weaponLevel.twin === 1 ? '쌍열 기관총 · 이중 사격' : '쌍열 기관총 강화 Lv.' + s.weaponLevel.twin,
+    });
   } else if (barrel.kind === 'upgrade') {
     const key = s.weapon;
     s.weaponLevel[key] = Math.min(5, (s.weaponLevel[key] || 1) + 1);
@@ -570,7 +589,7 @@ export function findAimTarget(s, fromX = s.x, fromY = s.y - 28, includeBarrels =
   return best;
 }
 
-function shoot(s, events, owner = 'player', fromX = s.x, fromY = s.y - 28, damageScale = 1, targetOverride = null) {
+function shoot(s, events, owner = 'player', fromX = s.x + (s.weapon === 'twin' ? 15 : 0), fromY = s.y - 28, damageScale = 1, targetOverride = null) {
   const target = targetOverride || findAimTarget(s, fromX, fromY, owner === 'player');
   if (owner === 'player') {
     s.target = target;
@@ -579,18 +598,23 @@ function shoot(s, events, owner = 'player', fromX = s.x, fromY = s.y - 28, damag
   }
   const aimAngle = target ? Math.atan2(target.x - fromX, fromY - target.y) : 0;
   const smg = s.weapon === 'smg';
+  const twin = owner === 'player' && s.weapon === 'twin';
   const damage = owner === 'companion'
     ? SUPPORT_CONFIG.companionDamage * s.companionPower
     : owner === 'drone'
       ? SUPPORT_CONFIG.droneDamage
-      : ((smg ? 7 : 10) + s.damageBonus) * damageScale * s.damageMultiplier;
+      : ((smg ? 7 : twin ? 8.5 : 10) + s.damageBonus * (twin ? 0.65 : 1)) * damageScale * s.damageMultiplier;
   const spreads = owner === 'player' && smg && s.weaponLevel.smg >= 3 ? [-0.075, 0, 0.075] : [0];
-  for (const spread of spreads) {
-    const angle = aimAngle + spread;
+  const shots = twin
+    ? [-1, 1].map(side => ({ angleOffset: 0, sideOffset: side * (7 + (s.weaponLevel.twin - 1) * 0.7), damageScale: 1 }))
+    : spreads.map(spread => ({ angleOffset: spread, sideOffset: 0, damageScale: spread ? 0.68 : 1 }));
+  for (const shot of shots) {
+    const angle = aimAngle + shot.angleOffset;
     s.bullets.push({
-      x: fromX, y: fromY,
+      x: fromX + Math.cos(angle) * shot.sideOffset,
+      y: fromY + Math.sin(angle) * shot.sideOffset,
       vx: Math.sin(angle) * 760, vy: -Math.cos(angle) * 760,
-      damage: damage * (spread ? 0.68 : 1), weapon: owner === 'drone' ? 'drone' : s.weapon, owner, life: 1.25,
+      damage: damage * shot.damageScale, weapon: owner === 'drone' ? 'drone' : s.weapon, owner, life: 1.25,
       rapid: owner === 'player' && (s.permanentRapidFire || s.rapidFireTimer > 0),
     });
   }
@@ -982,7 +1006,11 @@ export function updateGame(s, dt, targetX) {
   s.fireTimer -= dt;
   if (s.fireTimer <= 0) {
     shoot(s, events);
-    const baseInterval = s.weapon === 'smg' ? Math.max(0.075, 0.12 - (s.weaponLevel.smg || 1) * 0.008) : 0.25;
+    const baseInterval = s.weapon === 'smg'
+      ? Math.max(0.075, 0.12 - (s.weaponLevel.smg || 1) * 0.008)
+      : s.weapon === 'twin'
+        ? Math.max(0.14, 0.21 - ((s.weaponLevel.twin || 1) - 1) * 0.012)
+        : 0.25;
     s.fireTimer = baseInterval * (s.permanentRapidFire || s.rapidFireTimer > 0 ? SUPPORT_CONFIG.rapidFireMultiplier : 1);
   }
   updateCompanions(s, dt, events);

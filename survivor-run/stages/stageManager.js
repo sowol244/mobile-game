@@ -1,5 +1,5 @@
-import { STAGE_01 } from './stage01.js?v=20261015o';
-import { STAGE_02 } from './stage02.js?v=20261015o';
+import { STAGE_01 } from './stage01.js?v=20261015p';
+import { STAGE_02 } from './stage02.js?v=20261015p';
 
 export const DEFAULT_STAGE_ID = STAGE_01.id;
 export const STAGE_DEFINITIONS = Object.freeze([STAGE_01, STAGE_02]);
