@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#080b18">
+<meta name="description" content="빛을 켜고 꺼서 길을 여는 퍼즐 게임">
+<title>Lightshade</title>
+<link rel="icon" href="../icons/lightshade.png">
+<link rel="apple-touch-icon" href="../icons/lightshade.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&family=Jua&display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="../game-access.js" data-game-id="lightshade"></script>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div><small id="hStage">Lightshade</small><span id="hName">&nbsp;</span></div>
+    <div class="mid"><small id="hShardLabel">빛 조각</small><span id="hShard">0/3</span></div>
+    <div class="r"><small id="hTimeLabel">시간</small><span id="hTime">0:00</span></div>
+  </div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <button id="mute" type="button" aria-label="소리 끄기" aria-pressed="false">🔊</button>
+    <div id="topBtns">
+      <button id="retry" type="button" aria-label="체크포인트에서 다시" hidden>↺</button>
+      <button id="pause" type="button" aria-label="일시정지" hidden>Ⅱ</button>
+    </div>
+    <div id="banner" aria-live="polite"></div>
+    <div class="dlg" id="dHint" role="dialog" aria-modal="true" aria-labelledby="dHintT" hidden>
+      <div class="card">
+        <h2 id="dHintT">기록을 코드로 남겨 두세요</h2>
+        <p>쿠키를 지우거나 기기를 바꾸면 기록이 사라져요. 코드를 메모해 두면 되살릴 수 있어요.</p>
+        <label class="chk"><input type="checkbox" id="hintOff"> 다시 보지 않기</label>
+        <div class="row">
+          <button class="go" id="hintShow" type="button">코드 보기</button>
+          <button class="go ghost" id="hintGo" type="button">그냥 시작</button>
+        </div>
+      </div>
+    </div>
+    <div class="dlg" id="dConfirm" role="dialog" aria-modal="true" aria-labelledby="dConfirmT" hidden>
+      <div class="card">
+        <h2 id="dConfirmT">기록을 바꿀까요?</h2>
+        <p id="cfStars"></p>
+        <p>코드 내용으로 통째로 바뀌어요. 안 깬 판은 다시 잠겨요.</p>
+        <div class="row">
+          <button class="go ghost" id="cfNo" type="button">취소</button>
+          <button class="go" id="cfYes" type="button">바꾸기</button>
+        </div>
+      </div>
+    </div>
+    <div class="dlg" id="dBackup" role="dialog" aria-modal="true" aria-labelledby="backupTitle" hidden>
+      <div class="card backup-card">
+        <h2 id="backupTitle">진행 기록을 저장해요</h2>
+        <p>기록 코드를 복사해 안전한 곳에 보관하세요. 코드는 스테이지 진행과 별을 옮깁니다. 최고 시간과 이 기기의 스테이지별 순위는 포함되지 않으며, 온라인 순위는 닉네임 등록 후 서버에 기록됩니다.</p>
+        <p id="backupStat"></p>
+        <textarea class="codebox" id="backupOut" readonly rows="3" spellcheck="false" aria-label="진행 기록 코드"></textarea>
+        <div class="row">
+          <button class="go" id="backupCopy" type="button">코드 복사</button>
+          <button class="go ghost" id="backupContinue" type="button">다음 스테이지</button>
+          <button class="go ghost" id="backupLater" type="button">나중에</button>
+        </div>
+      </div>
+    </div>
+    <div id="overlay">
+      <div class="panel" id="pMain">
+        <small id="eyebrow">LIGHTSHADE</small>
+        <h1 id="title">LIGHTSHADE</h1>
+        <p id="msg"></p>
+        <div id="final" hidden></div>
+        <div id="btns">
+          <div id="prim"><button class="go" id="start" type="button">시작</button></div>
+          <div id="sec">
+            <button class="sub" id="home" type="button" hidden>처음으로</button>
+            <button class="sub" id="helpBtn" type="button">게임 설명</button>
+            <button class="sub" id="rankBtn" type="button">순위 보기</button>
+            <button class="sub" id="again" type="button" hidden>다시 하기</button>
+            <button class="sub" id="codeBtn" type="button">기록 코드</button>
+            <a class="sub" id="toMenu" href="../">게임 선택</a>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="pStages" hidden>
+        <h1>스테이지</h1>
+        <p id="starTotal"></p>
+        <div id="chapNav">
+          <button class="chArrow" id="chPrev" type="button" aria-label="이전 장">◀</button>
+          <div id="chTitle"><b id="chName"></b><small id="chSub"></small></div>
+          <button class="chArrow" id="chNext" type="button" aria-label="다음 장">▶</button>
+        </div>
+        <div id="chDots" role="tablist" aria-label="장"></div>
+        <div id="stageGrid"></div>
+        <button class="go ghost back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pHelp" hidden>
+        <h1>게임 설명</h1>
+        <ul class="helplist">
+          <li><b>목표</b> 빛나는 문으로 들어가면 클리어</li>
+          <li><b>이동·점프</b> ◀ ▶ · 점프 (PC: ← → · Space)</li>
+          <li><b>손전등</b> 톡 치면 켜고 끄기 (PC: 왼쪽 Alt · 클릭)</li>
+          <li><b>조준</b> 손전등 버튼을 누른 채 끌기 (PC: 마우스 · Q E)</li>
+          <li><b>깜빡</b> 손전등을 켠 상태에서, 누르는 동안만 불이 꺼져요. 점프에서 밀어 올려도 돼요 (PC: 왼쪽 Ctrl)</li>
+          <li><span class="sw l"></span><b>빛 블록</b> 빛을 받으면 단단해져요</li>
+          <li><span class="sw s"></span><b>그림자 블록</b> 어둠 속에서만 단단해요</li>
+          <li><span class="sw red"></span><b>빨간 블록</b> 빨간 빛에만 생겨요</li>
+          <li><span class="sw blue"></span><b>파란 블록</b> 파란 빛에만 생겨요</li>
+          <li><span class="sw lamp"></span><b>등불 표식</b> 표식 블록은 등불 빛으로만 켜져요</li>
+          <li><span class="sw mirror"></span><b>거울 표식</b> 표식 발판은 거울에 꺾인 빛만 받아요</li>
+          <li><b>상자</b> 밀어서 그림자를 만들어요</li>
+          <li><b>거울</b> 빛을 꺾어요. 도는 거울은 닿으면 돌아요</li>
+          <li><b>안개</b> 먼 빛줄기는 막혀요. 손전등 후광은 가까운 곳을 밝히지만 안개 속 석상은 깨우지 못해요.</li>
+          <li><b>석상</b> 빛을 받으면 깨어나 다가와요</li>
+          <li><b>별 3개</b> 스테이지마다 숨은 빛 조각 3개를 모두 모아요</li>
+        </ul>
+        <button class="go back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pRank" hidden>
+        <h1>내 기록 순위</h1>
+        <ol id="rows"></ol>
+        <p id="rankNote"></p>
+        <button class="go back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pCode" hidden>
+        <h1>기록 코드</h1>
+        <div class="seg" role="tablist" aria-label="기록 코드">
+          <button type="button" role="tab" id="tabSave" aria-selected="true" aria-controls="codeSave">저장</button>
+          <button type="button" role="tab" id="tabLoad" aria-selected="false" aria-controls="codeLoad">불러오기</button>
+        </div>
+        <div class="codebody" id="codeSave" role="tabpanel" aria-labelledby="tabSave">
+          <p id="codeStat"></p>
+          <textarea class="codebox" id="codeOut" readonly rows="4" spellcheck="false" aria-label="내 기록 코드"></textarea>
+          <button class="go" id="codeCopy" type="button">코드 복사</button>
+          <small class="hint">진행도와 별을 옮기는 코드예요. 최고 시간과 이 기기의 스테이지별 순위는 포함되지 않아요.</small>
+        </div>
+        <div class="codebody" id="codeLoad" role="tabpanel" aria-labelledby="tabLoad" hidden>
+          <textarea class="codebox" id="codeIn" rows="4" spellcheck="false" autocapitalize="characters" autocomplete="off" placeholder="여기에 코드를 붙여 넣어요" aria-label="기록 코드 붙여넣기"></textarea>
+          <button class="go" id="codeApply" type="button">불러오기</button>
+          <p class="err" id="codeErr" role="alert"></p>
+        </div>
+        <button class="go ghost back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pPause" hidden>
+        <h1>일시정지</h1>
+        <div id="pbtns">
+          <button class="go" id="resume" type="button">계속하기</button>
+          <button class="go ghost" id="restart" type="button">처음부터 다시</button>
+          <button class="go ghost" id="toStages" type="button">스테이지 선택</button>
+          <button class="go ghost" id="quit" type="button">처음으로</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="pad">
+    <div id="dpad">
+      <button class="pbtn" id="left" type="button" aria-label="왼쪽">◀</button>
+      <button class="pbtn" id="right" type="button" aria-label="오른쪽">▶</button>
+    </div>
+    <div id="acts">
+      <button class="pbtn" id="torch" type="button" aria-label="손전등 (톡: 켜기/끄기, 끌기: 조준)"><span id="knob"></span><b>손전등</b></button>
+      <div id="thumb">
+        <button class="pbtn" id="blink" type="button" aria-label="깜빡: 누르는 동안 불이 꺼져요">깜빡</button>
+        <button class="pbtn" id="jump" type="button">점프</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="application/x-game-gated" data-script-type="module" data-script-src="../online-scoreboard.js?game=lightshade"></script>
+<script type="application/x-game-gated" data-script-type="module" data-script-src="main.js?v=20261015-save-preservation-1"></script>
+</body>
+</html>

@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>모바일게임 작업실 (by 석)</title>
+<style>
+  :root { --bg: #14111f; --card: #241e3a; --card-hi: #2e2650; --fg: #fdf6e3; --muted: #9a93b8; --line: #4a4170; --accent: #ffd23f; --new: #ff5d7a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 56px 16px 32px; font-family: system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 440px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 18px; }
+  h2 { font-size: 14px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
+
+  /* Recently played: a row of icons */
+  #recent { margin-bottom: 20px; }
+  #recent .row { display: flex; gap: 10px; }
+  #recent button { flex: 0 0 calc((100% - 20px) / 3); min-width: 0; display: grid; justify-items: center; gap: 6px; padding: 10px 6px; border: 0; border-radius: 14px; background: var(--card); color: inherit; font: inherit; font-size: 13px; text-align: center; cursor: pointer; }
+  #recent button:hover { background: var(--card-hi); }
+  #recent button img { width: 48px; height: 48px; border-radius: 12px; }
+  #recent button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Tree */
+  details { margin: 0; }
+  summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 10px 4px; font-size: 19px; font-weight: 700; user-select: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary .arrow { width: 18px; color: var(--muted); font-size: 14px; transition: transform 0.15s; }
+  details[open] > summary .arrow { transform: rotate(90deg); }
+  summary .count { font-size: 13px; font-weight: 500; color: var(--muted); }
+  summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+  .branch { position: relative; margin-left: 12px; padding-left: 14px; border-left: 2px solid transparent; --branch-line-color: var(--line); }
+  .branch::before { content: ""; position: absolute; left: 0; top: 0; height: var(--branch-line-end, 100%); border-left: 2px solid var(--branch-line-color); pointer-events: none; }
+  .sub > summary { font-size: 15px; font-weight: 600; color: #d9d2f2; padding: 8px 4px; }
+  /* A short horizontal tick from the tree line to each item */
+  .branch > details, .branch > .game, .branch > .game-admin-row { position: relative; }
+  .branch > details::before, .branch > .game::before, .branch > .game-admin-row::before { content: ""; position: absolute; left: -14px; top: 22px; width: 12px; border-top: 2px solid var(--line); }
+  .branch > .game::before, .branch > .game-admin-row::before { top: 50%; }
+  .branch > :last-child { margin-bottom: 4px; }
+
+  .game { display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: center; margin: 6px 0; padding: 10px 12px; border-radius: 14px; background: var(--card); color: inherit; text-decoration: none; font-size: 17px; }
+  a.game:hover { background: var(--card-hi); }
+  .game:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button.game { width: 100%; border: 0; text-align: left; font: inherit; cursor: pointer; }
+  button.game:hover { background: var(--card-hi); }
+  .game-admin-row { display: grid; grid-template-columns: minmax(0, 1fr) 104px; align-items: center; gap: 8px; margin: 6px 0; }
+  .game-admin-row > .game { min-width: 0; margin: 0; }
+  .game-admin-controls { display: grid; gap: 7px; }
+  .game-admin-controls select { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 7px 3px; background: var(--card); color: var(--fg); font: inherit; font-size: 11px; }
+  .game-admin-controls select:focus-visible, .game-new-toggle input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .game-new-toggle { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; cursor: pointer; }
+  .game-new-toggle input { width: 14px; height: 14px; margin: 0; accent-color: var(--new); }
+  .game img { width: 56px; height: 56px; border-radius: 12px; display: block; background: #1b1630; }
+  .game small { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; line-height: 1.35; }
+  .game .badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; vertical-align: 2px; }
+  .badge.new { background: var(--new); color: #fff; }
+  .badge.wip { background: #3a3358; color: var(--muted); }
+  .badge.dev { background: #7d552b; color: #ffe2a1; }
+  .badge.maintenance { background: #70434a; color: #ffd5d9; }
+  .badge.hidden { background: #3a3358; color: #d9d2f2; }
+  .game.wip { opacity: 0.6; }
+  /* My own designs: a highlighted group at the top */
+  details.own { margin-bottom: 8px; padding: 2px 10px 6px; border-radius: 18px; background: linear-gradient(160deg, rgba(255, 210, 63, 0.12), rgba(255, 93, 122, 0.08)); box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.35); }
+  details.own > summary { color: var(--accent); }
+  details.own > .branch { --branch-line-color: rgba(255, 210, 63, 0.45); }
+  details.own > .branch > .game::before, details.own > .branch > .game-admin-row::before { border-top-color: rgba(255, 210, 63, 0.45); }
+  .note { margin: 22px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; }
+  #admin-button { position: fixed; top: 12px; right: 12px; z-index: 5; border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px; background: var(--card); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
+  #admin-button:hover { background: var(--card-hi); }
+  #admin-button:focus-visible, #admin-dialog button:focus-visible, #admin-dialog input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  #admin-dialog { width: min(360px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 18px; padding: 22px; background: var(--card); color: var(--fg); box-shadow: 0 20px 80px #0009; }
+  #admin-dialog::backdrop { background: #080611c9; }
+  #admin-dialog h2 { margin: 0 0 8px; color: var(--fg); font-size: 18px; }
+  #admin-dialog p { margin: 0 0 16px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+  #admin-dialog input { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; background: #171326; color: var(--fg); font: inherit; font-size: 18px; letter-spacing: .2em; }
+  #admin-error { min-height: 1.4em; margin: 8px 0 12px !important; color: #ff9aaa !important; }
+  .admin-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .admin-actions button { border: 1px solid var(--line); border-radius: 10px; padding: 9px 13px; background: #171326; color: var(--fg); font: inherit; cursor: pointer; }
+  .admin-actions button[type="submit"] { border-color: var(--accent); background: var(--accent); color: #241e3a; font-weight: 700; }
+  #game-dialog { width: min(1100px, 100vw); height: min(940px, 100dvh); max-width: none; max-height: none; padding: 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: #080611; color: var(--fg); box-shadow: 0 20px 80px #000c; }
+  #game-dialog::backdrop { background: #080611eF; }
+  #game-dialog:focus-visible, #game-dialog button:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+  .game-shell-head { height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px 0 16px; background: var(--card); }
+  .game-shell-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game-shell-head button { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 9px; padding: 6px 12px; background: #171326; color: var(--fg); font: inherit; cursor: pointer; }
+  #game-frame { display: block; width: 100%; height: calc(100% - 48px); border: 0; background: #080611; }
+  @media (max-width: 600px) { #game-dialog { width: 100vw; height: 100dvh; border: 0; border-radius: 0; } }
+</style>
+</head>
+<body>
+<button id="admin-button" type="button" aria-haspopup="dialog">관리자</button>
+<main>
+  <h1>모바일게임 작업실 (by 석)</h1>
+  <section id="recent" hidden>
+    <h2>최근에 한 게임</h2>
+    <div class="row"></div>
+  </section>
+  <nav id="tree" aria-label="게임 목록"><p class="note">게임 목록을 불러오는 중입니다.</p></nav>
+  <p id="admin-note" class="note" hidden>게임 상태와 NEW 표시 설정은 모든 방문자에게 적용됩니다.</p>
+  <p class="note">이곳의 게임들은 예고 없이 추가되거나 삭제될 수 있습니다.</p>
+</main>
+<dialog id="admin-dialog" aria-labelledby="admin-title">
+  <form id="admin-form">
+    <h2 id="admin-title">관리자 인증</h2>
+    <p>암호를 입력하세요.</p>
+    <label for="admin-password">암호</label>
+    <input id="admin-password" name="password" type="password" inputmode="numeric" autocomplete="off" maxlength="32" required>
+    <p id="admin-error" role="status" aria-live="polite"></p>
+    <div class="admin-actions">
+      <button id="admin-cancel" type="button">취소</button>
+      <button type="submit">확인</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="game-dialog" aria-labelledby="game-title">
+  <div class="game-shell-head">
+    <strong id="game-title">게임</strong>
+    <button id="game-close" type="button" aria-label="게임을 닫고 목록으로 돌아가기">목록</button>
+  </div>
+  <iframe id="game-frame" title="선택한 게임" allow="autoplay; fullscreen; gamepad" allowfullscreen></iframe>
+</dialog>
+<script>
+// The game list. To add a game: one line here, in the right group.
+// `wip: true` lists it greyed out without a link.
+const GAMES = [
+  { id: 'arena-duel', name: '아레나 결투', desc: '1대1 결투와 협동 보스전에 도전하는 액션 게임', group: ['액션'], icon: 'arena-duel.svg' },
+  { id: 'meteor-dodge', name: '스타 슈터', desc: '적을 쏘며 우주를 나는 슈팅 게임', group: ['액션'] },
+  { id: 'super-jump', name: '교행이의 모험', desc: '칼로 몬스터를 베며 달리는 모험 게임', group: ['액션'], status: 'maintenance' },
+  { id: 'lumagrid', name: 'LumaGrid', desc: '블록을 채워 줄을 지우는 퍼즐 게임', group: ['퍼즐', '블록 퍼즐'] },
+  { id: 'gravibreak', name: 'GraviBreak', desc: '중력을 돌려 블록을 터뜨리는 퍼즐 게임', group: ['창작'] },
+  { id: 'sudoku', name: '숫자 정원', desc: '빈칸에 1~9를 채우는 숫자 퍼즐 게임', group: ['퍼즐', '숫자 퍼즐'] },
+  { id: 'lightshade', name: 'Lightshade', desc: '빛을 켜고 꺼서 길을 여는 퍼즐 게임', group: ['창작'] },
+];
+const DEV_GAMES = [];
+const SUPABASE_URL = 'https://ffclcaraipfdjzjkojeu.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_3RU0xXklMJKZWbsc5NTswQ_qH1Sr_1N';
+const STATUS_REST_URL = `${SUPABASE_URL}/rest/v1/game_status_config?id=eq.1&select=statuses`;
+const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-game-status`;
+const TOP = [{ name: "석's 오리지널", key: '창작', icon: '💡', own: true }, { name: '액션', icon: '🎮' }, { name: '퍼즐', icon: '🧩' }];
+// Preserve the current NEW badges until the admin saves a manual selection.
+const DEFAULT_NEW_GAME_IDS = ['arena-duel', 'gravibreak', 'sudoku', 'lightshade'];
+
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } };
+const LEGACY_GAME_IDS = { 'neon-block': 'lumagrid', 'gravity-crash': 'gravibreak', 'lux-umbra': 'lightshade' };
+const storedRecent = load('hub-recent', []);
+const recent = Array.isArray(storedRecent) ? storedRecent.map(id => LEGACY_GAME_IDS[id] || id) : [];
+if (JSON.stringify(recent) !== JSON.stringify(storedRecent)) save('hub-recent', recent);
+const closed = load('hub-closed', {});   // group path → true when folded
+let statusOverrides = {};
+let newGameIds = [...DEFAULT_NEW_GAME_IDS];
+let cloudStatusLoaded = false;
+let currentAdminPassword = '';
+let showDevGames = false;
+try { sessionStorage.removeItem('hub-admin-unlocked'); } catch { /* session storage may be unavailable */ }
+
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+const isNew = g => newGameIds.includes(g.id);
+
+function configuredStatus(g) {
+  if (Object.prototype.hasOwnProperty.call(statusOverrides, g.id)) return statusOverrides[g.id];
+  return g.status || null;
+}
+
+function gameStatus(g) {
+  const status = configuredStatus(g);
+  if (status) return status;
+  if (g.requiresAdmin && !showDevGames) return 'development';
+  return null;
+}
+
+function showStatusMessage(status) {
+  if (status === 'development') alert('개발 중입니다. 기다려 주세요.');
+  else if (status === 'maintenance') alert('점검 중입니다. 잠시 후 다시 이용해 주세요.');
+}
+
+function withAdminStatusControl(g, card) {
+  if (!showDevGames || !cloudStatusLoaded) return card;
+  const select = el('select');
+  select.setAttribute('aria-label', `${g.name} 상태 설정`);
+  for (const [value, label] of [['', '정상'], ['hidden', '숨김'], ['development', '개발 중'], ['maintenance', '점검 중']]) {
+    select.append(el('option', { value }, label));
+  }
+  select.value = configuredStatus(g) || '';
+  const newToggle = el('input', { type: 'checkbox', checked: isNew(g) });
+  newToggle.setAttribute('aria-label', `${g.name} NEW 배지 표시`);
+  const newLabel = el('label', { className: 'game-new-toggle' }, newToggle, 'NEW 표시');
+  const setControlsBusy = busy => { select.disabled = busy; newToggle.disabled = busy; };
+  select.addEventListener('change', async () => {
+    const value = select.value || null;
+    setControlsBusy(true);
+    try {
+      const result = await callAdminFunction({ action: 'set-status', password: currentAdminPassword, gameId: g.id, status: value });
+      applySharedSettings(result.statuses);
+      renderTree();
+      renderRecent();
+    } catch (error) {
+      select.value = configuredStatus(g) || '';
+      alert(error.message || '상태를 저장하지 못했습니다.');
+    } finally {
+      setControlsBusy(false);
+    }
+  });
+
+  newToggle.addEventListener('change', async () => {
+    const next = new Set(newGameIds);
+    if (newToggle.checked) next.add(g.id);
+    else next.delete(g.id);
+    setControlsBusy(true);
+    try {
+      const result = await callAdminFunction({ action: 'set-new-games', password: currentAdminPassword, newGames: [...next] });
+      applySharedSettings(result.statuses);
+      renderTree();
+      renderRecent();
+    } catch (error) {
+      newToggle.checked = isNew(g);
+      alert(error.message || 'NEW 표시를 저장하지 못했습니다.');
+    } finally {
+      setControlsBusy(false);
+    }
+  });
+  return el('div', { className: 'game-admin-row' }, card, el('div', { className: 'game-admin-controls' }, select, newLabel));
+}
+
+function playableCard(g, img, title) {
+  const button = el('button', { className: 'game', type: 'button' }, img, title);
+  button.addEventListener('click', () => open(g.id));
+  return button;
+}
+
+function gameRow(g) {
+  const title = el('span', {}, g.name);
+  const status = gameStatus(g);
+  if (g.wip) title.append(el('span', { className: 'badge wip' }, '작업 중'));
+  else {
+    if (status === 'hidden') title.append(el('span', { className: 'badge hidden' }, '숨김'));
+    if (status === 'development') title.append(el('span', { className: 'badge dev' }, '개발 중'));
+    if (status === 'maintenance') title.append(el('span', { className: 'badge maintenance' }, '점검 중'));
+    if (!status && g.dev) title.append(el('span', { className: 'badge dev' }, '개발 중'));
+  }
+  if (isNew(g)) title.append(el('span', { className: 'badge new' }, 'NEW'));
+  title.append(el('small', {}, g.desc));
+  const img = el('img', { src: 'icons/' + (g.icon || g.id + '.png'), alt: '' });
+  img.onerror = () => { img.style.visibility = 'hidden'; };
+  if (g.wip) return withAdminStatusControl(g, el('div', { className: 'game wip' }, img, title));
+  if (status && !showDevGames) {
+    const button = el('button', { className: 'game game-unavailable', type: 'button' }, img, title);
+    button.addEventListener('click', () => showStatusMessage(status));
+    return withAdminStatusControl(g, button);
+  }
+  return withAdminStatusControl(g, playableCard(g, img, title));
+}
+
+function open(id) {
+  save('hub-recent', [id, ...recent.filter(x => x !== id)].slice(0, 3));
+  const game = [...GAMES, ...DEV_GAMES].find(item => item.id === id);
+  if (!game) return;
+  const gameDialog = document.getElementById('game-dialog');
+  const gameFrame = document.getElementById('game-frame');
+  document.getElementById('game-title').textContent = game.name;
+  gameFrame.title = game.name;
+  try {
+    if (showDevGames) sessionStorage.setItem('hub-admin-unlocked', 'true');
+    else sessionStorage.removeItem('hub-admin-unlocked');
+  } catch { /* session storage may be unavailable */ }
+  gameFrame.src = id + '/';
+  gameDialog.showModal();
+}
+
+const gameDialog = document.getElementById('game-dialog');
+const gameFrame = document.getElementById('game-frame');
+function closeGame() {
+  if (gameDialog.open) gameDialog.close();
+  gameFrame.src = 'about:blank';
+}
+document.getElementById('game-close').addEventListener('click', closeGame);
+gameDialog.addEventListener('close', () => { gameFrame.src = 'about:blank'; });
+window.addEventListener('message', event => {
+  if (event.origin !== location.origin || event.source !== gameFrame.contentWindow) return;
+  if (event.data?.type === 'game-hub-close') {
+    closeGame();
+  } else if (event.data?.type === 'game-access-blocked') {
+    const status = event.data.status;
+    closeGame();
+    if (['development', 'maintenance'].includes(status)) showStatusMessage(status);
+    else if (status === 'hidden') alert('숨김 상태의 게임은 관리자 모드에서만 실행할 수 있습니다.');
+    else alert('게임 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  }
+});
+
+// A collapsible group; its open/closed state is remembered per path.
+function group(path, label, count, children, sub) {
+  const d = el('details', { className: sub ? 'sub' : '' });
+  d.open = !closed[path];
+  d.addEventListener('toggle', () => { if (d.open) delete closed[path]; else closed[path] = true; save('hub-closed', closed); requestAnimationFrame(updateTreeBranchEnds); });
+  d.append(el('summary', {}, el('span', { className: 'arrow' }, '▶'), label, el('span', { className: 'count' }, `(${count})`)));
+  d.append(el('div', { className: 'branch' }, ...children));
+  return d;
+}
+
+const tree = document.getElementById('tree');
+function updateTreeBranchEnds() {
+  for (const branch of tree.querySelectorAll('.branch')) {
+    const last = branch.lastElementChild;
+    if (!last) continue;
+    const branchRect = branch.getBoundingClientRect();
+    const lastRect = last.getBoundingClientRect();
+    const tickOffset = last.matches('details') ? 22 : lastRect.height / 2;
+    branch.style.setProperty('--branch-line-end', `${Math.max(0, lastRect.top - branchRect.top + tickOffset)}px`);
+  }
+}
+window.addEventListener('resize', updateTreeBranchEnds);
+
+function visibleGames() {
+  const games = showDevGames ? [...GAMES, ...DEV_GAMES] : GAMES;
+  return showDevGames ? games : games.filter(g => gameStatus(g) !== 'hidden');
+}
+
+function renderTree() {
+  tree.replaceChildren();
+  for (const top of TOP) {
+    const key = top.key || top.name;
+    const games = visibleGames().filter(g => g.group[0] === key);
+    if (!games.length) continue;
+    const items = [];
+    for (const g of games.filter(g => g.group.length === 1)) items.push(gameRow(g));
+    const subs = [...new Set(games.filter(g => g.group[1]).map(g => g.group[1]))];
+    for (const s of subs) {
+      const inSub = games.filter(g => g.group[1] === s);
+      items.push(group(`${key}/${s}`, s, inSub.length, inSub.map(gameRow), true));
+    }
+    const d = group(key, `${top.icon} ${top.name}`, games.length, items, false);
+    if (top.own) d.classList.add('own');
+    tree.append(d);
+  }
+  updateTreeBranchEnds();
+}
+
+function renderRecent() {
+  const row = document.querySelector('#recent .row');
+  row.replaceChildren();
+  const rec = recent.map(id => visibleGames().find(g => g.id === id && !g.wip && (showDevGames || !gameStatus(g)))).filter(Boolean);
+  if (rec.length) {
+    for (const g of rec) {
+      const button = el('button', { type: 'button' }, el('img', { src: 'icons/' + (g.icon || g.id + '.png'), alt: '' }), el('span', {}, g.name));
+      button.addEventListener('click', () => open(g.id));
+      row.append(button);
+    }
+  }
+  document.getElementById('recent').hidden = rec.length === 0;
+  document.getElementById('admin-note').hidden = !showDevGames;
+  document.getElementById('admin-note').textContent = cloudStatusLoaded
+    ? '게임 상태와 NEW 표시 설정은 모든 방문자에게 적용됩니다.'
+    : '공유 설정을 불러오는 중입니다.';
+}
+
+function cleanStatuses(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const allowed = new Set([...GAMES, ...DEV_GAMES].map(game => game.id));
+  return Object.fromEntries(Object.entries(value).filter(([id, status]) =>
+    allowed.has(id) && (status === null || status === 'hidden' || status === 'development' || status === 'maintenance')
+  ));
+}
+
+function cleanNewGames(value) {
+  if (!Array.isArray(value)) return [...DEFAULT_NEW_GAME_IDS];
+  const allowed = new Set([...GAMES, ...DEV_GAMES].map(game => game.id));
+  return [...new Set(value.filter(id => allowed.has(id)))];
+}
+
+function applySharedSettings(value) {
+  statusOverrides = cleanStatuses(value);
+  newGameIds = cleanNewGames(value?.__meta?.newGames);
+}
+
+async function refreshGameStatuses() {
+  try {
+    const response = await fetch(STATUS_REST_URL, {
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY },
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`상태를 불러오지 못했습니다 (${response.status}).`);
+    const rows = await response.json();
+    const sharedSettings = rows[0]?.statuses;
+    const next = cleanStatuses(sharedSettings);
+    const nextNewGames = cleanNewGames(sharedSettings?.__meta?.newGames);
+    const firstLoad = !cloudStatusLoaded;
+    const changed = JSON.stringify(next) !== JSON.stringify(statusOverrides)
+      || JSON.stringify(nextNewGames) !== JSON.stringify(newGameIds);
+    applySharedSettings(sharedSettings);
+    cloudStatusLoaded = true;
+    if (firstLoad || changed) { renderTree(); renderRecent(); }
+    else if (showDevGames) renderRecent();
+  } catch (error) {
+    console.error('공유 게임 상태를 불러오지 못했습니다.', error);
+    if (!cloudStatusLoaded) { renderTree(); renderRecent(); }
+  }
+}
+
+async function callAdminFunction(body) {
+  const response = await fetch(ADMIN_FUNCTION_URL, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  let result = {};
+  try { result = await response.json(); } catch { /* use the status text below */ }
+  if (!response.ok) throw new Error(result.error || '관리자 서버에 연결할 수 없습니다.');
+  return result;
+}
+
+refreshGameStatuses();
+setInterval(refreshGameStatuses, 15000);
+
+const adminButton = document.getElementById('admin-button');
+const adminDialog = document.getElementById('admin-dialog');
+const adminForm = document.getElementById('admin-form');
+const adminPassword = document.getElementById('admin-password');
+const adminError = document.getElementById('admin-error');
+if (showDevGames) adminButton.textContent = '관리자 잠금';
+adminButton.addEventListener('click', () => {
+  if (showDevGames) {
+    showDevGames = false;
+    currentAdminPassword = '';
+    try { sessionStorage.removeItem('hub-admin-unlocked'); } catch { /* session storage may be unavailable */ }
+    adminButton.textContent = '관리자';
+    renderTree();
+    renderRecent();
+    return;
+  }
+  adminError.textContent = '';
+  adminPassword.value = '';
+  adminDialog.showModal();
+  adminPassword.focus();
+});
+document.getElementById('admin-cancel').addEventListener('click', () => adminDialog.close());
+adminDialog.addEventListener('close', () => { adminError.textContent = ''; adminPassword.value = ''; });
+adminForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  adminError.textContent = '';
+  try {
+    await callAdminFunction({ action: 'authenticate', password: adminPassword.value });
+    currentAdminPassword = adminPassword.value;
+    showDevGames = true;
+    try { sessionStorage.setItem('hub-admin-unlocked', 'true'); } catch { /* session storage may be unavailable */ }
+    adminButton.textContent = '관리자 잠금';
+    renderTree();
+    renderRecent();
+    adminDialog.close();
+  } catch (error) {
+    adminError.textContent = error.message || '관리자 서버에 연결할 수 없습니다.';
+    adminPassword.select();
+  }
+});
+</script>
+</body>
+</html>

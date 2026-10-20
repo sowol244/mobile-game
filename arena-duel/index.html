@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a1238">
+<title>아레나 결투</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="../game-access.js" data-game-id="arena-duel"></script>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div><small>명성</small><span id="reputation">0</span></div>
+    <div class="mid"><small id="midLabel">결투 점수</small><span id="score"><b class="blue">0</b> : <b class="red">0</b></span><progress id="bossHealth" max="1" value="1" hidden aria-label="보스 체력"></progress><span id="alive" hidden></span></div>
+    <div class="r"><small id="clockLabel">남은 시간</small><span id="clock">2:00</span></div>
+  </div>
+  <div id="coach" hidden>
+    <div class="ct"><span id="cstep"></span><button id="cskip" type="button">건너뛰기</button></div>
+    <p id="ctext" role="status" aria-live="polite"></p>
+  </div>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <button id="pause" type="button" aria-label="일시정지" hidden>Ⅱ</button>
+    <button id="mute" type="button" aria-label="소리 끄기" aria-pressed="false">🔊</button>
+    <div id="banner" aria-live="polite"></div>
+    <div id="overlay">
+      <div class="panel" id="pMain">
+        <h1 id="title">아레나 결투</h1>
+        <p id="msg"></p>
+        <div id="final" hidden></div>
+        <p id="toast" role="status" aria-live="polite"></p>
+        <div id="btns">
+          <div id="prim"><button class="go" id="start" type="button">시작</button></div>
+          <div id="sec">
+            <button class="sub" id="home" type="button" hidden>처음으로</button>
+            <button class="sub" id="helpBtn" type="button">게임 설명</button>
+            <button class="sub" id="rankBtn" type="button">순위 보기</button>
+            <a class="sub" id="toMenu" href="../">게임 선택</a>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="pHelp" hidden>
+        <h1>게임 설명</h1>
+        <ul class="helplist">
+          <li class="now"><b>모드</b> 전투원 선택 화면에서 <b>1대1 결투</b>와 <b>협동 보스전</b>을 고를 수 있어요.</li>
+          <li><b>1대1 결투</b> 상대를 먼저 3번 쓰러뜨리면 승리해요. 제한 시간은 2분이며, 동점이면 무승부예요.</li>
+          <li><b>협동 보스전</b> 나와 동료가 보스를 함께 상대해요. 팀원마다 3번까지 출전할 수 있고, 3분 안에 보스를 쓰러뜨리면 승리해요.</li>
+          <li><b>전투원</b> 각 전투원은 공격 방식과 특수 기술이 달라요. 선택 화면에서 능력치를 확인할 수 있어요.</li>
+          <li><b>이동</b> 화면 왼쪽 절반을 누르고 끌면 이동해요. (PC: WASD 또는 방향키)</li>
+          <li><b>공격</b> 오른쪽 아래를 톡 누르면 가까운 적을 자동 조준하고, 끌었다 놓으면 지정한 방향으로 공격해요.</li>
+          <li><b>특수 기술</b> 적을 맞히면 별 버튼의 게이지가 차요. 가득 차면 눌러서 강한 기술을 사용해요. (PC: E)</li>
+          <li><b>수풀</b> 수풀 안에 있으면 멀리 있는 상대에게 보이지 않아요. 가까이 다가오면 발견될 수 있어요.</li>
+          <li><b>단계 진행</b> 각 모드는 5단계로 구성돼요. 승리하면 다음 단계가 열리고, 패배하면 첫 단계부터 다시 도전해요.</li>
+          <li><b>명성·레벨</b> 경기 결과에 따라 명성을 얻거나 잃어요. 명성이 오르면 전투원 레벨과 능력치가 함께 올라요.</li>
+        </ul>
+        <button class="go ghost" id="tutBtn" type="button">튜토리얼 다시 하기</button>
+        <button class="go back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pAsk" hidden>
+        <h1>처음이네요!</h1>
+        <p>조작법을 1분 만에 배우는<br><b>튜토리얼</b>을 해 볼까요?</p>
+        <div id="abtns">
+          <button class="go" id="askYes" type="button">튜토리얼 하기</button>
+          <button class="go ghost" id="askNo" type="button">건너뛰고 바로 하기</button>
+        </div>
+      </div>
+      <div class="panel" id="pSelect" hidden>
+        <h1>전투원 선택</h1>
+        <div class="modes" role="group" aria-label="모드">
+          <button class="mode on" type="button" data-mode="duel">1대1 결투<small>1~5단계</small></button>
+          <button class="mode" type="button" data-mode="boss">협동 보스전<small>1~5단계</small></button>
+        </div>
+        <div id="cards" role="radiogroup" aria-label="전투원"></div>
+        <button class="go" id="go" type="button">출전!</button>
+        <button class="go ghost back" type="button">돌아가기</button>
+      </div>
+      <div class="panel" id="pPause" hidden>
+        <h1>일시정지</h1>
+        <div id="pbtns">
+          <button class="go" id="resume" type="button">계속하기</button>
+          <button class="go ghost" id="quit" type="button">처음으로</button>
+        </div>
+      </div>
+      <div class="panel" id="pRank" hidden>
+        <h1>내 기록 순위</h1>
+        <ol id="rows"></ol>
+        <p id="rankNote"></p>
+        <button class="go back" type="button">돌아가기</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="application/x-game-gated" data-script-type="module" data-script-src="../online-scoreboard.js?game=arena-duel"></script>
+<script type="application/x-game-gated" data-script-type="module" data-script-src="main.js"></script>
+</body>
+</html>

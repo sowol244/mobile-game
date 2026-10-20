@@ -1,0 +1,406 @@
+// 대난투 아레나 — entry point: menus, fighter select, tutorial, the frame loop, HUD, results and the local ranking.
+// Rules live in game.js, bots in bot.js, drawing in render.js/art.js, thumbsticks in input.js.
+
+import { MAPS, stageMap } from './maps.js';
+import { FIGHTERS, KINDS, REPUTATION, LEVELS, STAGES, BOSS, botLevelFor, levelFor } from './config.js';
+import { createMatch, step, lineOfSight, visibleTo, timeLeft, mvpOf, BLUE, RED } from './game.js';
+import { sfx, unlock, isMuted, setMuted } from './sound.js';
+import { makeBrain, botControl } from './bot.js';
+import { createInput } from './input.js';
+import { createRenderer } from './render.js';
+import { drawPerson } from './art.js';
+import { STEPS } from './tutorial.js';
+
+const $ = id => document.getElementById(id);
+const stage = $('stage'), overlay = $('overlay');
+const panels = { main: $('pMain'), help: $('pHelp'), rank: $('pRank'), pause: $('pPause'), select: $('pSelect'), ask: $('pAsk') };
+const titleEl = $('title'), msgEl = $('msg'), finalEl = $('final'), toast = $('toast');
+const startBtn = $('start'), homeBtn = $('home'), helpBtn = $('helpBtn'), menuLink = $('toMenu'), pauseBtn = $('pause');
+const rowsEl = $('rows'), rankNote = $('rankNote'), bannerEl = $('banner');
+const coach = $('coach'), cstep = $('cstep'), ctext = $('ctext');
+const hud = { reputation: $('reputation'), score: $('score'), bossHealth: $('bossHealth'), clock: $('clock'), alive: $('alive'), midLabel: $('midLabel'), clockLabel: $('clockLabel') };
+const muteBtn = $('mute');
+
+const KEY_TOP = 'arena-top', KEY_REPUTATION = 'arena-reputation', KEY_TUT = 'arena-tutorial', KEY_PICK = 'arena-pick', KEY_BY = 'arena-reputation-by', KEY_MODE = 'arena-mode', KEY_STAGE = 'arena-stage';
+const STEP = 1 / 60;
+
+function load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; } }
+function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* private mode: play on without saving */ } }
+
+const input = createInput(stage);
+const view = createRenderer($('c'));
+
+let state = 'title';   // title | play | paused | over
+let mode = 'duel';     // duel | boss | tutorial | tutorial-done
+let chosenMode = ['duel', 'boss'].includes(load(KEY_MODE, 'duel')) ? load(KEY_MODE, 'duel') : 'duel';
+// Each mode has five stages. A win unlocks the next stage; a loss restarts the run.
+let records = load(KEY_STAGE, {});
+if (!records.duel && !records.boss) records = {};
+const MODE_NAME = { duel: '1대1 결투', boss: '협동 보스전' };
+let reputationBy = load(KEY_BY, {}); // reputation per fighter → its level
+let match = null, brains = [], me = null, acc = 0, last = performance.now();
+let reputation = load(KEY_REPUTATION, 0), lastEntry = null, pick = KINDS.includes(load(KEY_PICK, 'gyo')) ? load(KEY_PICK, 'gyo') : 'gyo';
+let bannerT = 0;
+let autoNext = 0; // seconds until the next stage starts by itself after a win
+let tut = null; // { i, autoHits, aimHits, specials, okT }
+let lastShotMode = null; // 'auto' | 'aim', for the tutorial's checks
+
+// ---------- menus ----------
+function panel(name) { for (const [k, el] of Object.entries(panels)) el.hidden = k !== name; }
+function buttons(onTitle) { helpBtn.hidden = !onTitle; menuLink.hidden = !onTitle; homeBtn.hidden = onTitle; }
+
+function renderTop(highlight) {
+  const top = load(KEY_TOP, []);
+  rowsEl.replaceChildren();
+  top.forEach((e, i) => {
+    const li = document.createElement('li');
+    if (highlight && e.id === highlight) li.className = 'me';
+    const cells = [[`${i + 1}`, 'rk'], [`${e.result} · ${e.fighter || '교행이'} · 처치 ${e.kills}`, 'nm'], [`${e.reputation >= 0 ? '+' : ''}${e.reputation}`, 'sc'], [e.date, 'dt']];
+    for (const [text, cls] of cells) { const s = document.createElement('span'); s.className = cls; s.textContent = text; li.append(s); }
+    rowsEl.append(li);
+  });
+  rankNote.textContent = top.length ? '명성을 많이 얻은 판 순서예요. 이 기기에 저장돼요.' : '아직 기록이 없어요. 한 판 해 보세요!';
+}
+
+function showTitle() {
+  autoNext = 0;
+  state = 'title'; mode = 'duel'; input.enabled = false; pauseBtn.hidden = true; coach.hidden = true; toast.textContent = '';
+  bannerEl.classList.remove('on'); bannerT = 0;
+  titleEl.textContent = '아레나 결투';
+  msgEl.textContent = '1대1 결투와 협동 보스전에 도전하세요.';
+  finalEl.hidden = true; startBtn.textContent = '시작';
+  buttons(true); panel('main'); overlay.hidden = false;
+  newAttract(); updateHud();
+}
+
+// Fighter cards with a little portrait each.
+function buildCards() {
+  const wrap = $('cards'); wrap.replaceChildren();
+  for (const kind of KINDS) {
+    const d = FIGHTERS[kind];
+    const card = document.createElement('button');
+    card.type = 'button'; card.className = 'card'; card.setAttribute('role', 'radio'); card.dataset.kind = kind;
+    const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
+    const g = cv.getContext('2d');
+    drawPerson(g, { kind, face: Math.PI / 2 - 0.35, vx: 0, vy: 0, team: BLUE, id: 0 }, 64, 108, 120, 0, false);
+    const info = document.createElement('div');
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = d.name;
+    const role = document.createElement('small'); role.textContent = d.role; nm.append(role);
+    const bl = document.createElement('div'); bl.className = 'bl'; bl.textContent = d.blurb;
+    const lv = document.createElement('span'); lv.className = 'lv'; nm.append(lv);
+    const st = document.createElement('div'); st.className = 'st'; st.textContent = `체력 ${d.hp} · 사거리 ${d.attack.range}칸 · 특수 기술 ${d.special.name}`;
+    const nx = document.createElement('div'); nx.className = 'st nx';
+    info.append(nm, bl, st, nx);
+    card.append(cv, info);
+    card.addEventListener('click', () => { pick = kind; save(KEY_PICK, pick); markPick(); });
+    wrap.append(card);
+  }
+  markPick();
+}
+function markPick() {
+  for (const c of document.querySelectorAll('.card')) {
+    const k = c.dataset.kind, tr = reputationBy[k] || 0, lv = levelFor(tr), next = LEVELS.at[lv];
+    c.setAttribute('aria-checked', String(k === pick));
+    c.querySelector('.lv').textContent = `Lv.${lv}`;
+    c.querySelector('.nx').textContent = next != null ? `명성 ${tr} · 다음 레벨까지 ${next - tr}` : `명성 ${tr} · 최고 레벨!`;
+  }
+  for (const b of document.querySelectorAll('.mode')) {
+    b.classList.toggle('on', b.dataset.mode === chosenMode);
+    const r = records[b.dataset.mode];
+    b.querySelector('small').textContent = r && r.cleared ? '5단계 완료' : r && r.best > 1 ? `최고 ${r.best}단계` : '1~5단계';
+  }
+}
+for (const b of document.querySelectorAll('.mode')) b.addEventListener('click', () => { chosenMode = b.dataset.mode; save(KEY_MODE, chosenMode); markPick(); });
+
+helpBtn.addEventListener('click', () => panel('help'));
+$('rankBtn').addEventListener('click', () => { renderTop(lastEntry); panel('rank'); });
+homeBtn.addEventListener('click', showTitle);
+document.querySelectorAll('.back').forEach(b => b.addEventListener('click', () => panel('main')));
+startBtn.addEventListener('click', () => {
+  unlock(); sfx.click();
+  if (state === 'over' && ['duel', 'boss'].includes(mode)) { const next = autoNext ? match.stage + 1 : 1; autoNext = 0; return startMatch(next); }
+  if (!load(KEY_TUT, false) && mode !== 'tutorial-done') return panel('ask');              // first time: offer the tutorial
+  markPick(); panel('select');
+});
+$('askYes').addEventListener('click', () => { unlock(); startTutorial(); });
+$('askNo').addEventListener('click', () => { save(KEY_TUT, true); markPick(); panel('select'); });
+function paintMute() { muteBtn.textContent = isMuted() ? '🔇' : '🔊'; muteBtn.setAttribute('aria-pressed', String(isMuted())); muteBtn.setAttribute('aria-label', isMuted() ? '소리 켜기' : '소리 끄기'); }
+muteBtn.addEventListener('click', () => { unlock(); setMuted(!isMuted()); paintMute(); if (!isMuted()) sfx.click(); });
+paintMute();
+$('go').addEventListener('click', () => { unlock(); startMatch(); });
+$('tutBtn').addEventListener('click', startTutorial);
+$('cskip').addEventListener('click', () => finishTutorial(true));
+pauseBtn.addEventListener('click', () => pause(true));
+$('resume').addEventListener('click', () => pause(false));
+$('quit').addEventListener('click', showTitle);
+document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') pause(true); });
+
+function pause(on) {
+  if (on && state === 'play') { state = 'paused'; input.enabled = false; pauseBtn.hidden = true; panel('pause'); overlay.hidden = false; }
+  else if (!on && state === 'paused') { state = 'play'; input.enabled = true; pauseBtn.hidden = false; overlay.hidden = true; last = performance.now(); }
+}
+
+// ---------- matches ----------
+// Behind the title menu: two bots play a sample duel.
+function newAttract() {
+  match = createMatch({ mapDef: MAPS.duel, mode: 'duel', seed: (Math.random() * 1e9) | 0, botsOnly: true });
+  brains = match.fighters.map(() => makeBrain(2)); me = null; view.reset();
+}
+
+function begin() {
+  me = match.fighters.find(b => b.isPlayer);
+  view.reset(); acc = 0; last = performance.now(); lastEntry = null;
+  state = 'play'; input.enabled = true; overlay.hidden = true; pauseBtn.hidden = false;
+}
+
+function startMatch(st = 1) {
+  mode = chosenMode; coach.hidden = true;
+  match = createMatch({
+    mapDef: stageMap(mode, st), mode, seed: (Math.random() * 1e9) | 0,
+    playerKind: pick, level: levelFor(reputationBy[pick] || 0), botHp: STAGES.botHp[st - 1],
+    bossHpMultiplier: BOSS.hpMultiplier * STAGES.botHp[st - 1],
+  });
+  match.stage = st;
+  const skill = botLevelFor(reputation);
+  brains = match.fighters.map(b => (b.isPlayer ? null : makeBrain(skill)));
+  begin();
+  autoNext = 0;
+  banner(`${st}탄 · ${match.mapDef.name}`, 1.6);
+}
+
+function startTutorial() {
+  mode = 'tutorial';
+  match = createMatch({
+    mapDef: MAPS.tutorial, seed: 7, endless: true, respawn: 1.5,
+    roster: [
+      { team: BLUE, slot: 0, kind: 'gyo', name: '나', isPlayer: true },
+      { team: RED, slot: 0, kind: 'gyo', name: '연습 상대', dummy: true },
+    ],
+  });
+  brains = [null, null];
+  tut = { i: -1, autoHits: 0, aimHits: 0, specials: 0, okT: 0 };
+  begin();
+  coach.hidden = false; nextTutorialStep();
+}
+
+function nextTutorialStep() {
+  tut.i++;
+  if (tut.i >= STEPS.length) return finishTutorial(false);
+  const s = STEPS[tut.i];
+  if (s.enter) s.enter(me);
+  cstep.textContent = `튜토리얼 ${tut.i + 1} / ${STEPS.length}`;
+  ctext.innerHTML = s.text; ctext.classList.remove('ok');
+}
+
+function finishTutorial(skipped) {
+  save(KEY_TUT, true); coach.hidden = true; tut = null;
+  state = 'over'; input.enabled = false; pauseBtn.hidden = true;
+  titleEl.textContent = skipped ? '튜토리얼 건너뜀' : '튜토리얼 완료!';
+  msgEl.innerHTML = '이제 전투원을 골라 <b>1대1 결투</b> 또는 <b>협동 보스전</b>에 도전해 보세요.<br>튜토리얼은 <b>게임 설명</b>에서 다시 볼 수 있어요.';
+  finalEl.hidden = true; startBtn.textContent = '전투원 고르기';
+  mode = 'tutorial-done';
+  buttons(false); panel('main'); overlay.hidden = false;
+}
+
+// Tap-to-fire picks the closest enemy in reach that can actually be hit; otherwise shoot straight ahead.
+function autoAim(b, spec) {
+  const lobbed = spec.type === 'lob' || spec.type === 'firebomb';
+  const reach = spec.type === 'storm' ? spec.dash + spec.range : spec.range;
+  let best = null, bd = 1e9;
+  for (const o of match.fighters) {
+    if (!o.alive || o.team === b.team || !visibleTo(match, b.team, o)) continue;
+    const d = Math.hypot(o.x - b.x, o.y - b.y);
+    if (d > reach + 0.5 || (!lobbed && spec.type !== 'pierce' && !lineOfSight(match.map, b.x, b.y, o.x, o.y))) continue;
+    if (d < bd) { bd = d; best = o; }
+  }
+  if (!best) {
+    // Nobody in reach: still turn toward the closest enemy we can see, instead of wherever we happen to face.
+    for (const o of match.fighters) {
+      if (!o.alive || o.team === b.team || !visibleTo(match, b.team, o)) continue;
+      const d = Math.hypot(o.x - b.x, o.y - b.y);
+      if (d < bd) { bd = d; best = o; }
+    }
+    if (!best) return { a: b.face, d: null };
+    return { a: Math.atan2(best.y - b.y, best.x - b.x), d: Math.min(bd, spec.range || bd) };
+  }
+  const t = lobbed ? spec.flight * 0.8 : spec.speed ? bd / spec.speed * 0.6 : 0;
+  const px = best.x + best.vx * t, py = best.y + best.vy * t;
+  return { a: Math.atan2(py - b.y, px - b.x), d: Math.hypot(px - b.x, py - b.y) };
+}
+
+function controls() {
+  return match.fighters.map((b, i) => {
+    if (!b.alive) return null;
+    if (b === me) {
+      const mv = input.moveVec(), q = input.take();
+      const c = { mx: mv.x, my: mv.y, fire: null, special: null };
+      if (q) {
+        const spec = q.type === 'special' ? b.def.special : b.def.attack;
+        const aim = q.auto ? autoAim(b, spec) : { a: q.a, d: (spec.range || 0) * q.f };
+        if (q.type === 'special') c.special = aim; else c.fire = aim;
+        lastShotMode = q.auto ? 'auto' : 'aim';
+      }
+      return c;
+    }
+    if (b.dummy) return { mx: 0, my: 0, fire: null, special: null };
+    return botControl(match, b, brains[i], STEP);
+  });
+}
+
+function watchEvents() {
+  for (const e of match.events) {
+    playSound(e);
+    if (tut) {
+      if (e.type === 'hit' && e.by === me.id) { if (lastShotMode === 'auto') tut.autoHits++; else tut.aimHits++; }
+      if (e.type === 'special' && e.id === me.id) tut.specials++;
+      continue;
+    }
+    if (e.type === 'kill' && me) {
+      if (e.by === me.id) banner('처치!', 0.9);
+      else if (e.id === me.id) banner('쓰러졌어요!', 1.2);
+    } else if (e.type === 'spawn' && me && e.id === me.id) banner('부활!', 0.8);
+    else if (e.type === 'special' && me && e.id === me.id) banner(`★ ${me.def.special.name}!`, 0.9);
+  }
+}
+
+function tutorialTick(dt) {
+  if (!tut) return;
+  const s = STEPS[tut.i];
+  if (tut.okT > 0) { tut.okT -= dt; if (tut.okT <= 0) nextTutorialStep(); return; }
+  if (s.done(tut, me, match)) { ctext.textContent = '잘했어요! 👍'; ctext.classList.add('ok'); tut.okT = 1.1; }
+  // The practice target heals up so it never runs out, and the special step starts charged.
+  const dummy = match.fighters.find(b => b.dummy);
+  if (dummy && dummy.alive && dummy.hp < dummy.maxHp * 0.3) dummy.hp = dummy.maxHp;
+}
+
+// Sounds: my own actions at full volume, other fights quieter with distance, far ones not at all.
+function playSound(e) {
+  if (!me) return;
+  const near = (x, y) => { const d = Math.hypot(x - me.x, y - me.y); return d > 9 ? 0 : 1 - d / 12; };
+  const who = e.id != null ? match.fighters[e.id] : null;
+  if (e.type === 'attack') { const v = e.id === me.id ? 1 : near(who.x, who.y) * 0.6; if (v > 0) sfx.shot(e.kind, v); }
+  else if (e.type === 'hit') { if (e.id === me.id) sfx.hurt(); else if (e.by === me.id) sfx.hit(); }
+  else if (e.type === 'splash') { const v = near(e.x, e.y); if (v > 0) sfx.splash(v); }
+  else if (e.type === 'kill') { if (e.by === me.id || e.id === me.id) sfx.kill(); }
+  else if (e.type === 'special') { if (e.id === me.id) sfx.special(); }
+}
+
+function banner(text, t) { bannerEl.textContent = text; bannerEl.classList.add('on'); bannerT = t; }
+
+function finish() {
+  state = 'over'; input.enabled = false; pauseBtn.hidden = true;
+  bannerEl.classList.remove('on'); bannerT = 0;
+  const md = match.mode;
+  const won = match.winner === BLUE, draw = match.winner === 'draw';
+  const mvp = md === 'duel' && mvpOf(match) === me && me.kills > 0;
+  const gain = md === 'boss' ? (won ? REPUTATION.bossWin : REPUTATION.bossLose) : (draw ? 0 : won ? REPUTATION.win : REPUTATION.lose);
+  const lvBefore = levelFor(reputationBy[me.kind] || 0);
+  reputation = Math.max(0, reputation + gain); save(KEY_REPUTATION, reputation);
+  reputationBy[me.kind] = Math.max(0, (reputationBy[me.kind] || 0) + gain); save(KEY_BY, reputationBy);
+  const lvUp = levelFor(reputationBy[me.kind]) > lvBefore;
+  if (won) sfx.win(); else sfx.lose();
+  const st = match.stage || 1;
+  let stageNote = '';
+  if (won) {
+    const r = records[md] || { best: 1, cleared: false };
+    if (st < STAGES.count) { r.best = Math.max(r.best, st + 1); stageNote = `다음 단계는 ${st + 1}입니다.`; autoNext = 3; }
+    else { r.cleared = true; stageNote = `🏆 ${MODE_NAME[md]} 5단계를 모두 완료했어요!`; }
+    records[md] = r; save(KEY_STAGE, records);
+  } else stageNote = `${st}단계에서 끝났어요. 1단계부터 다시 도전해요.`;
+  const result = `${MODE_NAME[md]} ${st}단계 ${draw ? '무승부' : won ? '승리' : '패배'}${md === 'duel' ? ` ${match.score[BLUE]}:${match.score[RED]}` : ''}`;
+  const d = new Date(), entry = { id: Date.now(), result, fighter: me.def.name, kills: me.kills, reputation: gain, date: `${d.getMonth() + 1}/${d.getDate()}` };
+  const top = load(KEY_TOP, []); top.push(entry);
+  top.sort((a, b) => b.reputation - a.reputation || b.kills - a.kills || b.id - a.id);
+  save(KEY_TOP, top.slice(0, 10)); lastEntry = entry.id;
+  window.__onlineLeaderboard?.record(Math.max(0, gain), md, `${won ? '승리' : draw ? '무승부' : '패배'} · ${me.def.name} · 처치 ${me.kills}`);
+
+  titleEl.textContent = draw ? '무승부' : won ? '승리!' : '패배';
+  const boss = match.fighters.find(b => b.isBoss);
+  msgEl.innerHTML = md === 'duel' ? `결투 점수 <b>${match.score[BLUE]} : ${match.score[RED]}</b>` : `보스 남은 체력 <b>${Math.max(0, Math.ceil(boss?.hp || 0))}</b>`;
+  finalEl.replaceChildren();
+  const line = (text, cls) => { const s = document.createElement('div'); s.textContent = text; if (cls) s.className = cls; finalEl.append(s); };
+  line(`${me.def.name} · 처치 ${me.kills} · 쓰러짐 ${me.deaths}${mvp ? ' · MVP!' : ''}`);
+  line(`명성 ${gain >= 0 ? '+' : ''}${gain} (총 ${reputation})`, 'tr');
+  if (lvUp) line(`🎉 ${me.def.name} Lv.${levelFor(reputationBy[me.kind])} 달성!`, 'tr');
+  if (stageNote) line(stageNote);
+  finalEl.hidden = false; startBtn.textContent = autoNext ? `${st + 1}단계 시작 (${autoNext})` : '1단계부터 다시';
+  buttons(false); panel('main'); overlay.hidden = false;
+  updateHud();
+}
+
+function updateHud() {
+  hud.reputation.textContent = reputation;
+  const isBoss = match.mode === 'boss';
+  hud.score.hidden = isBoss || mode === 'tutorial'; hud.alive.hidden = true;
+  hud.bossHealth.hidden = !isBoss; hud.clockLabel.textContent = mode === 'tutorial' ? '진행' : '남은 시간';
+  hud.midLabel.textContent = isBoss ? '보스 체력' : '결투 점수';
+  const [bs, rs] = hud.score.children;
+  if (bs && rs) { bs.textContent = match.score[BLUE]; rs.textContent = match.score[RED]; }
+  if (isBoss) {
+    const boss = match.fighters.find(b => b.isBoss);
+    hud.bossHealth.max = boss?.maxHp || 1; hud.bossHealth.value = Math.max(0, boss?.hp || 0);
+  }
+  if (mode === 'tutorial') { hud.clock.textContent = '연습'; hud.clock.classList.remove('hot'); return; }
+  const s = Math.ceil(timeLeft(match));
+  hud.clock.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  hud.clock.classList.toggle('hot', s <= 30);
+}
+
+// ---------- loop ----------
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (state === 'play' || state === 'title') {
+    acc += dt;
+    while (acc >= STEP) {
+      acc -= STEP;
+      step(match, STEP, controls());
+      if (state === 'play') {
+        watchEvents(); tutorialTick(STEP);
+        if (match.phase === 'over') { finish(); break; }
+        if (state !== 'play') break;
+      } else if (match.phase === 'over') newAttract();
+    }
+    if (acc > STEP * 5) acc = 0;
+  }
+  // After a win, the next stage starts automatically or from the button.
+  if (state === 'over' && autoNext > 0 && !panels.main.hidden) {
+    const before = Math.ceil(autoNext); autoNext -= dt;
+    if (autoNext <= 0) { autoNext = 0; startMatch(match.stage + 1); }
+    else if (Math.ceil(autoNext) !== before) startBtn.textContent = String(match.stage + 1) + '단계 시작 (' + Math.ceil(autoNext) + ')';
+  }
+  if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) bannerEl.classList.remove('on'); }
+  if (state === 'play' && me && !me.alive && me.respawnT < Infinity && bannerT <= 0) { bannerEl.textContent = `부활까지 ${Math.ceil(me.respawnT)}`; bannerEl.classList.add('on'); }
+  if (state === 'play' && me && me.alive && bannerT <= 0) bannerEl.classList.remove('on');
+
+  input.state.specialReady = !!(me && me.alive && me.charge >= 1 && !me.dash);
+  const playing = state === 'play' || state === 'paused';
+  view.draw(match, {
+    meId: me ? me.id : null,
+    aim: state === 'play' ? input.aiming() : null,
+    input: playing && me ? input.state : null,
+    focus: me || match.fighters.find(b => b.alive) || null,
+    viewTeam: me ? BLUE : null,
+    marker: tut && STEPS[tut.i] && STEPS[tut.i].marker ? match.mapDef.marker : null,
+    tilesAcross: me ? 10 : 12,
+    minimap: !!me && mode !== 'tutorial',
+  }, state === 'play' || state === 'title' ? dt : 0);
+  if (me) updateHud(); else hud.reputation.textContent = reputation;
+  requestAnimationFrame(frame);
+}
+
+// ---------- no pinch zoom (two thumbs on screen during play) ----------
+['gesturestart', 'gesturechange', 'gestureend'].forEach(n => document.addEventListener(n, e => e.preventDefault()));
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+if (window.visualViewport) window.visualViewport.addEventListener('resize', () => {
+  if (window.visualViewport.scale <= 1.01) return;
+  const mv = document.querySelector('meta[name=viewport]'); if (!mv) return;
+  const c = mv.content; mv.content = c + ', maximum-scale=1'; setTimeout(() => { mv.content = c; }, 80);
+});
+
+function resize() { const r = stage.getBoundingClientRect(); view.resize(r.width, r.height); }
+new ResizeObserver(resize).observe(stage);
+resize(); buildCards(); showTitle();
+requestAnimationFrame(frame);
+
+// Test hook (used by the automated checks; harmless in play).
+window.__arena = { get match() { return match; }, get state() { return state; }, get me() { return me; }, get tut() { return tut; }, input };
